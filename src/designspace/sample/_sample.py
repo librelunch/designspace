@@ -5,10 +5,14 @@
 `pl.DataFrame`... (`sample_dicts` retained as the M2 path)". `.sample_one()`
 keeps its final spec signature (dict output) throughout.
 
-M2 covers only the generative scalar kinds (real, integer, categorical,
-ordinal, bool) — every kind buildable in this milestone is generative, so
-the non-generative `SamplingError` (row 26's other half) has nothing to
-trigger on yet; only retry exhaustion is reachable.
+M2 covered the generative scalar kinds (real, integer, categorical,
+ordinal, bool); M3 adds choice (weighted variant pick, like categorical),
+subset (Bernoulli-plus-size-rejection), and permutation (uniform
+shuffle). Struct ("space") produces no value of its own — `_draw_config`
+skips it — its members are separate, independently-drawn entries. Every
+kind buildable through M3 is generative, so the non-generative
+`SamplingError` (row 26's other half) has nothing to trigger on yet; only
+retry exhaustion is reachable.
 """
 
 from __future__ import annotations
@@ -18,9 +22,19 @@ from typing import Any
 import numpy as np
 
 from designspace.build._space import Space
+from designspace.config import unflatten
 from designspace.errors import SamplingError
 from designspace.eval import evaluate_bool, evaluate_constraint, is_violated, topological_order
-from designspace.ir import CategoricalDomain, Constraint, OrdinalDomain, ParamDef, Weights
+from designspace.ir import (
+    CategoricalDomain,
+    ChoiceDomain,
+    Constraint,
+    OrdinalDomain,
+    ParamDef,
+    PermutationDomain,
+    SubsetDomain,
+    Weights,
+)
 
 _MAX_RETRIES = 10_000
 
@@ -31,6 +45,24 @@ def _rng_from_seed(seed: Seed) -> np.random.Generator:
     if isinstance(seed, np.random.Generator):
         return seed
     return np.random.default_rng(seed)
+
+
+def _draw_subset(domain: SubsetDomain, prior: Any, rng: np.random.Generator) -> list[Any]:
+    probs = (
+        np.asarray(prior.values, dtype=float)
+        if isinstance(prior, Weights)
+        else np.full(len(domain.items), 0.5)
+    )
+    max_size = domain.max_size if domain.max_size is not None else len(domain.items)
+    for _ in range(_MAX_RETRIES):
+        draws = rng.random(len(domain.items)) < probs
+        size = int(draws.sum())
+        if domain.min_size <= size <= max_size:
+            return [item for item, included in zip(domain.items, draws, strict=True) if included]
+    raise SamplingError(
+        f"subset draw could not satisfy size bounds [{domain.min_size}, {max_size}] "
+        f"after {_MAX_RETRIES} retries"
+    )
 
 
 def _draw_value(pd: ParamDef, rng: np.random.Generator) -> Any:
@@ -52,6 +84,24 @@ def _draw_value(pd: ParamDef, rng: np.random.Generator) -> Any:
         probs = weights / weights.sum()
         idx = int(rng.choice(len(values), p=probs))
         return values[idx]
+    if pd.type_kind == "choice":
+        assert isinstance(pd.domain, ChoiceDomain)
+        variants = pd.domain.variants
+        weights = (
+            np.asarray(pd.prior.values, dtype=float)
+            if isinstance(pd.prior, Weights)
+            else np.ones(len(variants))
+        )
+        probs = weights / weights.sum()
+        idx = int(rng.choice(len(variants), p=probs))
+        return variants[idx]
+    if pd.type_kind == "subset":
+        assert isinstance(pd.domain, SubsetDomain)
+        return _draw_subset(pd.domain, pd.prior, rng)
+    if pd.type_kind == "permutation":
+        assert isinstance(pd.domain, PermutationDomain)
+        order = rng.permutation(len(pd.domain.items))
+        return [pd.domain.items[i] for i in order]
     raise SamplingError(
         f"param has non-generative type_kind {pd.type_kind!r} (not yet implemented)"
     )
@@ -68,7 +118,7 @@ def _draw_config(space: Space, rng: np.random.Generator) -> tuple[dict[str, Any]
         else:
             active = evaluate_bool(condition.expr, config, activity, space) is True
         activity[path] = active
-        if active:
+        if active and space.params[path].type_kind != "space":
             config[path] = _draw_value(space.params[path], rng)
     return config, activity
 
@@ -96,7 +146,7 @@ def sample_one(space: Space, seed: Seed = None, reject_soft: bool = False) -> di
         config, activity = _draw_config(space, rng)
         violated = _violations(constraints, config, activity, space)
         if not violated:
-            return config
+            return unflatten(config, space)
         for c in violated:
             key = id(c)
             violation_counts[key] = violation_counts.get(key, 0) + 1

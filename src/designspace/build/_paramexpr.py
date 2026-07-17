@@ -20,16 +20,28 @@ from types import MappingProxyType
 from typing import Any
 
 from designspace.errors import ResolutionError
-from designspace.expr import ArithExpr, BoolExpr, Expr
+from designspace.expr import (
+    ArithExpr,
+    BoolExpr,
+    Contains,
+    Expr,
+    PositionOf,
+    Size,
+    SumOver,
+)
 from designspace.ir import (
     BoolDomain,
     CategoricalDomain,
+    ChoiceDomain,
     Domain,
     IntegerDomain,
     Log,
     OrdinalDomain,
+    PermutationDomain,
     QuantizedSpec,
     RealDomain,
+    StructDomain,
+    SubsetDomain,
     Weights,
 )
 
@@ -51,6 +63,14 @@ class ParamExpr(ArithExpr, BoolExpr):
     condition: BoolExpr | None = None
     tags: frozenset[str] = frozenset()
     meta_map: MappingProxyType[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    # -- structural payloads (M3): raw builder-time state for .choice()/.space(),
+    # merged into the flat IR during resolution (resolve/_relocate.py). Not part
+    # of `domain` because the domain only needs variant names/has_payload, not
+    # the child Spaces themselves.
+    choice_payloads: MappingProxyType[str, Any] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    struct_space: Any = None  # Space | None; typed Any to avoid an import cycle
 
     @property
     def kind(self) -> str:
@@ -108,6 +128,79 @@ class ParamExpr(ArithExpr, BoolExpr):
             domain=BoolDomain(),
             type_calls=(*self.type_calls, "bool"),
         )
+
+    def subset(
+        self, items: Sequence[Any], min_size: int = 0, max_size: int | None = None
+    ) -> ParamExpr:
+        return replace(
+            self,
+            type_kind="subset",
+            domain=SubsetDomain(tuple(items), min_size, max_size),
+            type_calls=(*self.type_calls, "subset"),
+        )
+
+    def permutation(self, items: Sequence[Any]) -> ParamExpr:
+        return replace(
+            self,
+            type_kind="permutation",
+            domain=PermutationDomain(tuple(items)),
+            type_calls=(*self.type_calls, "permutation"),
+        )
+
+    def choice(
+        self, *variants: str | tuple[str, Any], **keyword_variants: Any
+    ) -> ParamExpr:
+        names: list[str] = []
+        payloads: dict[str, Any] = {}
+        has_payload: set[str] = set()
+        for v in variants:
+            if isinstance(v, str):
+                names.append(v)
+            else:
+                name, payload = v
+                names.append(name)
+                if payload is not None:
+                    payloads[name] = payload
+                    has_payload.add(name)
+        for name, payload in keyword_variants.items():
+            names.append(name)
+            payloads[name] = payload
+            has_payload.add(name)
+        return replace(
+            self,
+            type_kind="choice",
+            domain=ChoiceDomain(tuple(names), frozenset(has_payload)),
+            choice_payloads=MappingProxyType(payloads),
+            type_calls=(*self.type_calls, "choice"),
+        )
+
+    def space(self, *exprs: ParamExpr) -> ParamExpr:
+        from designspace.resolve._pipeline import resolve_space
+
+        child = resolve_space(exprs)
+        return replace(
+            self,
+            type_kind="space",
+            domain=StructDomain(),
+            struct_space=child,
+            type_calls=(*self.type_calls, "space"),
+        )
+
+    # -- combinatorial expression methods (subset/permutation only; validity
+    # is a resolution-time check, not a construction-time one, per M0's "no
+    # evaluation, no resolution happens here") -------------------------------
+
+    def contains(self, item: Any) -> BoolExpr:
+        return Contains(self, item)
+
+    def size(self) -> ArithExpr:
+        return Size(self)
+
+    def sum_over(self, mapping: dict[Any, float]) -> ArithExpr:
+        return SumOver(self, MappingProxyType(dict(mapping)))
+
+    def position_of(self, item: Any) -> ArithExpr:
+        return PositionOf(self, item)
 
     # -- domain-level modifiers (last-write-wins) ----------------------------
 

@@ -9,10 +9,14 @@ from designspace.ir._chart import Chart
 from designspace.ir._domain import (
     BoolDomain,
     CategoricalDomain,
+    ChoiceDomain,
     Domain,
     IntegerDomain,
     OrdinalDomain,
+    PermutationDomain,
     RealDomain,
+    StructDomain,
+    SubsetDomain,
 )
 from designspace.ir._param import Condition, Constraint, ParamDef, QuantizedSpec
 from designspace.ir._priors import Log, Logit, Power, Prior, PriorSpec, Weights
@@ -22,6 +26,7 @@ __all__ = [
     "BoolDomain",
     "CategoricalDomain",
     "Chart",
+    "ChoiceDomain",
     "Condition",
     "Constraint",
     "ConstraintEval",
@@ -32,11 +37,14 @@ __all__ = [
     "OrdinalDomain",
     "ParamDef",
     "ParamError",
+    "PermutationDomain",
     "Power",
     "Prior",
     "PriorSpec",
     "QuantizedSpec",
     "RealDomain",
+    "StructDomain",
+    "SubsetDomain",
     "ValidationResult",
     "Weights",
 ]

@@ -105,3 +105,54 @@ class TestRow26RetryExhaustion:
         space = ds.space(ds.param("x").real(0.0, 1.0)).forbid(ds.param("x") <= 1.0)
         with pytest.raises(SamplingError, match="le"):
             space.sample_one(seed=0)
+
+    def test_unsatisfiable_subset_size_bounds_raise_sampling_error(self):
+        # Every item independently included w.p. 0.5; requiring exactly the
+        # full universe (min_size == max_size == len(items)) is reachable
+        # but vanishingly unlikely for a large universe -- pin it to
+        # something truly impossible instead: min_size > max_size is
+        # already a resolution error, so use min_size == max_size == 1 with
+        # weights forcing every item's inclusion probability to 0.
+        space = ds.space(
+            ds.param("s").subset(("a", "b"), min_size=1, max_size=1).prior(weights=[0.0, 0.0])
+        )
+        with pytest.raises(SamplingError):
+            space.sample_one(seed=0)
+
+
+class TestChoiceSubsetPermutationSampling:
+    def test_choice_draws_a_declared_variant(self):
+        space = ds.space(
+            ds.param("algo").choice(
+                "linear",
+                svm=ds.space(ds.param("gamma").real(0.0, 1.0)),
+            )
+        )
+        for i in range(30):
+            cfg = space.sample_one(seed=i)
+            value = cfg["algo"]
+            assert value == "linear" or set(value.keys()) == {"svm"}
+
+    def test_choice_weights_bias_the_draw(self):
+        space = ds.space(ds.param("algo").choice("a", "b").prior(weights=[0.0, 1.0]))
+        for i in range(20):
+            cfg = space.sample_one(seed=i)
+            assert cfg["algo"] == "b"
+
+    def test_subset_respects_size_bounds(self):
+        space = ds.space(ds.param("s").subset(("a", "b", "c", "d"), min_size=1, max_size=2))
+        for i in range(50):
+            cfg = space.sample_one(seed=i)
+            assert 1 <= len(cfg["s"]) <= 2
+            assert len(set(cfg["s"])) == len(cfg["s"])
+
+    def test_permutation_is_a_full_reordering(self):
+        space = ds.space(ds.param("p").permutation(("x", "y", "z")))
+        for i in range(20):
+            cfg = space.sample_one(seed=i)
+            assert sorted(cfg["p"]) == ["x", "y", "z"]
+
+    def test_struct_produces_no_flat_entry_of_its_own(self):
+        space = ds.space(ds.param("layers").space(ds.param("width").integer(1, 10)))
+        cfg = space.sample_one(seed=0)
+        assert cfg == {"layers": {"width": cfg["layers"]["width"]}}

@@ -30,6 +30,7 @@ from designspace.expr import (
     BoolLiteral,
     BoolOp,
     Compare,
+    Contains,
     Count,
     Expr,
     IfInactive,
@@ -37,6 +38,9 @@ from designspace.expr import (
     IsIn,
     Literal,
     Not,
+    PositionOf,
+    Size,
+    SumOver,
 )
 from designspace.ir import OrdinalDomain
 
@@ -184,6 +188,19 @@ def evaluate_arith(
     if isinstance(expr, Count):
         t, u = _count_range(expr, config, activity, space)
         return t if u == 0 else UNKNOWN
+    if isinstance(expr, Size):
+        value = evaluate_arith(expr.operand, config, activity, space)
+        return UNKNOWN if isinstance(value, Unknown) else len(value)
+    if isinstance(expr, SumOver):
+        value = evaluate_arith(expr.operand, config, activity, space)
+        if isinstance(value, Unknown):
+            return UNKNOWN
+        # Missing mapping keys contribute 0 (spec: mapping keys ⊆ item
+        # universe, so partial coverage is legal — see DECISIONS.md).
+        return sum(expr.mapping.get(item, 0) for item in value)
+    if isinstance(expr, PositionOf):
+        value = evaluate_arith(expr.operand, config, activity, space)
+        return UNKNOWN if isinstance(value, Unknown) else value.index(expr.item)
     raise TypeError(f"cannot evaluate arith expr kind {expr.kind!r}")
 
 
@@ -258,6 +275,9 @@ def evaluate_bool(
         return any(_values_equal(operand, v) for v in expr.values)
     if isinstance(expr, IsActive):
         return all(activity.get(p, True) for p in expr.operand.params)
+    if isinstance(expr, Contains):
+        value = evaluate_arith(expr.operand, config, activity, space)
+        return UNKNOWN if isinstance(value, Unknown) else expr.item in value
     raise TypeError(f"cannot evaluate bool expr kind {expr.kind!r}")
 
 

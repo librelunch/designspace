@@ -1,14 +1,24 @@
-"""The resolve pass pipeline for flat scalar spaces (API_v3.md, "Resolution").
+"""The resolve pass pipeline (API_v3.md, "Resolution").
 
 Covers steps 1-8: collect, type-check, desugar (`implies`; `log_scale`
 already resolved eagerly at the builder, D-2), resolve references,
-cycle-check, validate declarations, build charts, emit IR. Structural types
-(choice/struct/subset/permutation), lifts, and expression bounds are later
-milestones' desugaring/envelope work (M3-M5).
+cycle-check, validate declarations, build charts, emit IR. M3 adds
+choice/struct/subset/permutation; lifts and expression bounds are later
+milestones' work (M4-M5).
 
 Each numbered step is a plain function over the previous step's output,
 per IMPLEMENTATION_PLAN.md's "each pass a function over an explicit
 intermediate."
+
+Structural expansion (choice/struct) happens in step 8 (`_emit`), not
+earlier: a choice/struct param's own condition is resolved and cycle-
+checked exactly like any other param's `.when()` at *this* level (steps
+4-5 already handle it uniformly, since it's just an ordinary ParamExpr
+entry in `defs`); its payload's *descendant* params were already fully
+resolved (by their own, earlier `resolve_space` call — see
+build/_paramexpr.py's `.space()`/`.choice()`) and only need reprefixing
+plus one folded-in activation condition (resolve/_relocate.py), never
+re-validation.
 """
 
 from __future__ import annotations
@@ -24,20 +34,28 @@ from designspace.build._paramexpr import ParamExpr
 from designspace.build._space import Space
 from designspace.charts import build_chart
 from designspace.errors import ResolutionError
-from designspace.expr import ArithExpr
+from designspace.expr import ArithExpr, Compare, Literal
 from designspace.ir import (
     BoolDomain,
     CategoricalDomain,
     Chart,
+    ChoiceDomain,
     Condition,
+    Constraint,
     IntegerDomain,
     OrdinalDomain,
     ParamDef,
+    PermutationDomain,
     RealDomain,
+    StructDomain,
+    SubsetDomain,
     Weights,
 )
 from designspace.resolve._desugar import desugar_bool
 from designspace.resolve._expr_checks import check_expr_types, check_refs_declared
+from designspace.resolve._relocate import and_, relocate_child
+
+_NON_CHART_KINDS = ("subset", "permutation", "choice", "space")
 
 
 def resolve_space(exprs: tuple[ParamExpr, ...]) -> Space:
@@ -66,6 +84,9 @@ def _build_charts(defs: tuple[ParamExpr, ...]) -> dict[str, Chart | None]:
     charts: dict[str, Chart | None] = {}
     for d in defs:
         assert d.type_kind is not None and d.domain is not None
+        if d.type_kind in _NON_CHART_KINDS:
+            charts[d.path] = None
+            continue
         charts[d.path] = build_chart(d.path, d.type_kind, d.domain, d.prior_spec, d.quantized_spec)
     return charts
 
@@ -108,13 +129,13 @@ def _check_types_and_names(defs: tuple[ParamExpr, ...]) -> None:
 
 def _check_modifier_placement(d: ParamExpr) -> None:
     numeric = d.type_kind in ("real", "integer")
-    weighted = d.type_kind in ("categorical", "ordinal", "bool")
+    weighted = d.type_kind in ("categorical", "ordinal", "bool", "choice", "subset")
 
     if d.prior_spec is not None:
         if isinstance(d.prior_spec, Weights) and not weighted:
             raise ResolutionError(
                 f"param {d.path!r}: prior(weights=...) only applies to "
-                "categorical, ordinal, or bool params"
+                "categorical, ordinal, bool, choice, or subset params"
             )
         if not isinstance(d.prior_spec, Weights) and not numeric:
             raise ResolutionError(
@@ -192,6 +213,41 @@ def _validate_domain(d: ParamExpr) -> None:
         _check_distinct_values(d.path, domain.values, what="ordinal values")
     elif isinstance(domain, BoolDomain):
         pass
+    elif isinstance(domain, SubsetDomain):
+        _check_distinct_values(d.path, domain.items, what="subset items")
+        _check_subset_size_bounds(d.path, domain)
+    elif isinstance(domain, PermutationDomain):
+        _check_distinct_values(d.path, domain.items, what="permutation items")
+    elif isinstance(domain, ChoiceDomain):
+        _check_choice_variants(d.path, domain)
+    elif isinstance(domain, StructDomain):
+        pass
+
+
+def _check_subset_size_bounds(path: str, domain: SubsetDomain) -> None:
+    if domain.min_size < 0:
+        raise ResolutionError(f"param {path!r}: subset min_size must be >= 0")
+    if domain.max_size is not None and domain.max_size < domain.min_size:
+        raise ResolutionError(
+            f"param {path!r}: subset max_size ({domain.max_size}) < "
+            f"min_size ({domain.min_size})"
+        )
+    if domain.min_size > len(domain.items):
+        raise ResolutionError(
+            f"param {path!r}: subset min_size ({domain.min_size}) exceeds the "
+            f"item universe ({len(domain.items)} items)"
+        )
+
+
+def _check_choice_variants(path: str, domain: ChoiceDomain) -> None:
+    if len(domain.variants) == 0:
+        raise ResolutionError(f"param {path!r}: choice requires at least one variant")
+    seen: set[str] = set()
+    for name in domain.variants:
+        check_name(name, what=f"variant name (param {path!r})")
+        if name in seen:
+            raise ResolutionError(f"param {path!r}: duplicate variant name {name!r}")
+        seen.add(name)
 
 
 def _check_bounds(path: str, lo: Any, hi: Any) -> None:
@@ -234,10 +290,25 @@ def _validate_prior(d: ParamExpr) -> None:
         return
     weights = d.prior_spec.values
     domain = d.domain
+    if d.type_kind == "subset":
+        assert isinstance(domain, SubsetDomain)
+        if len(weights) != len(domain.items):
+            raise ResolutionError(
+                f"param {d.path!r}: prior(weights=...) has {len(weights)} entries, "
+                f"expected {len(domain.items)}"
+            )
+        if any(w < 0.0 or w > 1.0 for w in weights):
+            raise ResolutionError(
+                f"param {d.path!r}: prior(weights=...) inclusion probabilities "
+                "must be within [0, 1]"
+            )
+        return
     if d.type_kind == "bool":
         expected_len = 2
     elif isinstance(domain, CategoricalDomain | OrdinalDomain):
         expected_len = len(domain.values)
+    elif isinstance(domain, ChoiceDomain):
+        expected_len = len(domain.variants)
     else:  # pragma: no cover - unreachable given _check_modifier_placement
         expected_len = len(weights)
     if len(weights) != expected_len:
@@ -309,6 +380,7 @@ def _validate_tags_meta(d: ParamExpr) -> None:
 def _emit(defs: tuple[ParamExpr, ...], charts: dict[str, Chart | None]) -> Space:
     params: dict[str, ParamDef] = {}
     conditions: list[Condition] = []
+    constraints: list[Constraint] = []
     for d in defs:
         assert d.type_kind is not None
         assert d.domain is not None
@@ -327,4 +399,31 @@ def _emit(defs: tuple[ParamExpr, ...], charts: dict[str, Chart | None]) -> Space
         )
         if d.condition is not None:
             conditions.append(Condition(target=d.path, expr=d.condition, params=d.condition.params))
-    return Space(params=MappingProxyType(params), conditions=tuple(conditions))
+
+        if d.type_kind == "space" and d.struct_space is not None:
+            child_params, child_conditions, child_constraints = relocate_child(
+                d.struct_space, new_prefix=f"{d.path}.", injected_condition=d.condition
+            )
+            params.update(child_params)
+            conditions.extend(child_conditions)
+            constraints.extend(child_constraints)
+        elif d.type_kind == "choice":
+            assert isinstance(d.domain, ChoiceDomain)
+            for variant_name in d.domain.variants:
+                payload = d.choice_payloads.get(variant_name)
+                if payload is None:
+                    continue
+                discriminator_eq = Compare("eq", ParamExpr(path=d.path), Literal(variant_name))
+                injected = and_(d.condition, discriminator_eq)
+                child_params, child_conditions, child_constraints = relocate_child(
+                    payload, new_prefix=f"{d.path}.{variant_name}.", injected_condition=injected
+                )
+                params.update(child_params)
+                conditions.extend(child_conditions)
+                constraints.extend(child_constraints)
+
+    return Space(
+        params=MappingProxyType(params),
+        conditions=tuple(conditions),
+        constraints=tuple(constraints),
+    )

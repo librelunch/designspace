@@ -349,3 +349,215 @@ Spec delta: Could state that a literal compared against an ordinal that
             doesn't match any declared value evaluates to Unknown (consistent
             with "comparison yes" implicitly requiring both sides resolve to
             a position), or else mandate eager rejection at construction.
+
+## D-11 (M3) — Anchors stay out of scope; this supersedes nothing new, just extends D-5
+
+Question:   IMPLEMENTATION_PLAN.md's M3 corpus table lists `sat_solver`'s
+            "Exercises" column as "choice+ordinal, anchors, ordinal
+            comparisons," which reads as if `.anchor()` is needed now. But
+            M3's own Spec/Build/Gate lines (unlike M2's, which D-5 already
+            addressed) never mention `.anchor()`, "Constraints and
+            Feasibility," or anchor validation anywhere.
+Options:    (a) Implement `.anchor()` now, since the corpus table names it
+            for this fixture. (b) Defer it; build `sat_solver` with only
+            the choice+ordinal content the Spec/Build/Gate lines actually
+            ask for.
+Choice:     (b), for the same reason as D-5: the per-milestone Spec/Build/
+            Gate lines are the more specific, more authoritative signal,
+            and `greenhouse`'s own corpus-table entry establishes the
+            precedent that this "Exercises" column describes a fixture's
+            *lifetime* scope, not what must be live at its add-milestone
+            (its "defaults cascade" is explicitly deferred to M6 in the
+            very next column). CLAUDE.md's "no dead scaffolding" /
+            "`__init__.py` exports exactly the surface implemented so far"
+            affirmatively forbids adding `.anchor()` before some
+            milestone's own gate needs it. `sat_solver` is built here with
+            only choice+ordinal+comparisons; it gains `.anchor()` calls
+            whichever later milestone first requires them (M8, "ops/
+            ...anchor interactions," is the first place the plan actually
+            names anchor machinery).
+Spec delta: The corpus table could mark forward-referenced fixture content
+            the same way `greenhouse`'s already does, rather than only for
+            defaults.
+
+## D-12 (M3) — Eager resolution retained; escaping `.when()` references from an inline choice/struct payload are unsupported
+
+Question:   API_v3.md's scoping-rule example ("Paths and Scoping") shows a
+            `.when()` condition *inside* a choice variant's inline
+            `ds.space(...)` payload referencing a param declared in the
+            *enclosing* scope (`global_flag`), commented "# up." But
+            `ds.param(...).choice()`/`.space()` (struct) both take that
+            payload as an already-built `Space` — and M1's permanent row-6
+            test (`test_build_resolve.py::TestRow6UndeclaredReference`)
+            requires `ds.space(...)` to raise immediately on any locally-
+            unresolvable `.when()` reference, with no way to distinguish
+            "a typo" from "an escaping reference the caller will bind
+            later." Any relaxation that spares one spares the other.
+Options:    (a) Make resolution lazy/two-phase so a payload can carry
+            still-open references, closed only when embedded in a wider
+            scope. (b) Keep resolution eager and single-pass (as M1/M2
+            already built it); a payload resolves standalone and fully,
+            so a `.when()` inside it can only reference params declared
+            in that same payload. Cross-scope logic is instead written as
+            a `.forbid()`/`.constrain()` at the common ancestor, using a
+            full dotted-path *down* reference into the descendant — which
+            the spec's own next paragraph prescribes ("Cross-scope
+            constraints are declared at the common ancestor") and which
+            already works with zero special-casing once a Space's
+            `.params` is fully flat.
+Choice:     (b). Option (a) is decisively ruled out by the permanent M1
+            test above — it is not a judgment call, it is a hard
+            constraint. Relocatability itself survives intact: it is about
+            a subspace's *own* internal (local) references behaving
+            identically whether resolved standalone or nested (see
+            `tests/conformance/test_structure.py::TestRelocatability`) —
+            an escaping up-reference isn't "internal" to the child at all,
+            and inline-vs-nested is vacuously equal for it (inline also
+            fails to resolve it). Cascading deactivation is unaffected:
+            the discriminator/struct-activation condition is *injected by
+            the enclosing resolution* after the child resolves (resolve/
+            _relocate.py), not written by the child's own author, so it
+            never needs the child's eager pass to see anything outside the
+            child.
+Spec delta: The "up" example needs either a different construction that
+            defers child resolution (which `ds.space()`'s current eager
+            contract doesn't provide), or a note that it illustrates the
+            scoping *rule* abstractly rather than something achievable
+            through inline choice/struct payload nesting today.
+
+## D-13 (M3) — Subset default inclusion probability (no `.prior(weights=...)`)
+
+Question:   "`.prior(weights=[...])` | subset | Independent inclusion
+            probabilities in `[0,1]` per item" states the *shape* of a
+            declared prior but not the default when none is given — every
+            other kind's default is named explicitly (Uniform for reals,
+            equal weights implied for categorical/ordinal/bool/choice by
+            "Non-negative, not all zero" leaving equal weights as the
+            natural reading when omitted).
+Options:    (a) Default each item's inclusion probability to 0.5 (an
+            uninformative per-item coin flip — the natural analogue of
+            "Uniform" for an independent-Bernoulli measure). (b) Default
+            to some other fixed value, or require `.prior()` be mandatory
+            for subsets.
+Choice:     (a). 0.5 is the maximum-entropy (least-informative) choice for
+            a Bernoulli and requires no new concept — sample/_sample.py's
+            `_draw_subset` uses `np.full(len(items), 0.5)` absent a
+            `Weights` prior. Consistent with "priors are coordinate
+            systems" defaulting to the uninformative measure everywhere
+            else in the spec.
+Spec delta: Could state the default inclusion probability explicitly next
+            to the existing subset row in the Modifiers table.
+
+## D-14 (M3) — `sum_over()` with a mapping that omits an included item
+
+Question:   "`ds.param("s").sum_over(mapping)` # subset: Σ mapping[item]
+            over included items; ... keys ⊆ item universe" legalizes a
+            mapping that covers only *part* of the universe (⊆, not =).
+            It doesn't say what the sum contributes for an included item
+            with no mapping entry.
+Options:    (a) Treat a missing key as a `KeyError` at evaluation time
+            (the mapping is only "safe" for configs that happen to avoid
+            unmapped items). (b) Treat a missing key as contributing `0`
+            to the sum (a sparse cost/weight map where unlisted items are
+            free).
+Choice:     (b) — eval/_kleene.py's `SumOver` evaluation uses
+            `mapping.get(item, 0)`. Raising on a perfectly legal config
+            (per the item-universe/size-bound domain checks, which have
+            no idea `sum_over` even exists) would make a validly-sampled
+            config crash a `.constrain()`/`.forbid()` evaluation — a much
+            worse failure mode than silently contributing zero, and "keys
+            ⊆ universe" reads more naturally as "a sparse map is legal"
+            than as "the author must prove every reachable item is
+            covered."
+Spec delta: Could state explicitly that an included item missing from the
+            mapping contributes zero to the sum.
+
+## D-15 (M3) — `.space(prebuilt: Space)` form deferred
+
+Question:   API_v3.md lists two struct-type-method signatures: `.space(*exprs)`
+            and `.space(prebuilt: Space)`, noting the prebuilt form exists
+            because "per-element constraints on repeated structs require
+            the prebuilt-`Space` form (the inline form has nowhere to hang
+            a `.forbid`)" — but repeated structs (`.repeat()`) don't exist
+            until M4.
+Options:    (a) Implement both call shapes now. (b) Implement only
+            `.space(*exprs)` (inline); defer the `prebuilt: Space` overload
+            until a lift actually needs it.
+Choice:     (b). The prebuilt form's entire stated motivation is repeat-
+            element constraints, which is M4 machinery; none of M3's five
+            corpus fixtures pass an already-built `Space` positionally to
+            `.space()`, and CLAUDE.md forbids stubbing future milestones'
+            surface. `.choice()`'s variant payloads already accept a
+            `Space` (via `ds.space(...)` built inline in argument
+            position) — that is a different call shape (a `dict`/keyword
+            value, not `ParamExpr.space(a_space)`) and is fully
+            implemented; only the struct type-method's alternate overload
+            is deferred.
+Spec delta: None — this is a plan-sequencing question (the prebuilt form's
+            payoff is inherently an M4 concern), not a spec gap.
+
+## D-16 (M3) — Subset size-bound sanity checks beyond the literal error table
+
+Question:   The error table's row 3 covers duplicate subset/permutation
+            items, but no row covers a subset whose `min_size`/`max_size`
+            are themselves nonsensical (negative `min_size`, `max_size <
+            min_size`, or `min_size` exceeding the declared item
+            universe) — unlike reals/integers, which get an explicit row
+            (8) for `lo > hi`/non-finite bounds.
+Options:    (a) Leave these unchecked at resolution; let them surface
+            later as a confusing sampling retry-exhaustion error (row 26)
+            or a silently-impossible-to-satisfy domain. (b) Reject them at
+            resolution, analogous to row 8's treatment of scalar bounds.
+Choice:     (b) — resolve/_pipeline.py's `_check_subset_size_bounds`.
+            "Choose the least-surprising behavior consistent with the
+            spec's Design Principles" favors failing fast at resolution
+            (the same moment `lo > hi` fails for a real) over a
+            mysterious `SamplingError` naming no obviously-wrong param
+            declaration. No conformance law depends on the *absence* of
+            this check, so adding it strengthens rather than weakens
+            anything frozen.
+Spec delta: The error table could add a subset-bounds row alongside row 8,
+            worded the same way ("`min_size > max_size`; `min_size < 0`;
+            `min_size` exceeds the item universe").
+
+## D-17 (M3) — `unflatten` omits a struct that is active but all of whose members are inactive
+
+Question:   "`.space(*exprs)` ... Struct-valued param: unconditionally-
+            present grouping under a namespace" suggests an active struct
+            should always appear in the nested config, even as `{}`. But
+            `config/_unflatten.py` can only tell a struct is "present" by
+            checking whether *any* descendant leaf is present in the flat
+            dict — an active struct whose every member happens to be
+            individually inactive (e.g. each gated by its own `.when()`
+            that's currently false) looks, from the flat dict alone,
+            identical to an *inactive* struct: no descendant keys exist
+            either way, and `unflatten` has no separate activity signal to
+            tell them apart (the public `unflatten(flat, space)` signature
+            takes no activity argument).
+Options:    (a) Omit the struct entirely whenever it has no present
+            descendants (current behavior) — self-consistent (`flatten`
+            and `unflatten` agree, `validate` never reports a `space`-kind
+            path itself, and the round-trip law holds either way, since
+            both directions apply the same rule). (b) Always emit `{}` for
+            a struct with zero *declared* descendants (the fully-empty-
+            struct degenerate case only), still omitting the "all members
+            individually inactive" case since it's indistinguishable from
+            "the struct itself is inactive" without an activity parameter.
+Choice:     A version of (b): zero-descendant structs always emit `{}`
+            (handled explicitly); an active-but-all-members-inactive
+            struct is omitted, same as a genuinely inactive one — this is
+            the one case not resolved by (a) or (b) alone, and is recorded
+            here as a known, accepted limitation rather than silently
+            left unhandled. It doesn't violate any stated law: nothing in
+            the Conformance Laws section distinguishes these two states,
+            and `unflatten(flatten(c)) == c` holds regardless (the
+            asymmetry only matters if a caller compares `unflatten`'s
+            output against `compute_activity`'s independent notion of
+            "active," which M3 has no API surface for doing).
+Spec delta: Could state whether `.unflatten()` (which takes no activity
+            argument) is expected to distinguish "active, all members
+            inactive" from "inactive" for a struct with declared members,
+            or clarify that "unconditionally-present" describes validity
+            (a struct's activity never depends on its *own* members'
+            activity) rather than a guarantee about `unflatten`'s output
+            shape.

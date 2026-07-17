@@ -16,18 +16,48 @@ feasibility constraint — prefixed onto each message.
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
-from typing import Any
+from typing import Any, cast
 
 from designspace.build._paramexpr import ParamExpr
 from designspace.errors import ResolutionError
-from designspace.expr import ArithOp, Compare, Expr
-from designspace.ir import OrdinalDomain
+from designspace.expr import ArithOp, Compare, Contains, Expr, PositionOf, Size, SumOver
+from designspace.ir import OrdinalDomain, PermutationDomain, SubsetDomain
 
 
 def iter_nodes(node: Expr) -> Iterator[Expr]:
     yield node
     for child in node.children:
         yield from iter_nodes(child)
+
+
+def _referenced_domain(node: Any, defs_by_path: Mapping[str, Any], *, context: str) -> Any:
+    if not isinstance(node, ParamExpr):
+        raise ResolutionError(
+            f"{context}: expects a bare param reference, got {node.kind!r}"
+        )
+    return defs_by_path[node.path].domain
+
+
+def _require_subset_domain(
+    node: Any, defs_by_path: Mapping[str, Any], *, context: str, what: str
+) -> SubsetDomain:
+    domain = _referenced_domain(node, defs_by_path, context=context)
+    if not isinstance(domain, SubsetDomain):
+        raise ResolutionError(
+            f"{context}: {what} on {node.path!r}, which is not a subset param"
+        )
+    return domain
+
+
+def _require_permutation_domain(
+    node: Any, defs_by_path: Mapping[str, Any], *, context: str
+) -> PermutationDomain:
+    domain = _referenced_domain(node, defs_by_path, context=context)
+    if not isinstance(domain, PermutationDomain):
+        raise ResolutionError(
+            f"{context}: position_of() on {node.path!r}, which is not a permutation param"
+        )
+    return domain
 
 
 def check_refs_declared(expr: Expr, defs_by_path: Mapping[str, Any], *, context: str) -> None:
@@ -73,3 +103,27 @@ def check_expr_types(expr: Expr, defs_by_path: Mapping[str, Any], *, context: st
                         f"{context}: compares ordinals {left.path!r} and "
                         f"{right.path!r}, which declare different value sequences"
                     )
+        elif isinstance(node, Contains):
+            _require_subset_domain(node.operand, defs_by_path, context=context, what="contains()")
+        elif isinstance(node, Size):
+            _require_subset_domain(node.operand, defs_by_path, context=context, what="size()")
+        elif isinstance(node, SumOver):
+            subset_domain = _require_subset_domain(
+                node.operand, defs_by_path, context=context, what="sum_over()"
+            )
+            universe = set(subset_domain.items)
+            bad_keys = sorted(set(node.mapping.keys()) - universe, key=repr)
+            if bad_keys:
+                operand_path = cast(ParamExpr, node.operand).path
+                raise ResolutionError(
+                    f"{context}: sum_over() mapping has keys {bad_keys!r} outside "
+                    f"the item universe of {operand_path!r}"
+                )
+        elif isinstance(node, PositionOf):
+            perm_domain = _require_permutation_domain(node.operand, defs_by_path, context=context)
+            if node.item not in perm_domain.items:
+                operand_path = cast(ParamExpr, node.operand).path
+                raise ResolutionError(
+                    f"{context}: position_of({node.item!r}) on {operand_path!r} "
+                    "is not a declared member"
+                )

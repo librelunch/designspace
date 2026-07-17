@@ -321,3 +321,70 @@ class IfInactive(ArithExpr):
     @property
     def children(self) -> tuple[Expr, ...]:
         return (self.operand, self.fallback)
+
+
+@dataclass(frozen=True, eq=False)
+class Contains(BoolExpr):
+    """`ds.param("s").contains(item)`: subset membership (invalid on
+    permutation; checked at resolution, error row 18)."""
+
+    operand: ArithExpr
+    item: Any
+
+    @property
+    def kind(self) -> str:
+        return "contains"
+
+    @property
+    def children(self) -> tuple[Expr, ...]:
+        return (self.operand,)
+
+
+@dataclass(frozen=True, eq=False)
+class Size(ArithExpr):
+    """`ds.param("s").size()`: subset cardinality."""
+
+    operand: ArithExpr
+
+    @property
+    def kind(self) -> str:
+        return "size"
+
+    @property
+    def children(self) -> tuple[Expr, ...]:
+        return (self.operand,)
+
+
+@dataclass(frozen=True, eq=False)
+class SumOver(ArithExpr):
+    """`ds.param("s").sum_over(mapping)`: Σ mapping[item] over included
+    items. `mapping` is literal data (keys ⊆ item universe, checked at
+    resolution, error row 18), not a sub-expression."""
+
+    operand: ArithExpr
+    mapping: Any  # MappingProxyType[Any, float]
+
+    @property
+    def kind(self) -> str:
+        return "sum_over"
+
+    @property
+    def children(self) -> tuple[Expr, ...]:
+        return (self.operand,)
+
+
+@dataclass(frozen=True, eq=False)
+class PositionOf(ArithExpr):
+    """`ds.param("p").position_of(item)`: permutation index of `item`
+    (must be a declared member, checked at resolution, error row 18)."""
+
+    operand: ArithExpr
+    item: Any
+
+    @property
+    def kind(self) -> str:
+        return "position_of"
+
+    @property
+    def children(self) -> tuple[Expr, ...]:
+        return (self.operand,)

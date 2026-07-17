@@ -122,6 +122,73 @@ class TestUnknownIsInapplicable:
         assert result.valid is True  # inapplicable forbid never causes infeasibility
 
 
+class TestSubsetPermutationChoiceParamErrors:
+    def test_subset_wrong_type(self):
+        space = ds.space(ds.param("s").subset(("a", "b")))
+        result = space.validate({"s": "not a list"})
+        assert _reasons(result) == {"s": "wrong_type"}
+
+    def test_subset_non_member_item(self):
+        space = ds.space(ds.param("s").subset(("a", "b")))
+        result = space.validate({"s": ["a", "z"]})
+        assert _reasons(result) == {"s": "out_of_bounds"}
+
+    def test_subset_duplicate_item_in_value(self):
+        space = ds.space(ds.param("s").subset(("a", "b")))
+        result = space.validate({"s": ["a", "a"]})
+        assert _reasons(result) == {"s": "out_of_bounds"}
+
+    def test_subset_size_out_of_bounds(self):
+        space = ds.space(ds.param("s").subset(("a", "b", "c"), min_size=2))
+        result = space.validate({"s": ["a"]})
+        assert _reasons(result) == {"s": "out_of_bounds"}
+
+    def test_subset_on_bounds_is_valid(self):
+        space = ds.space(ds.param("s").subset(("a", "b", "c"), min_size=1, max_size=2))
+        assert space.validate({"s": ["a", "b"]}).valid is True
+
+    def test_permutation_wrong_length(self):
+        space = ds.space(ds.param("p").permutation(("a", "b", "c")))
+        result = space.validate({"p": ["a", "b"]})
+        assert _reasons(result) == {"p": "out_of_bounds"}
+
+    def test_permutation_duplicate(self):
+        space = ds.space(ds.param("p").permutation(("a", "b", "c")))
+        result = space.validate({"p": ["a", "a", "b"]})
+        assert _reasons(result) == {"p": "out_of_bounds"}
+
+    def test_permutation_valid(self):
+        space = ds.space(ds.param("p").permutation(("a", "b", "c")))
+        assert space.validate({"p": ["c", "a", "b"]}).valid is True
+
+    def test_choice_unknown_variant(self):
+        space = ds.space(ds.param("algo").choice("a", "b"))
+        result = space.validate({"algo": "z"})
+        assert _reasons(result) == {"algo": "out_of_bounds"}
+
+    def test_choice_malformed_shape(self):
+        space = ds.space(ds.param("algo").choice("a", svm=ds.space(ds.param("g").bool())))
+        result = space.validate({"algo": 123})
+        assert _reasons(result) == {"algo": "wrong_type"}
+        assert result.valid is False
+
+    def test_choice_bare_variant_given_as_dict_is_wrong_type(self):
+        space = ds.space(ds.param("algo").choice("a", "b"))
+        result = space.validate({"algo": {"a": {}}})
+        assert _reasons(result) == {"algo": "wrong_type"}
+
+    def test_choice_parameterized_variant_missing_payload_field(self):
+        space = ds.space(ds.param("algo").choice(svm=ds.space(ds.param("gamma").real(0.0, 1.0))))
+        result = space.validate({"algo": {"svm": {}}})
+        assert _reasons(result) == {"algo.svm.gamma": "missing"}
+
+    def test_struct_is_never_reported_missing_or_present(self):
+        space = ds.space(ds.param("layers").space(ds.param("width").integer(0, 10)))
+        result = space.validate({"layers": {"width": 5}})
+        assert "layers" not in {pe.param for pe in result.param_errors}
+        assert result.valid is True
+
+
 class TestValidateParam:
     def test_validate_param_domain_check(self):
         space = ds.space(ds.param("x").real(0.0, 1.0))

@@ -12,6 +12,7 @@ from designspace.expr._ast import (
     BoolLiteral,
     BoolOp,
     Compare,
+    Contains,
     Count,
     Expr,
     IfInactive,
@@ -20,6 +21,9 @@ from designspace.expr._ast import (
     IsIn,
     Literal,
     Not,
+    PositionOf,
+    Size,
+    SumOver,
 )
 from designspace.expr._functions import all_, any_, count
 
@@ -30,6 +34,7 @@ __all__ = [
     "BoolLiteral",
     "BoolOp",
     "Compare",
+    "Contains",
     "Count",
     "Expr",
     "IfInactive",
@@ -38,6 +43,9 @@ __all__ = [
     "IsIn",
     "Literal",
     "Not",
+    "PositionOf",
+    "Size",
+    "SumOver",
     "all_",
     "any_",
     "count",
