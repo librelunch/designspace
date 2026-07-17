@@ -1,8 +1,7 @@
 """Exception taxonomy (API_v3.md, "Errors, Concurrency").
 
 `ResolutionError` covers every R-tagged row of the spec's error table.
-`SerializationError`/`SamplingError` are added when serialize/ (M7) and
-sample/ (M2) exist to raise them.
+`SerializationError` is added when serialize/ (M7) exists to raise it.
 """
 
 from __future__ import annotations
@@ -14,3 +13,7 @@ class DesignSpaceError(Exception):
 
 class ResolutionError(DesignSpaceError):
     """Raised by the resolve/ pass pipeline; message names the offending path(s)."""
+
+
+class SamplingError(DesignSpaceError):
+    """Raised by sample/: retry exhaustion (row 26) or non-generative materialization."""

@@ -115,3 +115,237 @@ Choice:     Implemented in M1: rows 1, 2, 3, 4, 5, 6 (conditions only —
 Spec delta: The error table could tag rows with which spec section's
             machinery they depend on, so "applicable to flat scalars" is
             derivable instead of judgment-called per milestone.
+
+## D-4 (M2) — `ConstraintEval.satisfied`/`margin` polarity for `.forbid()`
+
+Question:   API_v3.md's Margins section gives a structural table (`a <= b`
+            -> `b - a`, etc.) with no separate row or note for how it
+            applies differently under `.forbid()` vs `.constrain()`, and
+            never states explicitly what `ConstraintEval.satisfied` means
+            for a forbidden predicate. A forbid's expression names the
+            *forbidden* (bad) state (`.forbid(ds.param("lr") > 0.1)` — bad
+            when true) while a declared constraint's expression names the
+            *desired* (good) state (`.constrain(sum <= 4096)` — good when
+            true); the spec doesn't say whether `Constraint.expr`/`margin`/
+            `satisfied` are stored/computed relative to "the literal
+            predicate" or "feasibility" (i.e. silently negated for forbids
+            so `satisfied`/positive-margin always mean "good").
+Options:    (a) Store `Constraint.expr` exactly as written for both
+            `.forbid()` and `.constrain()`; `satisfied` = the stored expr's
+            raw Kleene truth value; margin is computed structurally off
+            that same stored expr with no hard/soft awareness anywhere.
+            Feasibility is then a separate, one-line derived rule.
+            (b) Silently store `~expr` for `.forbid()` conditions instead
+            of what the user wrote, so `satisfied`/margin are always
+            "good-means-positive" regardless of hard/soft.
+Choice:     (a). Two things force it: first, the M2 conformance gate's
+            "composition preserves the satisfaction invariant" law is
+            tested with hypothesis-generated random `BoolExpr` trees with
+            no forbid/constrain wrapper at all — margin has to be a pure
+            structural property of the expression shape for that test to
+            even be well-formed. Second, introspection/fingerprint fidelity
+            requires `Constraint.expr` to be exactly what the author wrote
+            (`.constraints[i].expr` shown via `.kind`/`.children`, and the
+            "no algebraic normalization of expressions is attempted"
+            principle) — (b) would mean a forbid's introspectable
+            expression silently differs from its declaration.
+            Feasibility is then derived with the one polarity-aware rule
+            `is_violated(ce) := ce.applicable and ce.satisfied == ce.constraint.hard`
+            (eval/_constraint_eval.py): a forbid violates when its (bad)
+            predicate is true; a declared constraint is flagged when its
+            (good) predicate is false. This was caught as a live bug during
+            implementation (the sampler was accepting forbidden draws and
+            rejecting safe ones) before any conformance test existed for
+            it — the margin/Kleene-table/count-range conformance suite was
+            written immediately after to pin this down going forward.
+Spec delta: API_v3.md's Margins section could state explicitly that the
+            table is computed on `Constraint.expr` as declared (not
+            negated for forbids), and give the one-line feasibility rule
+            (`violated iff satisfied == hard`) next to "Feasibility is
+            defined by param validity plus forbids only."
+
+## D-5 (M2) — `.anchor()` and space-level `.meta()` stay out of M2
+
+Question:   API_v3.md's "Constraints and Feasibility" table lists
+            `.forbid()`, `.constrain()`, `.anchor()`, and `.meta()` together
+            as four Space-level methods, with no per-method milestone
+            marker. D-3 (M1) had guessed row 22 (anchors) belonged to M2
+            since it sits in that section, but IMPLEMENTATION_PLAN.md's M2
+            Build line names only "charts/ ... eval/ ... validate/ ...
+            sample/" — no mention of anchors or space-level meta — and
+            neither the M2 gate nor the `flat_hpo` corpus fixture exercises
+            either.
+Options:    (a) Implement `.anchor()` and space-level `.meta()` now, since
+            they're textually adjacent to `.forbid()`/`.constrain()`.
+            (b) Defer both; implement only what the Build line and gate
+            actually require (`.forbid()`/`.constrain()`).
+Choice:     (b). The plan's per-milestone Build line is the more specific,
+            more authoritative signal than a section's table grouping —
+            row 22 and `.meta()` will land whenever a later milestone's
+            Build line or gate first needs them (anchors require validating
+            a whole config against the space, which is exactly what this
+            milestone's `validate()` newly makes possible, so the
+            groundwork isn't wasted). This supersedes D-3's forward guess.
+Spec delta: None — this is a plan-sequencing question, not a spec gap.
+
+## D-6 (M2) — Chart-construction edge cases the spec states informally
+
+Question:   Several chart-building details are given as prose/formula
+            without a fully worked edge case: (1) `to_unit` at the `lo ==
+            hi` degenerate constant chart has no stated value; (2) `Power`'s
+            "domain valid for `p`" isn't spelled out (which `p`/`lo`
+            combinations are legal, and how to root a possibly-negative
+            interior value back through `1/p`); (3) the geometric
+            (`factor`) quantization grid's degenerate condition is only
+            given for the linear (`step`) case ("step >= hi-lo"); (4) when
+            `include_hi` appends `hi` as an extra grid point, its own cell
+            width (needed to close the chart's extension interval) isn't
+            named; (5) chart-family domain requirements ("checked against
+            the envelope") vs. the wider bound actually used to build the
+            math for integers (`hi+1`) and quantized reals (the grid
+            extension) — the spec doesn't say the domain check uses the
+            narrower, declared bound while the math uses the wider one.
+Options:    Each has multiple locally-plausible answers; see
+            charts/_builtin.py, charts/_grid.py, charts/_build.py docstrings
+            and inline comments for the specific reasoning at each site.
+Choice:     (1) `to_unit` returns `0.0` at the degenerate point (arbitrary
+            but harmless — nothing observable depends on it since
+            `from_unit` always returns the single legal value regardless of
+            `u`). (2) `p == 0` rejected; non-integer `p` requires `lo >= 0`
+            (fractional powers of negatives are undefined in the reals);
+            negative `p` requires `lo > 0` (avoids a pole at zero); the
+            forward direction roots a possibly-negative interior value via
+            a signed `copysign`-style root, applied unconditionally since
+            it's a no-op when the interior is already non-negative. (3) the
+            multiplicative analogue `factor >= hi/lo` (mirrors "one step
+            already reaches or exceeds hi"). (4) the appended point gets
+            the same local-spacing formula as a regular point one step
+            further out (`step`, or `hi*(factor-1)`), not a width derived
+            from its distance to the previous point — keeps one formula
+            everywhere instead of a special case. (5) domain-requirement
+            checks (rows 9/19) always use the declared `(lo, hi)`; the
+            actual continuous-chart math is built over whatever wider bound
+            applies (`hi+1` for integers, the grid extension for
+            quantized) — this is forced by row 9/19 explicitly saying
+            "envelope"/"declared bounds", which don't move under
+            quantization.
+Spec delta: Each of these five could be pinned down explicitly next to its
+            existing prose in the Charts section.
+
+## D-7 (M2) — `==`/`!=` evaluation semantics: numeric vs. type-tagged
+
+Question:   API_v3.md's fingerprint canonicalization explicitly type-tags
+            `Any`-typed values (`categorical(1, 2) != categorical(1.0,
+            2.0)`), but never states whether *runtime* `Compare` evaluation
+            (Kleene `==`/`!=`, and `.is_in()` membership) uses that same
+            type-tagged equality or plain value equality. Plain Python `==`
+            treats `1 == 1.0` as `True` (desirable for real/integer
+            domains, where the distinction is never meaningful) but also
+            `True == 1` (undesirable — `bool` is declared "strict" for
+            domain membership, and letting it leak into comparisons would
+            contradict that).
+Options:    (a) Type-tag every `==`/`!=` comparison uniformly (consistent
+            with declaration-time distinctness and fingerprinting, but
+            makes `ds.param("x") == 5` silently always-`False` for a real
+            `x` compared against the `int` literal `5` instead of `5.0`).
+            (b) Plain value equality everywhere (simple, but lets `True ==
+            1` leak through for bool params).
+            (c) A hybrid: `bool` is type-tagged against everything else;
+            `int`/`float` compare numerically against each other; any other
+            pair (str, and other `Any`-typed categorical/ordinal values)
+            requires an exact type match.
+Choice:     (c) — eval/_kleene.py's `_values_equal`. Closes the one
+            practically dangerous gap (`bool`/`int` conflation) without
+            introducing friction for the overwhelmingly common case (real
+            and integer comparisons mixing `int`/`float` literals
+            casually). Known, accepted gap: a categorical/ordinal domain
+            that deliberately declares both `1` and `1.0` as distinct
+            variants (legal per "mixed types allowed") cannot be told apart
+            by `==` at evaluation time — declaration-time distinctness
+            (rows 3/4) and fingerprint canonicalization are unaffected,
+            since neither goes through this function.
+Spec delta: API_v3.md's Expressions section could state the runtime
+            equality rule for `==`/`!=`/`.is_in()` explicitly, the way the
+            Identity section already does for fingerprint canonicalization.
+
+## D-8 (M2) — Continuous-equality warning (row 25) scope
+
+Question:   "An `==` constraint over purely continuous, unquantized
+            operands is measure-zero under sampling; resolution emits a
+            warning" doesn't define "purely" precisely: does one continuous
+            unquantized operand suffice (e.g. `ds.param("x") == 5` with `x`
+            real), or must *every* operand be continuous — and does an
+            integer operand on the other side of the comparison neutralize
+            the warning even though the continuous side is still
+            measure-zero against it?
+Options:    (a) Warn whenever *any* operand touches an unquantized real,
+            regardless of what else is being compared. (b) Warn only when
+            *no* operand is discrete-typed (categorical/ordinal/bool/
+            integer) and *at least one* is an unquantized real.
+Choice:     (b) — resolve/_constraints.py's `_warn_if_continuous_equality`.
+            Reads "purely" as qualifying the whole comparison, not just one
+            side: the word is doing real work in the sentence, and a
+            discrete operand present anywhere is the more defensible
+            reading of "not purely continuous," even though (as noted in
+            the code) a continuous-vs-integer comparison is arguably still
+            measure-zero from the continuous side. Chose the narrower,
+            literal reading over the broader one so the warning doesn't
+            fire on `.forbid(x == some_integer_param)`-shaped constraints
+            that aren't the sugar-for-reparameterization case the warning
+            is steering authors toward.
+Spec delta: State explicitly whether one continuous operand suffices to
+            trigger the warning, or all operands must be continuous.
+
+## D-9 (M2) — `validate_param`'s "unevaluated" constraints are omitted
+
+Question:   "`context` enables evaluating constraints that reference other
+            params... without it, `validate_param` reports those as
+            unevaluated rather than guessing" — `ConstraintEval` has no
+            "unevaluated" state (only `applicable`/`satisfied`/`margin`,
+            where `applicable=False` already means Kleene-Unknown). The
+            spec doesn't say whether an under-determined constraint (needs
+            a param not in `context`) appears in `evaluate_constraints`'
+            output with some marker, or is left out entirely.
+Options:    (a) Include it with `applicable=False` (reusing the
+            Kleene-inapplicable shape) — but that conflates "Unknown due to
+            inactivity" with "under-determined due to missing context",
+            two different reasons for the same field value.
+            (b) Omit it from `validate_param`'s `constraint_evals` list
+            entirely — only constraints fully determined by `path`'s value
+            plus `context` are reported.
+Choice:     (b). Introducing a fake `applicable=False` result would make an
+            under-determined constraint indistinguishable from a genuinely
+            Kleene-Unknown one, which is a worse guess than just not
+            reporting it — closer to the spirit of "rather than guessing."
+            `evaluate_constraints(space, config)` (the whole-config path,
+            which always has every param) is unaffected; this only touches
+            `validate_param`'s partial, single-param view.
+Spec delta: Could state explicitly that under-determined constraints are
+            simply absent from `validate_param`'s result rather than
+            appearing with a placeholder value.
+
+## D-10 (M2) — Ordinal comparison uses declaration position, not raw value; non-member literal is Unknown
+
+Question:   "Ordered by declaration position. Comparison yes, arithmetic no"
+            (API_v3.md, ordinal domain) says comparisons follow declaration
+            order, but doesn't say what a comparison should do when one side
+            is a literal that isn't one of the declared values at all (e.g.
+            `ds.param("size").ordinal("s", "m", "l") > "typo"`) — that's an
+            author error, not a spec case the ordering rule anticipates.
+Options:    (a) Raise eagerly at comparison-construction time if a literal
+            operand isn't a declared member. (b) Let it fall out of the
+            existing lookup: `_ordinal_index` finds no position for
+            "typo", so the comparison evaluates to Unknown — silently
+            inapplicable at `.forbid()`/`.constrain()` (rule 4), same as any
+            other Unknown.
+Choice:     (b) for M2. No error-table row calls for this check, and adding
+            resolution-time literal-membership validation for every ordinal
+            comparison site is new scope beyond what M2's gate asks for.
+            Recorded here because it's a real silent-resolution behavior
+            (a typo'd forbid never fires, with no warning) rather than an
+            oversight discovered and left unfixed — worth revisiting as an
+            M3+ validation-time check if it causes real authoring pain.
+Spec delta: Could state that a literal compared against an ordinal that
+            doesn't match any declared value evaluates to Unknown (consistent
+            with "comparison yes" implicitly requiring both sides resolve to
+            a position), or else mandate eager rejection at construction.

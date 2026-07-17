@@ -5,6 +5,7 @@ Internal to the library — users see this shape through introspection
 here is re-exported from the top-level `designspace` package.
 """
 
+from designspace.ir._chart import Chart
 from designspace.ir._domain import (
     BoolDomain,
     CategoricalDomain,
@@ -15,22 +16,27 @@ from designspace.ir._domain import (
 )
 from designspace.ir._param import Condition, Constraint, ParamDef, QuantizedSpec
 from designspace.ir._priors import Log, Logit, Power, Prior, PriorSpec, Weights
+from designspace.ir._results import ConstraintEval, ParamError, ValidationResult
 
 __all__ = [
     "BoolDomain",
     "CategoricalDomain",
+    "Chart",
     "Condition",
     "Constraint",
+    "ConstraintEval",
     "Domain",
     "IntegerDomain",
     "Log",
     "Logit",
     "OrdinalDomain",
     "ParamDef",
+    "ParamError",
     "Power",
     "Prior",
     "PriorSpec",
     "QuantizedSpec",
     "RealDomain",
+    "ValidationResult",
     "Weights",
 ]

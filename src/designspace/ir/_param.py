@@ -1,8 +1,4 @@
-"""ParamDef and the condition/constraint IR (API_v3.md, "IR").
-
-`Constraint` is defined here (module map: ir/ owns it from M1) but nothing
-populates it yet — `.forbid()`/`.constrain()` are M2's validate/.
-"""
+"""ParamDef and the condition/constraint IR (API_v3.md, "IR")."""
 
 from __future__ import annotations
 
@@ -11,6 +7,7 @@ from types import MappingProxyType
 from typing import Any
 
 from designspace.expr import BoolExpr
+from designspace.ir._chart import Chart
 from designspace.ir._domain import Domain
 from designspace.ir._priors import PriorSpec
 
@@ -39,7 +36,7 @@ class ParamDef:
     condition: BoolExpr | None
     tags: frozenset[str]
     meta: MappingProxyType[str, Any]
-    chart: None = None
+    chart: Chart | None = None
     quantized: QuantizedSpec | None = None
 
 

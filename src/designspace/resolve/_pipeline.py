@@ -1,9 +1,10 @@
-"""The M1 resolve pass pipeline (API_v3.md, "Resolution", steps 1-5, 7-8).
+"""The resolve pass pipeline for flat scalar spaces (API_v3.md, "Resolution").
 
-Chart-building (step 6) is M2's job — `ParamDef.chart` stays `None` here, and
-`.prior()`/`.log_scale()`/`.quantized()` are parsed and structurally
-validated without ever consulting chart-family math (API_v3.md's own
-distinction between "Support Types" and "Charts" — see DECISIONS.md D-2).
+Covers steps 1-8: collect, type-check, desugar (`implies`; `log_scale`
+already resolved eagerly at the builder, D-2), resolve references,
+cycle-check, validate declarations, build charts, emit IR. Structural types
+(choice/struct/subset/permutation), lifts, and expression bounds are later
+milestones' desugaring/envelope work (M3-M5).
 
 Each numbered step is a plain function over the previous step's output,
 per IMPLEMENTATION_PLAN.md's "each pass a function over an explicit
@@ -14,18 +15,20 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Iterator
+from dataclasses import replace
 from types import MappingProxyType
 from typing import Any
 
 from designspace.build._names import check_name
 from designspace.build._paramexpr import ParamExpr
 from designspace.build._space import Space
+from designspace.charts import build_chart
 from designspace.errors import ResolutionError
-from designspace.expr import ArithExpr, ArithOp, Compare, Expr
+from designspace.expr import ArithExpr
 from designspace.ir import (
     BoolDomain,
     CategoricalDomain,
+    Chart,
     Condition,
     IntegerDomain,
     OrdinalDomain,
@@ -33,20 +36,38 @@ from designspace.ir import (
     RealDomain,
     Weights,
 )
+from designspace.resolve._desugar import desugar_bool
+from designspace.resolve._expr_checks import check_expr_types, check_refs_declared
 
 
 def resolve_space(exprs: tuple[ParamExpr, ...]) -> Space:
     defs = _collect(exprs)  # step 1
     _check_types_and_names(defs)  # step 2
-    # step 3 (desugar): nothing to fold yet in M1. log_scale() already
-    # resolves eagerly at the builder (it just calls .prior(Log())); layer
-    # folding and expression-bound desugaring arrive with .repeat() (M4)
-    # and expression bounds (M5).
+    defs = _desugar(defs)  # step 3: implies -> ~left | right (D-1); log_scale
+    # already resolves eagerly at the builder; layer folding and expression-
+    # bound desugaring arrive with .repeat() (M4) and expression bounds (M5).
     defs_by_path = {d.path: d for d in defs}
     _resolve_condition_refs(defs, defs_by_path)  # step 4
-    _check_condition_cycles(defs, defs_by_path)  # step 5
-    _validate_declarations(defs)  # step 7
-    return _emit(defs)  # step 8
+    _check_condition_cycles(defs)  # step 5
+    _validate_declarations(defs)  # step 7 (bounds/weights/etc — must precede
+    # chart-building, which assumes sane bounds)
+    charts = _build_charts(defs)  # step 6
+    return _emit(defs, charts)  # step 8
+
+
+def _desugar(defs: tuple[ParamExpr, ...]) -> tuple[ParamExpr, ...]:
+    return tuple(
+        replace(d, condition=desugar_bool(d.condition)) if d.condition is not None else d
+        for d in defs
+    )
+
+
+def _build_charts(defs: tuple[ParamExpr, ...]) -> dict[str, Chart | None]:
+    charts: dict[str, Chart | None] = {}
+    for d in defs:
+        assert d.type_kind is not None and d.domain is not None
+        charts[d.path] = build_chart(d.path, d.type_kind, d.domain, d.prior_spec, d.quantized_spec)
+    return charts
 
 
 # -- step 1: collect ---------------------------------------------------------
@@ -114,67 +135,15 @@ def _resolve_condition_refs(
     for d in defs:
         if d.condition is None:
             continue
-        for ref_path in d.condition.params:
-            if ref_path not in defs_by_path:
-                raise ResolutionError(
-                    f"param {d.path!r}: .when() references undeclared param {ref_path!r}"
-                )
-        _check_expr_types(d.condition, defs_by_path, owner=d.path)
-
-
-def _iter_nodes(node: Expr) -> Iterator[Expr]:
-    yield node
-    for child in node.children:
-        yield from _iter_nodes(child)
-
-
-def _check_expr_types(
-    condition: Expr, defs_by_path: dict[str, ParamExpr], *, owner: str
-) -> None:
-    for node in _iter_nodes(condition):
-        if isinstance(node, ArithOp):
-            for path in node.params:
-                kind = defs_by_path[path].type_kind
-                if kind in ("categorical", "ordinal"):
-                    raise ResolutionError(
-                        f"param {owner!r}: .when() performs arithmetic on {kind} "
-                        f"param {path!r}, which supports comparison only"
-                    )
-        elif isinstance(node, Compare):
-            if node.op in ("gt", "lt", "ge", "le"):
-                for path in node.params:
-                    kind = defs_by_path[path].type_kind
-                    if kind == "categorical":
-                        raise ResolutionError(
-                            f"param {owner!r}: .when() orders categorical param "
-                            f"{path!r} (categoricals support only ==, !=, is_in)"
-                        )
-            left, right = node.left, node.right
-            if (
-                isinstance(left, ParamExpr)
-                and isinstance(right, ParamExpr)
-                and defs_by_path[left.path].type_kind == "ordinal"
-                and defs_by_path[right.path].type_kind == "ordinal"
-            ):
-                left_domain = defs_by_path[left.path].domain
-                right_domain = defs_by_path[right.path].domain
-                if (
-                    isinstance(left_domain, OrdinalDomain)
-                    and isinstance(right_domain, OrdinalDomain)
-                    and left_domain.values != right_domain.values
-                ):
-                    raise ResolutionError(
-                        f"param {owner!r}: compares ordinals {left.path!r} and "
-                        f"{right.path!r}, which declare different value sequences"
-                    )
+        context = f"param {d.path!r}"
+        check_refs_declared(d.condition, defs_by_path, context=context)
+        check_expr_types(d.condition, defs_by_path, context=context)
 
 
 # -- step 5: cycle detection ---------------------------------------------------
 
 
-def _check_condition_cycles(
-    defs: tuple[ParamExpr, ...], defs_by_path: dict[str, ParamExpr]
-) -> None:
+def _check_condition_cycles(defs: tuple[ParamExpr, ...]) -> None:
     deps: dict[str, frozenset[str]] = {
         d.path: (d.condition.params if d.condition is not None else frozenset()) for d in defs
     }
@@ -337,7 +306,7 @@ def _validate_tags_meta(d: ParamExpr) -> None:
 # -- step 8: emit IR -----------------------------------------------------------
 
 
-def _emit(defs: tuple[ParamExpr, ...]) -> Space:
+def _emit(defs: tuple[ParamExpr, ...], charts: dict[str, Chart | None]) -> Space:
     params: dict[str, ParamDef] = {}
     conditions: list[Condition] = []
     for d in defs:
@@ -353,6 +322,7 @@ def _emit(defs: tuple[ParamExpr, ...]) -> Space:
             condition=d.condition,
             tags=d.tags,
             meta=d.meta_map,
+            chart=charts[d.path],
             quantized=d.quantized_spec,
         )
         if d.condition is not None:
