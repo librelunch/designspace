@@ -84,5 +84,18 @@ def is_violated(ce: ConstraintEval) -> bool:
     True`; a declared constraint's expr names the desired state, so it's
     violated when `satisfied is False`. Both collapse to one identity:
     `satisfied == hard`.
+
+    A bound-origin constraint (M5, resolve/_bounds.py) is the one exception:
+    it is always `hard=True` (it must affect feasibility, exactly like a
+    forbid) but stores the *desired* predicate verbatim — `ds.param("x") <=
+    ds.param("y")`, matching API_v3.md's sugar description and yielding the
+    spec's stated `y - x` margin, neither of which the forbidden-state form
+    (`x > y`) could give at once (its margin would be `x - y`). So its
+    `hard`/polarity pairing is `constrain`-shaped (violated iff not
+    satisfied) even though its feasibility impact is `forbid`-shaped —
+    `origin` (already provenance, already excluded from the fingerprint
+    preimage) is what the two conventions key off instead of `hard` alone.
     """
+    if ce.constraint.origin == "bound":
+        return ce.applicable and ce.satisfied is False
     return ce.applicable and ce.satisfied == ce.constraint.hard

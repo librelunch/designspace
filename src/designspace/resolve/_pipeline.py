@@ -2,9 +2,9 @@
 
 Covers steps 1-8: collect, type-check, desugar (`implies`; `log_scale`
 already resolved eagerly at the builder, D-2), resolve references,
-cycle-check, validate declarations, build charts, emit IR. M3 adds
-choice/struct/subset/permutation; lifts and expression bounds are later
-milestones' work (M4-M5).
+cycle-check, compute bound envelopes (M5, resolve/_bounds.py), validate
+declarations, build charts, emit IR. M3 adds choice/struct/subset/permutation;
+lifts are M4's work.
 
 Each numbered step is a plain function over the previous step's output,
 per IMPLEMENTATION_PLAN.md's "each pass a function over an explicit
@@ -53,6 +53,7 @@ from designspace.ir import (
     SubsetDomain,
     Weights,
 )
+from designspace.resolve._bounds import bound_deps, check_bound_refs, compute_bound_envelopes
 from designspace.resolve._desugar import desugar_bool
 from designspace.resolve._expr_checks import check_expr_types, check_refs_declared, iter_nodes
 from designspace.resolve._relocate import and_, relocate_child
@@ -64,19 +65,25 @@ def resolve_space(exprs: tuple[ParamExpr, ...]) -> Space:
     defs = _collect(exprs)  # step 1
     _check_types_and_names(defs)  # step 2
     defs = _desugar(defs)  # step 3: implies -> ~left | right (D-1); log_scale
-    # already resolves eagerly at the builder; expression-bound desugaring
-    # arrives with M5. Lift ("repeat") layer folding already happened at the
-    # builder (`.repeat()`, build/_paramexpr.py) — this step only rewrites
-    # `.when()` conditions.
+    # already resolves eagerly at the builder. Lift ("repeat") layer folding
+    # already happened at the builder (`.repeat()`, build/_paramexpr.py) —
+    # this step only rewrites `.when()` conditions.
     defs_by_path = {d.path: d for d in defs}
     _resolve_condition_refs(defs, defs_by_path)  # step 4
-    _check_condition_cycles(defs)  # step 5
+    check_bound_refs(defs, defs_by_path)  # step 4, bound side (row 6/14; eager
+    # — no up-reference tolerance, DECISIONS.md D-29)
+    _check_condition_cycles(defs)  # step 5 (condition/bound/repeat-count DAG)
+    defs, bound_constraints = compute_bound_envelopes(defs, defs_by_path)  # step 6
+    defs_by_path = {d.path: d for d in defs}  # bounds are now plain numbers
     _validate_declarations(defs, defs_by_path)  # step 7 (bounds/weights/etc —
     # must precede chart-building, which assumes sane bounds)
     defs = _build_list_domains(defs)  # M4: fold each lift's `_ElementSnapshot`
     # chain into a resolved, chart-carrying `ListDomain` (DECISIONS.md D-18).
-    charts = _build_charts(defs)  # step 6
-    return _emit(defs, charts)  # step 8
+    charts = _build_charts(defs)  # step 6, chart side
+    space = _emit(defs, charts)  # step 8
+    if bound_constraints:
+        space = replace(space, constraints=space.constraints + tuple(bound_constraints))
+    return space
 
 
 def check_fully_resolved(space: Space) -> None:
@@ -309,14 +316,19 @@ def _count_deps(lift: _ElementSnapshot | None) -> frozenset[str]:
 
 
 def _check_condition_cycles(defs: tuple[ParamExpr, ...]) -> None:
+    """Row 7: cycle in the condition/bound/repeat-count dependency graph, or
+    a param's condition, bounds, or repeat count referencing itself. Runs
+    before bound envelopes are computed (`compute_bound_envelopes`'s
+    `envelope_of` is a memoized recursion that assumes this already holds)."""
     deps: dict[str, frozenset[str]] = {
         d.path: (d.condition.params if d.condition is not None else frozenset())
         | _count_deps(d.lift)
+        | bound_deps(d)
         for d in defs
     }
     for path, own_deps in deps.items():
         if path in own_deps:
-            raise ResolutionError(f"param {path!r}: condition references itself")
+            raise ResolutionError(f"param {path!r}: condition/bound/repeat-count references itself")
 
     visiting: set[str] = set()
     done: set[str] = set()
@@ -325,7 +337,9 @@ def _check_condition_cycles(defs: tuple[ParamExpr, ...]) -> None:
         if path in done:
             return
         if path in visiting:
-            raise ResolutionError(f"cycle detected in condition dependencies involving {path!r}")
+            raise ResolutionError(
+                f"cycle detected in condition/bound dependencies involving {path!r}"
+            )
         visiting.add(path)
         for dep in deps[path]:
             # A non-local dep is an up-reference into an enclosing scope
@@ -407,9 +421,16 @@ def _check_choice_variants(path: str, domain: ChoiceDomain) -> None:
 
 def _check_bounds(path: str, lo: Any, hi: Any) -> None:
     if isinstance(lo, ArithExpr) or isinstance(hi, ArithExpr):
+        # A top-level (non-lifted) param's bounds are always plain numbers by
+        # the time this runs — `compute_bound_envelopes` (M5, resolve/_bounds.py)
+        # already resolved any expression bound into a numeric envelope before
+        # `_validate_declarations` is called. This branch therefore only ever
+        # fires for a `.repeat()` element's own domain (`_validate_lift` below
+        # reconstructs a synthetic element view and validates it the same way)
+        # — expression bounds there are not yet supported (DECISIONS.md D-29).
         raise ResolutionError(
-            f"param {path!r}: expression bounds are not yet implemented (M5); "
-            "write literal numeric bounds"
+            f"param {path!r}: expression bounds on a repeated element are not "
+            "yet supported — write literal numeric bounds for the element domain"
         )
     if isinstance(lo, bool) or isinstance(hi, bool):
         raise ResolutionError(f"param {path!r}: bounds must be numeric, not bool")

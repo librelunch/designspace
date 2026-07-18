@@ -305,12 +305,16 @@ class TestRow23TagsMeta:
         assert dict(space.params["x"].meta) == {"a": 2, "b": 3}
 
 
-class TestExpressionBoundsNotYetImplemented:
-    def test_real_expression_bound_raises(self):
-        with pytest.raises(ResolutionError, match="M5"):
+class TestExpressionBoundsOnRepeatedElementNotYetSupported:
+    """M5 implements expression bounds on ordinary (non-lifted) scalar
+    params — tests/unit/test_resolve_m5.py. A `.repeat()` element's own
+    domain is a separate, still-unsupported case (DECISIONS.md D-29)."""
+
+    def test_lift_element_expression_bound_raises(self):
+        with pytest.raises(ResolutionError, match="repeated element"):
             ds.space(
                 ds.param("y").real(0.0, 1.0),
-                ds.param("x").real(0.0, ds.param("y")),
+                ds.param("xs").real(0.0, ds.param("y")).repeat(3),
             )
 
 

@@ -17,11 +17,13 @@ retry exhaustion is reachable.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
 
 from designspace.build._space import Space
+from designspace.charts import build_chart
 from designspace.config import unflatten
 from designspace.errors import SamplingError
 from designspace.eval import (
@@ -39,19 +41,26 @@ from designspace.ir import (
     CategoricalDomain,
     ChoiceDomain,
     Constraint,
+    IntegerDomain,
     ListDomain,
+    Log,
+    Logit,
     OrdinalDomain,
     ParamDef,
     PermutationDomain,
+    Power,
+    RealDomain,
     SubsetDomain,
     Weights,
 )
+from designspace.resolve._bounds import bound_origin_targets
 from designspace.resolve._pipeline import check_fully_resolved
 from designspace.resolve._relocate import element_paramdef, instantiate_element
 
 _MAX_RETRIES = 10_000
 
 Seed = int | np.random.Generator | None
+BoundTargets = dict[str, tuple[ArithExpr | None, ArithExpr | None]]
 
 
 def _rng_from_seed(seed: Seed) -> np.random.Generator:
@@ -183,7 +192,73 @@ def _draw_lift_element(
             config[local_path] = _draw_value(pd, rng)
 
 
-def _draw_config(space: Space, rng: np.random.Generator) -> tuple[dict[str, Any], dict[str, bool]]:
+def _tightenable(pd: ParamDef) -> bool:
+    """Families where truncation provably equals conditioning (API_v3.md,
+    "All charts are static" — "the reference sampler *may* recognize a
+    bound-origin constraint... and draw from the correspondingly tightened
+    chart instead of rejecting"): the built-in closed-form priors (or
+    uniform, `prior is None`) over a non-quantized real/integer. Explicitly
+    excluded — the spec's own caveat: "tightening an external prior to a
+    sub-interval needs `cdf`; absent that, rejection" — an arbitrary
+    `Prior`-satisfying object (support containment could break under a
+    narrower hi/lo) and a quantized/grid domain (cell-boundary effects are
+    subtler; DECISIONS.md D-29). Both fall back to the hard constraint
+    already sitting in `space.constraints`, rejected exactly as before.
+    """
+    if pd.type_kind not in ("real", "integer"):
+        return False
+    if pd.quantized is not None:
+        return False
+    return pd.prior is None or isinstance(pd.prior, Log | Logit | Power)
+
+
+def _tighten(
+    pd: ParamDef,
+    bounds: tuple[ArithExpr | None, ArithExpr | None],
+    config: dict[str, Any],
+    activity: dict[str, bool],
+    space: Space,
+) -> ParamDef:
+    """Narrows `pd`'s domain to the tightest bound its (already-assigned)
+    bound-origin dependencies allow, rebuilding its chart the same way
+    resolution built the original (`build_chart` is oblivious to *why* a
+    domain is what it is). Falls back to `pd` unchanged — draw from the full
+    envelope, let the hard constraint reject as before — whenever a
+    dependency isn't assigned yet (Unknown) or the tightened interval would
+    be empty (an infeasible config for this coupling; rejection is the only
+    correct outcome, not a silently-empty chart).
+    """
+    lo_expr, hi_expr = bounds
+    domain = pd.domain
+    assert isinstance(domain, RealDomain | IntegerDomain)
+    orig_lo, orig_hi = domain.lo, domain.hi
+    # Envelopes are always plain numbers by sample time — resolution's
+    # `compute_bound_envelopes` (M5, resolve/_bounds.py) already resolved
+    # any expression bound before this param's chart was ever built.
+    assert isinstance(orig_lo, int | float) and isinstance(orig_hi, int | float)
+    new_lo, new_hi = orig_lo, orig_hi
+    if lo_expr is not None:
+        val = evaluate_arith(lo_expr, config, activity, space)
+        if not isinstance(val, Unknown):
+            new_lo = max(new_lo, val)
+    if hi_expr is not None:
+        val = evaluate_arith(hi_expr, config, activity, space)
+        if not isinstance(val, Unknown):
+            new_hi = min(new_hi, val)
+    if new_lo > new_hi or (new_lo == orig_lo and new_hi == orig_hi):
+        return pd
+    new_domain: RealDomain | IntegerDomain = (
+        RealDomain(new_lo, new_hi)
+        if isinstance(domain, RealDomain)
+        else IntegerDomain(int(new_lo), int(new_hi))
+    )
+    new_chart = build_chart(pd.path, pd.type_kind, new_domain, pd.prior, pd.quantized)
+    return replace(pd, domain=new_domain, chart=new_chart)
+
+
+def _draw_config(
+    space: Space, rng: np.random.Generator, bound_targets: BoundTargets
+) -> tuple[dict[str, Any], dict[str, bool]]:
     conditions_by_target = {c.target: c for c in space.conditions}
     config: dict[str, Any] = {}
     activity: dict[str, bool] = {}
@@ -207,6 +282,9 @@ def _draw_config(space: Space, rng: np.random.Generator) -> tuple[dict[str, Any]
             assert isinstance(pd.domain, ListDomain)
             _draw_lift(space, path, pd.domain, config, activity, rng)
         else:
+            bounds = bound_targets.get(path)
+            if bounds is not None and _tightenable(pd):
+                pd = _tighten(pd, bounds, config, activity, space)
             config[path] = _draw_value(pd, rng)
     return config, activity
 
@@ -239,11 +317,15 @@ def _draw_one(space: Space, rng: np.random.Generator, reject_soft: bool) -> dict
     constraints = (
         list(space.constraints) if reject_soft else [c for c in space.constraints if c.hard]
     )
+    # Computed once per draw sequence, not per retry attempt (bound_origin_targets
+    # is a single pass over space.constraints; tighten-not-reject, API_v3.md
+    # "All charts are static").
+    bound_targets = bound_origin_targets(space)
 
     violation_counts: dict[int, int] = {}
     constraint_by_id: dict[int, Constraint] = {}
     for _ in range(_MAX_RETRIES):
-        config, activity = _draw_config(space, rng)
+        config, activity = _draw_config(space, rng, bound_targets)
         violated = _violations(constraints, config, activity, space, reject_soft=reject_soft)
         if not violated:
             return unflatten(config, space)

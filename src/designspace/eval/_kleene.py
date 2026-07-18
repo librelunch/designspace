@@ -616,14 +616,32 @@ def _lift_count_deps(domain: Any) -> frozenset[str]:
     return deps
 
 
+def _bound_order_deps(
+    bound_targets: dict[str, tuple[ArithExpr | None, ArithExpr | None]], path: str
+) -> frozenset[str]:
+    """Bound-origin constraints impose assignment order too (M5, API_v3.md
+    "Expression bounds are sugar" — "Ordering"): the params a bound
+    expression references must be assigned before the param it bounds."""
+    lo_expr, hi_expr = bound_targets.get(path, (None, None))
+    deps: frozenset[str] = frozenset()
+    if lo_expr is not None:
+        deps = deps | lo_expr.params
+    if hi_expr is not None:
+        deps = deps | hi_expr.params
+    return deps
+
+
 def topological_order(space: Space) -> list[str]:
-    """Params in an order where each one's condition and repeat-count
-    dependencies come first.
+    """Params in an order where each one's condition, repeat-count, and
+    bound-origin-constraint dependencies come first.
 
     Not the public `.topological_order` (M6, Partial Configs) — an internal
     ordering the sampler and activity computation both need now.
     """
+    from designspace.resolve._bounds import bound_origin_targets
+
     conditions_by_target = {c.target: c for c in space.conditions}
+    bound_targets = bound_origin_targets(space)
     order: list[str] = []
     done: set[str] = set()
 
@@ -640,7 +658,9 @@ def topological_order(space: Space) -> list[str]:
             return
         condition = conditions_by_target.get(path)
         deps = condition.params if condition is not None else frozenset[str]()
-        deps = deps | _lift_count_deps(space.params[path].domain)
+        deps = deps | _lift_count_deps(space.params[path].domain) | _bound_order_deps(
+            bound_targets, path
+        )
         for dep in deps:
             visit(dep)
         done.add(path)

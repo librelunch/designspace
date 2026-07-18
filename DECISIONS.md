@@ -315,3 +315,183 @@ Spec delta: The "Builder view types" paragraph's parenthetical grouping of
             ParamExpr" still holds (`ClassVar`s are not dataclass fields, so
             `fields(RealParamExpr) == fields(ParamExpr)`) — this is purely a
             builder-layer mechanism choice, invisible to the spec.
+
+## D-29 (M5) — Expression bounds: hull direction, minimal op set, eager
+scoping, the bound-origin polarity/margin interaction, and tighten-not-reject
+family gating
+
+Question:   Five points API_v3.md's "Expression bounds are sugar" leaves open
+            or (in one case) genuinely in tension with an existing, already-
+            normative law:
+            (1) A bound expression's envelope is "the interval-arithmetic hull
+            ... computed along the dependency DAG" — but a hull is an
+            *interval*, and a domain's `lo`/`hi` are each a single number.
+            Which end of the hull does a hi-bound's envelope take, and which
+            does a lo-bound's?
+            (2) "Interval arithmetic over a minimal op set" (the plan's Build
+            line) — which operations are in that set, and what exactly does
+            "by constants" mean for `*` (a literal operand, or any
+            sub-expression that happens to be constant-valued)?
+            (3) `.when()` conditions tolerate an enclosing-scope up-reference,
+            deferred to `check_fully_resolved` (D-26). Do bound expressions
+            get the same tolerance?
+            (4) The spec states the sugar desugars to "the implicit hard
+            constraint `ds.param("x") <= ds.param("y")`" *and*, separately,
+            that this coupling "yields a `y − x` margin." But the existing,
+            already-tested `is_violated` (`eval/_constraint_eval.py`, D-4)
+            hard-codes one global invariant: `hard=True` ⟺ the stored predicate
+            names the *forbidden* state (violated iff satisfied). Storing the
+            literal sugared predicate `x <= y` (the *desired* state) under
+            `hard=True` breaks that invariant outright — satisfied-and-good
+            would register as violated. Which one gives?
+            (5) The spec explicitly flags that tightening an external prior
+            needs `cdf` (rejection otherwise) — does that caveat generalize to
+            other families (quantized grids), and is "recognize a bound-origin
+            constraint and tighten" mandatory or best-effort?
+Options:    For (1): (a) hi-bound envelope = hull's supremum, lo-bound
+            envelope = hull's infimum; (b) always take the hull's own
+            "natural" bound (whichever end the expression's own operators
+            happen to produce, with no fixed rule); (c) reject any bound
+            expression whose hull isn't already a degenerate point, forcing
+            every dependency to be a plain literal.
+            For (2): (a) `+`/`-` between any two computable sub-hulls, `*`
+            only when one operand is *syntactically* a `Literal` node; (b)
+            allow `*` between any two sub-hulls generally (full interval
+            multiplication, four-corner-product rule); (c) treat any
+            sub-expression whose *computed hull happens to be a point*
+            (`lo == hi`) as a "constant" for `*` purposes, not just literal
+            nodes.
+            For (3): (a) eager — a bound expression is checked and resolved
+            entirely within its own scope, no up-reference tolerance,
+            mirroring `.forbid()`/`.constrain()` (which "stay strict and raise
+            eagerly" per the spec's own Resolution-timing paragraph); (b) the
+            same deferred-to-finalization treatment as conditions (D-26).
+            For (4): (a) store the forbidden state (`x > y` for a hi-bound),
+            keeping `is_violated`'s single hard-keyed formula untouched, and
+            accept whatever margin sign that shape produces; (b) store the
+            desired state (`x <= y`, matching the spec's literal sugar text)
+            and generalize `is_violated` to key polarity off `Constraint.
+            origin` instead of `hard` alone for this one provenance.
+            For (5): (a) tighten only for the built-in closed-form families
+            (uniform / `Log` / `Logit` / `Power`) over a non-quantized
+            real/integer, falling back to the pre-existing hard-constraint
+            rejection everywhere else; (b) attempt tightening universally,
+            including external priors and quantized grids.
+Choice:     (1)(a). A hi-bound's envelope must be the *widest* value the
+            expression could ever take — `x` must be able to reach that value
+            under *some* legal assignment of its dependencies, since charts
+            are static and built once, independent of any one config
+            ("All charts are static": "the genotype→phenotype map ... never
+            depends on other genes"). The generated bound-origin constraint is
+            what narrows the domain back down *per config*; the envelope only
+            has to cover every config that could ever need it. Symmetrically
+            for a lo-bound's infimum. (c) was rejected as needlessly narrow —
+            it would reject the spec's own worked example the moment `y` had
+            any prior/quantization beyond a bare literal.
+
+            (2)(a). `+`/`-` are unrestricted (both a constant and an
+            enveloped-param operand compute cleanly via standard interval
+            addition/subtraction: `[l1,h1]+[l2,h2] = [l1+l2, h1+h2]`;
+            subtraction similarly with the right interval's ends swapped).
+            `*` is restricted to *syntactically* literal because interval
+            multiplication between two genuinely-variable sub-hulls needs the
+            four-corner-product rule (`min/max` over `lo·lo, lo·hi, hi·lo,
+            hi·hi`) — a small step up in mechanism, but the plan's Build line
+            says "minimal op set" and CLAUDE.md's out-of-scope list bars "no
+            algebraic expression normalization," which a `lo==hi` semantic
+            check for (c) would edge toward (deciding "constant-ness" by
+            evaluating a sub-hull rather than by syntax). Recursion already
+            handles the common chained case for free — `y * 2 * 3` is two
+            literal-on-one-side `mul` nodes, each independently computable —
+            so (a) loses no real expressiveness a spec-consistent minimal
+            engine should have. Two non-constant operands multiplied (`x * y`)
+            is row 20, with the stated workaround (write the desugared literal
+            bound and constraint by hand) always available.
+
+            (3)(a). A chart is built *during* the bound-owning param's own
+            `resolve_space` call — before any enclosing scope has merged in.
+            An up-reference literally cannot be resolved yet at the point a
+            chart needs its envelope, unlike a condition (only evaluated
+            later, at sample/validate time, by which point finalization has
+            run). Deferring bound-ref resolution the way D-26 defers
+            conditions would require deferring chart-building itself past
+            `resolve_space`, a far larger restructuring the spec never asks
+            for. Eager is also consistent with the *other* half of the same
+            Resolution-timing paragraph: constraints — which a bound
+            expression's implicit constraint literally becomes — are already
+            carved out as the strict, eager exception to conditions'
+            tolerance ("cross-scope constraints use the down-reference-at-
+            the-common-ancestor route instead"). Bound expressions in practice
+            reference sibling params in the same declaring scope (the spec's
+            own `ds.param("y")` example), so this is no real restriction on
+            the common case, only on a construct (an up-scope bound
+            reference) the spec never demonstrates.
+
+            (4)(b), discovered empirically, not just reasoned to on paper:
+            implementing (4)(a) first (`x > y`, `hard=True`, `is_violated`
+            unchanged) gives a margin of `x - y` by the existing margin table
+            (`a > b` ⇒ `a - b`) — the *negation* of the spec's stated `y - x`.
+            The margin table's four fixed formulas admit exactly one stored
+            shape that produces `y - x`: `Compare("le", x, y)` (`a <= b` ⇒
+            `b - a`). That shape is also, verbatim, the spec's own sugar
+            description — so it is simultaneously the literal reading of two
+            separate spec sentences ("the implicit hard constraint `x <= y`"
+            and "yields a `y - x` margin"), which only coexist if `is_violated`
+            stops assuming `hard` alone determines polarity. `.forbid()`'s
+            "stores the forbidden state" convention is a property of *that
+            API path* — a user calling `.forbid(cond)` is defining `cond` to
+            be the bad thing by the act of calling `.forbid()` — not a law
+            every `hard=True` `Constraint` must independently satisfy
+            regardless of how it was constructed. A bound-origin constraint is
+            never built through `.forbid()`; nothing obligates it to that
+            convention. `is_violated` now reads: `origin == "bound"` ⇒
+            violated iff not satisfied (regardless of `hard`); otherwise
+            unchanged (`satisfied == hard`). This was caught by an end-to-end
+            check, not a unit test in isolation — a hard bound-origin
+            constraint on a config that plainly violated it (`x=90 > y=10`)
+            came back `validate().valid == True` under the naive (4)(a)-then-
+            unmodified-`is_violated` combination, which is exactly the class
+            of bug this project's "never resolve an ambiguity by weakening a
+            stated law" rule exists to catch before it ships. This choice also
+            has a forward-looking payoff: M7 promises the sugared form and its
+            manual expansion are fingerprint-equal with `origin` excluded from
+            the preimage — but the *expr shape* is not excluded, so the two
+            forms must already store the same shape. Storing `x <= y` (the
+            literal sugar text) is what makes that future equality possible at
+            all; a forbidden-state `x > y` would have made it structurally
+            impossible no matter what `origin` does. The sharp edge this
+            creates: the "hand-written equivalent" of the sugar is
+            `.forbid(ds.param("x") > ds.param("y"))`, *not*
+            `.forbid(ds.param("x") <= ds.param("y"))` — a user who reads the
+            spec's desugaring sentence and transcribes it verbatim into a
+            `.forbid()` call gets inverted feasibility. Recorded in
+            `is_violated`'s docstring and in
+            `tests/conformance/test_bounds.py`'s module docstring so this
+            doesn't have to be rediscovered.
+
+            (5)(a). The spec's own external-prior caveat ("tightening ... to a
+            sub-interval needs `cdf`; absent that, rejection") is explicit
+            about *why* universal tightening is unsafe: rebuilding a support-
+            contained external-prior chart with a narrower hi can push it into
+            needing truncation it has no `cdf` for, raising mid-sample instead
+            of degrading to rejection. Quantized/grid domains are excluded too
+            — cell-boundary interaction under a narrowed extension is
+            certainly *computable* but subtler to prove equivalent, and
+            nothing in the Gate requires it this milestone. Tightening is a
+            pure optimization layered *in addition to* the hard constraint
+            already sitting in `space.constraints` (from resolution) — every
+            un-tightened case (external, quantized, or an unassigned/Unknown
+            dependency at draw time, or an infeasible tightened interval)
+            falls through unchanged to the pre-existing rejection path, so
+            nothing about correctness depends on the family list being
+            complete, only on it being *sound* (never tightening somewhere
+            truncation ≠ conditioning).
+Spec delta: None. All five points are resolvable within the existing text
+            once (4)'s tension is noticed — API_v3.md's sugar-description and
+            margin sentences are both literally true simultaneously, they
+            just require `is_violated`'s hard/polarity coupling (a resolve/
+            eval-layer mechanism, not spec text) to key off `origin` instead
+            of `hard` for this one provenance. Candidate for a future
+            clarifying footnote at "Expression bounds are sugar": the implicit
+            constraint's polarity is *not* `.forbid()`'s "argument names the
+            forbidden state" convention.
