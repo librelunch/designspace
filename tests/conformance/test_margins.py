@@ -37,9 +37,12 @@ def _margin_of(expr, config):
 
 class _FakeParamDef:
     """Stand-in with just enough shape for `_ordinal_domain_of`'s `.domain`
-    lookup (`None` is not an `OrdinalDomain`, so it's a safe non-match)."""
+    lookup (`None` is not an `OrdinalDomain`, so it's a safe non-match) and
+    `compute_activity`'s M4 lift check (`type_kind` just needs to not be
+    `"list"`)."""
 
     domain = None
+    type_kind = "real"
 
 
 def _dummy_space(config) -> Space:

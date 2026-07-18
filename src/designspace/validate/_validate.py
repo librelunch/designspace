@@ -18,18 +18,28 @@ shape errors.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from designspace.build._space import Space
 from designspace.charts import build_grid_shape, grid_membership
 from designspace.config import flatten, flatten_with_errors
-from designspace.eval import compute_activity, evaluate_constraint, is_violated
+from designspace.eval import (
+    Unknown,
+    compute_activity,
+    evaluate_arith,
+    evaluate_constraint,
+    instance_constraint_evals,
+    is_violated,
+)
+from designspace.expr import ArithExpr
 from designspace.ir import (
     BoolDomain,
     CategoricalDomain,
     ChoiceDomain,
     ConstraintEval,
     IntegerDomain,
+    ListDomain,
     OrdinalDomain,
     ParamDef,
     ParamError,
@@ -38,6 +48,7 @@ from designspace.ir import (
     SubsetDomain,
     ValidationResult,
 )
+from designspace.resolve._relocate import element_paramdef
 
 
 def _strict_member(value: Any, values: tuple[Any, ...]) -> bool:
@@ -115,13 +126,108 @@ def _domain_error_reason(pd: ParamDef, value: Any) -> str | None:
         return None if _strict_member(value, domain.values) else "out_of_bounds"
     if isinstance(domain, BoolDomain):
         return None if isinstance(value, bool) else "wrong_type"
+    if isinstance(domain, ListDomain):
+        bad = not isinstance(value, int) or isinstance(value, bool) or value < 0
+        return "wrong_type" if bad else None
     return None  # pragma: no cover - unreachable for M2 scalar kinds
+
+
+def _presence_error(
+    path: str, pd_or_domain: ParamDef | ListDomain, flat: dict[str, Any], activity: dict[str, bool]
+) -> ParamError | None:
+    active = activity.get(path, True)
+    present = path in flat
+    if active and not present:
+        return ParamError(param=path, reason="missing", value=None)
+    if not active and present:
+        return ParamError(param=path, reason="inactive_but_present", value=flat[path])
+    if active and present:
+        pd = (
+            pd_or_domain
+            if isinstance(pd_or_domain, ParamDef)
+            else element_paramdef(path, pd_or_domain)
+        )
+        reason = _domain_error_reason(pd, flat[path])
+        if reason is not None:
+            return ParamError(param=path, reason=reason, value=flat[path])
+    return None
+
+
+def _strip_last_index(inst_path: str) -> str:
+    return inst_path[: inst_path.rindex("[")]
+
+
+def _validate_lift_element(
+    space: Space,
+    inst_path: str,
+    domain: ListDomain,
+    flat: dict[str, Any],
+    activity: dict[str, bool],
+) -> list[ParamError]:
+    """One lift instance's worth of `ParamError`s. Struct/choice elements
+    are guaranteed exactly one bracket level deep (DECISIONS.md D-24
+    rejects deeper nesting at resolution), so deriving the descendant
+    *template* prefix from `inst_path` here is always unambiguous."""
+    errors: list[ParamError] = []
+    if domain.element_kind == "list":
+        assert isinstance(domain.element_domain, ListDomain)
+        n = flat.get(inst_path)
+        if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+            return errors  # shape error already caught by flatten_with_errors
+        for j in range(n):
+            errors.extend(
+                _validate_lift_element(
+                    space, f"{inst_path}[{j}]", domain.element_domain, flat, activity
+                )
+            )
+        return errors
+    if domain.element_kind in ("space", "choice"):
+        if domain.element_kind == "choice":
+            error = _presence_error(inst_path, domain, flat, activity)
+            if error is not None:
+                errors.append(error)
+        template_prefix = f"{_strip_last_index(inst_path)}[]."
+        for template_path, template_pd in space.params.items():
+            if not template_path.startswith(template_prefix):
+                continue
+            if template_pd.type_kind in ("space", "list"):
+                continue
+            concrete_path = inst_path + "." + template_path[len(template_prefix) :]
+            error = _presence_error(concrete_path, template_pd, flat, activity)
+            if error is not None:
+                errors.append(error)
+        return errors
+    error = _presence_error(inst_path, domain, flat, activity)
+    if error is not None:
+        errors.append(error)
+    return errors
+
+
+def _validate_lift_instances(
+    space: Space, path: str, domain: ListDomain, flat: dict[str, Any], activity: dict[str, bool]
+) -> list[ParamError]:
+    errors: list[ParamError] = []
+    if not activity.get(path, True):
+        return errors
+    n = flat.get(path)
+    if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+        return errors
+    if isinstance(domain.count, ArithExpr):
+        # D-22: a dynamic repeat count must match the submitted length.
+        evaluated = evaluate_arith(domain.count, flat, activity, space)
+        if not isinstance(evaluated, Unknown) and evaluated != n:
+            errors.append(ParamError(param=path, reason="out_of_bounds", value=n))
+    for i in range(n):
+        errors.extend(_validate_lift_element(space, f"{path}[{i}]", domain, flat, activity))
+    return errors
 
 
 def evaluate_constraints(space: Space, config: dict[str, Any]) -> list[ConstraintEval]:
     flat = flatten(config, space)
     activity = compute_activity(space, flat)
-    return [evaluate_constraint(c, flat, activity, space) for c in space.constraints]
+    evals = [evaluate_constraint(c, flat, activity, space) for c in space.constraints]
+    evals.extend(instance_constraint_evals(space, flat, activity))
+    return evals
 
 
 def validate(space: Space, config: dict[str, Any]) -> ValidationResult:
@@ -130,7 +236,9 @@ def validate(space: Space, config: dict[str, Any]) -> ValidationResult:
     activity = compute_activity(space, flat)
     param_errors: list[ParamError] = list(param_errors_list)
     for path, pd in space.params.items():
-        if pd.type_kind == "space" or path in shape_error_paths:
+        # `"[]" in path`: a lift's descendant *template* (D-18) — not a
+        # real config leaf; its instances are validated separately below.
+        if pd.type_kind == "space" or "[]" in path or path in shape_error_paths:
             continue
         active = activity[path]
         present = path in flat
@@ -144,8 +252,14 @@ def validate(space: Space, config: dict[str, Any]) -> ValidationResult:
             reason = _domain_error_reason(pd, flat[path])
             if reason is not None:
                 param_errors.append(ParamError(param=path, reason=reason, value=flat[path]))
+            elif pd.type_kind == "list":
+                assert isinstance(pd.domain, ListDomain)
+                param_errors.extend(
+                    _validate_lift_instances(space, path, pd.domain, flat, activity)
+                )
 
     constraint_evals = [evaluate_constraint(c, flat, activity, space) for c in space.constraints]
+    constraint_evals.extend(instance_constraint_evals(space, flat, activity))
     hard_violated = any(ce.constraint.hard and is_violated(ce) for ce in constraint_evals)
     valid = not param_errors and not hard_violated
     return ValidationResult(
@@ -153,12 +267,36 @@ def validate(space: Space, config: dict[str, Any]) -> ValidationResult:
     )
 
 
+_INDEX_RE = re.compile(r"\[\d+\]")
+
+
+def _lookup_param_shape(space: Space, path: str) -> ParamDef:
+    """`path` may be a bare definition path, a struct-lift descendant
+    instance path (`"layers[2].width"` — its `"[]"`-bracketed template is
+    already a proper `ParamDef` in `space.params`), or a direct lift
+    element instance path (`"dropout[3]"`, `"pipeline[1]"` — synthesized
+    via `_element_paramdef`). API_v3.md: "instance paths supported."
+    Nested-lift instance paths (D-24's single-bracket-depth boundary for
+    struct/choice elements) beyond one level are not resolved here.
+    """
+    if path in space.params:
+        return space.params[path]
+    template_path = _INDEX_RE.sub("[]", path)
+    if template_path in space.params:
+        return space.params[template_path]
+    if "[" in path:
+        base = path[: path.rindex("[")]
+        if base in space.params and space.params[base].type_kind == "list":
+            domain = space.params[base].domain
+            assert isinstance(domain, ListDomain)
+            return element_paramdef(path, domain)
+    raise TypeError(f"no such param {path!r} in this space")
+
+
 def validate_param(
     space: Space, path: str, value: Any, context: dict[str, Any] | None = None
 ) -> ValidationResult:
-    if path not in space.params:
-        raise TypeError(f"no such param {path!r} in this space")
-    pd = space.params[path]
+    pd = _lookup_param_shape(space, path)
     reason = _domain_error_reason(pd, value)
     param_errors = [ParamError(param=path, reason=reason, value=value)] if reason else []
 

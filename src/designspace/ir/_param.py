@@ -8,21 +8,8 @@ from typing import Any
 
 from designspace.expr import BoolExpr
 from designspace.ir._chart import Chart
-from designspace.ir._domain import Domain
+from designspace.ir._domain import Domain, QuantizedSpec
 from designspace.ir._priors import PriorSpec
-
-
-@dataclass(frozen=True)
-class QuantizedSpec:
-    """`.quantized(step=None, factor=None, include_hi=False)` payload.
-
-    Not part of API_v3.md's illustrative ParamDef listing (nor is a
-    `prior`-sibling field for weights) — see DECISIONS.md D-2.
-    """
-
-    step: float | None
-    factor: float | None
-    include_hi: bool = False
 
 
 @dataclass(frozen=True)

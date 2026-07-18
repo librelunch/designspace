@@ -15,13 +15,32 @@ feasibility constraint — prefixed onto each message.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator, Mapping
 from typing import Any, cast
 
 from designspace.build._paramexpr import ParamExpr
 from designspace.errors import ResolutionError
-from designspace.expr import ArithOp, Compare, Contains, Expr, PositionOf, Size, SumOver
-from designspace.ir import OrdinalDomain, PermutationDomain, SubsetDomain
+from designspace.expr import (
+    ArithOp,
+    Compare,
+    Contains,
+    CountOf,
+    Distinct,
+    Expr,
+    Field,
+    IsSorted,
+    Length,
+    Max,
+    Min,
+    PositionOf,
+    Size,
+    Sum,
+    SumOver,
+)
+from designspace.ir import ListDomain, OrdinalDomain, PermutationDomain, SubsetDomain
+
+_INDEX_RE = re.compile(r"\[\d+\]")
 
 
 def iter_nodes(node: Expr) -> Iterator[Expr]:
@@ -30,12 +49,59 @@ def iter_nodes(node: Expr) -> Iterator[Expr]:
         yield from iter_nodes(child)
 
 
+def _is_declared(path: str, defs_by_path: Mapping[str, Any]) -> bool:
+    """`path` may be an ordinary definition path, an instance path into a
+    struct/choice lift element (`"stops[0].dwell"` — its `"[]"`-bracketed
+    *template* is a declared def) or a direct scalar/choice lift element
+    (`"dropout[3]"` — no template of its own, but its owning list param
+    is declared). API_v3.md, "Expressions": "Instance paths are legal in
+    expressions... An out-of-range index makes the leaf inactive" — the
+    out-of-range half is an evaluation-time concern (`_leaf_value`
+    already handles it for free); this is the resolution-time half (row 6):
+    the *lift itself* still has to be a declared param.
+    """
+    if path in defs_by_path:
+        return True
+    if "[" not in path:
+        return False
+    template = _INDEX_RE.sub("[]", path)
+    if template in defs_by_path:
+        return True
+    base = path[: path.rindex("[")]
+    return base in defs_by_path
+
+
+def _resolve_entry(path: str, defs_by_path: Mapping[str, Any]) -> Any:
+    """The declared shape backing `path` (see `_is_declared`) — a direct
+    scalar/choice lift element resolves to a synthetic element view
+    (`resolve/_relocate.py`'s `element_paramdef`) so type checks see the
+    *element's* type_kind/domain, not the enclosing list's; only possible
+    once `ListDomain` is actually built (the constraint-on-resolved-Space
+    path), so a `.when()` condition's instance reference to a not-yet-
+    lifted element falls back to the outer entry unchanged (best effort —
+    already beyond D-12's supported boundary).
+    """
+    if path in defs_by_path:
+        return defs_by_path[path]
+    template = _INDEX_RE.sub("[]", path)
+    if template in defs_by_path:
+        return defs_by_path[template]
+    base = path[: path.rindex("[")]
+    entry = defs_by_path[base]
+    domain = getattr(entry, "domain", None)
+    if isinstance(domain, ListDomain):
+        from designspace.resolve._relocate import element_paramdef
+
+        return element_paramdef(path, domain)
+    return entry
+
+
 def _referenced_domain(node: Any, defs_by_path: Mapping[str, Any], *, context: str) -> Any:
     if not isinstance(node, ParamExpr):
         raise ResolutionError(
             f"{context}: expects a bare param reference, got {node.kind!r}"
         )
-    return defs_by_path[node.path].domain
+    return _resolve_entry(node.path, defs_by_path).domain
 
 
 def _require_subset_domain(
@@ -60,9 +126,40 @@ def _require_permutation_domain(
     return domain
 
 
+def _lift_depth(domain: ListDomain) -> int:
+    depth = 0
+    d: Any = domain
+    while isinstance(d, ListDomain):
+        depth += 1
+        d = d.element_domain
+    return depth
+
+
+def _vector_base(node: Any) -> Any:
+    """Unwraps a `.field()` chain down to the underlying lift-referencing
+    `ParamExpr` (a scalar lift *is* a vector expression; `.field()`
+    projects a struct lift into one — the base reference is what actually
+    carries the `ListDomain`)."""
+    while isinstance(node, Field):
+        node = node.operand
+    return node
+
+
+def _require_lift_domain(
+    node: Any, defs_by_path: Mapping[str, Any], *, context: str, what: str
+) -> ListDomain:
+    base = _vector_base(node)
+    domain = _referenced_domain(base, defs_by_path, context=context)
+    if not isinstance(domain, ListDomain):
+        raise ResolutionError(
+            f"{context}: {what} on {base.path!r}, which is not a lift (repeat()) param"
+        )
+    return domain
+
+
 def check_refs_declared(expr: Expr, defs_by_path: Mapping[str, Any], *, context: str) -> None:
     for path in expr.params:
-        if path not in defs_by_path:
+        if not _is_declared(path, defs_by_path):
             raise ResolutionError(f"{context}: references undeclared param {path!r}")
 
 
@@ -70,7 +167,7 @@ def check_expr_types(expr: Expr, defs_by_path: Mapping[str, Any], *, context: st
     for node in iter_nodes(expr):
         if isinstance(node, ArithOp):
             for path in node.params:
-                kind = defs_by_path[path].type_kind
+                kind = _resolve_entry(path, defs_by_path).type_kind
                 if kind in ("categorical", "ordinal"):
                     raise ResolutionError(
                         f"{context}: performs arithmetic on {kind} "
@@ -79,7 +176,7 @@ def check_expr_types(expr: Expr, defs_by_path: Mapping[str, Any], *, context: st
         elif isinstance(node, Compare):
             if node.op in ("gt", "lt", "ge", "le"):
                 for path in node.params:
-                    kind = defs_by_path[path].type_kind
+                    kind = _resolve_entry(path, defs_by_path).type_kind
                     if kind == "categorical":
                         raise ResolutionError(
                             f"{context}: orders categorical param "
@@ -89,11 +186,11 @@ def check_expr_types(expr: Expr, defs_by_path: Mapping[str, Any], *, context: st
             if (
                 isinstance(left, ParamExpr)
                 and isinstance(right, ParamExpr)
-                and defs_by_path[left.path].type_kind == "ordinal"
-                and defs_by_path[right.path].type_kind == "ordinal"
+                and _resolve_entry(left.path, defs_by_path).type_kind == "ordinal"
+                and _resolve_entry(right.path, defs_by_path).type_kind == "ordinal"
             ):
-                left_domain = defs_by_path[left.path].domain
-                right_domain = defs_by_path[right.path].domain
+                left_domain = _resolve_entry(left.path, defs_by_path).domain
+                right_domain = _resolve_entry(right.path, defs_by_path).domain
                 if (
                     isinstance(left_domain, OrdinalDomain)
                     and isinstance(right_domain, OrdinalDomain)
@@ -127,3 +224,19 @@ def check_expr_types(expr: Expr, defs_by_path: Mapping[str, Any], *, context: st
                     f"{context}: position_of({node.item!r}) on {operand_path!r} "
                     "is not a declared member"
                 )
+        elif isinstance(node, Length):
+            _require_lift_domain(node.operand, defs_by_path, context=context, what="length()")
+        elif isinstance(node, IsSorted):
+            domain = _require_lift_domain(
+                node.operand, defs_by_path, context=context, what="is_sorted()"
+            )
+            if _lift_depth(domain) > 1:
+                operand_path = _vector_base(node.operand).path
+                raise ResolutionError(
+                    f"{context}: is_sorted() on {operand_path!r} is restricted to a "
+                    "single repeat() level (row 24) — a nested lift has no canonical order"
+                )
+        elif isinstance(node, Sum | Min | Max | CountOf | Distinct):
+            _require_lift_domain(
+                node.operand, defs_by_path, context=context, what=f"{node.kind}()"
+            )

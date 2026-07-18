@@ -25,9 +25,11 @@ from designspace.expr import (
     BoolExpr,
     Contains,
     Expr,
+    Length,
     PositionOf,
     Size,
     SumOver,
+    VectorExpr,
 )
 from designspace.ir import (
     BoolDomain,
@@ -46,8 +48,36 @@ from designspace.ir import (
 )
 
 
+@dataclass(frozen=True)
+class _ElementSnapshot:
+    """Builder-time closure of "everything left of `.repeat()`" (API_v3.md,
+    "Modifiers and Layering" — "The lift"; DECISIONS.md D-18).
+
+    When `type_kind == "list"`, this snapshot describes one `.repeat()`
+    level: `element`/`count`/`list_default` are populated and the leaf
+    fields below are unused — `element` recurses for a chained/variadic
+    `.repeat().repeat()`. Otherwise it describes the element itself (a
+    scalar/subset/permutation/choice/struct type), mirroring the same-named
+    `ParamExpr` fields it was snapshotted from.
+    """
+
+    type_kind: str
+    domain: Domain | None = None
+    prior_spec: Any = None
+    quantized_spec: QuantizedSpec | None = None
+    periodic: builtins.bool = False
+    default_value: Any = None
+    struct_space: Any = None
+    choice_payloads: MappingProxyType[str, Any] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    element: _ElementSnapshot | None = None
+    count: int | ArithExpr | None = None
+    list_default: Any = None
+
+
 @dataclass(frozen=True, eq=False)
-class ParamExpr(ArithExpr, BoolExpr):
+class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     """A parameter, in reference position (bare) or definition position
     (after a type method and any modifiers).
     """
@@ -71,6 +101,12 @@ class ParamExpr(ArithExpr, BoolExpr):
         default_factory=lambda: MappingProxyType({})
     )
     struct_space: Any = None  # Space | None; typed Any to avoid an import cycle
+    # -- the lift (M4): set once `.repeat()` has been called at least once;
+    # `type_kind`/`domain`/`prior_spec`/etc above are then reset (the fields
+    # this dataclass would otherwise be reusing to mean two different things
+    # at once) and every element-describing fact lives in `lift` instead —
+    # see `_ElementSnapshot` and DECISIONS.md D-18.
+    lift: _ElementSnapshot | None = None
 
     @property
     def kind(self) -> str:
@@ -174,10 +210,19 @@ class ParamExpr(ArithExpr, BoolExpr):
             type_calls=(*self.type_calls, "choice"),
         )
 
-    def space(self, *exprs: ParamExpr) -> ParamExpr:
+    def space(self, *exprs: Any) -> ParamExpr:
+        from designspace.build._space import Space
         from designspace.resolve._pipeline import resolve_space
 
-        child = resolve_space(exprs)
+        # `.space(prebuilt: Space)` (DECISIONS.md D-20/D-15): the only route
+        # to per-element constraints on a repeated struct — the inline
+        # `.space(*exprs)` form has nowhere to hang a `.forbid()`. A single
+        # positional `Space` argument is unambiguous: the inline form's
+        # `*exprs` are always bare `ParamExpr`s, never a `Space`.
+        if len(exprs) == 1 and isinstance(exprs[0], Space):
+            child = exprs[0]
+        else:
+            child = resolve_space(exprs)
         return replace(
             self,
             type_kind="space",
@@ -185,6 +230,58 @@ class ParamExpr(ArithExpr, BoolExpr):
             struct_space=child,
             type_calls=(*self.type_calls, "space"),
         )
+
+    # -- the lift (M4) --------------------------------------------------------
+
+    def repeat(self, *counts: int | ArithExpr) -> ParamExpr:
+        if len(counts) == 0:
+            raise ResolutionError(f"param {self.path!r}: repeat() requires at least one count")
+        if len(counts) > 1:
+            # Variadic sugar: `.repeat(2, 3)` reads as shape (2, 3), first
+            # count outermost, desugaring to chained lifts in *reverse*
+            # order — `.repeat(3).repeat(2)` (API_v3.md, "The lift").
+            result = self
+            for c in reversed(counts):
+                result = result.repeat(c)
+            return result
+        (count,) = counts
+        if self.type_kind is None:
+            raise ResolutionError(f"param {self.path!r}: repeat() requires a type before .repeat()")
+        if self.type_kind == "list":
+            assert self.lift is not None
+            inner = self.lift
+        else:
+            inner = _ElementSnapshot(
+                type_kind=self.type_kind,
+                domain=self.domain,
+                prior_spec=self.prior_spec,
+                quantized_spec=self.quantized_spec,
+                periodic=self.periodic,
+                default_value=self.default_value,
+                struct_space=self.struct_space,
+                choice_payloads=self.choice_payloads,
+            )
+        new_lift = _ElementSnapshot(type_kind="list", element=inner, count=count)
+        return replace(
+            self,
+            type_kind="list",
+            domain=None,
+            prior_spec=None,
+            quantized_spec=None,
+            periodic=False,
+            default_value=None,
+            struct_space=None,
+            choice_payloads=MappingProxyType({}),
+            lift=new_lift,
+            type_calls=(*self.type_calls, "repeat"),
+        )
+
+    # `.field()` and the aggregate methods (`.sum()`, `.min()`, `.max()`,
+    # `.count_of()`, `.is_sorted()`, `.distinct()`) are inherited from
+    # VectorExpr.
+
+    def length(self) -> ArithExpr:
+        return Length(self)
 
     # -- combinatorial expression methods (subset/permutation only; validity
     # is a resolution-time check, not a construction-time one, per M0's "no
@@ -226,6 +323,12 @@ class ParamExpr(ArithExpr, BoolExpr):
         return replace(self, quantized_spec=QuantizedSpec(step, factor, include_hi))
 
     def default(self, value: Any) -> ParamExpr:
+        # Position-sensitive (API_v3.md, "Modifiers and Layering"): before
+        # `.repeat()` this is the element default; after, it's the list
+        # default for the *current* (innermost-so-far) repeat level.
+        if self.type_kind == "list":
+            assert self.lift is not None
+            return replace(self, lift=replace(self.lift, list_default=value))
         return replace(self, default_value=value)
 
     # -- identity-level modifiers (accumulate, except default which is LWW) -

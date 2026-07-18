@@ -12,13 +12,15 @@ from designspace.ir._domain import (
     ChoiceDomain,
     Domain,
     IntegerDomain,
+    ListDomain,
     OrdinalDomain,
     PermutationDomain,
+    QuantizedSpec,
     RealDomain,
     StructDomain,
     SubsetDomain,
 )
-from designspace.ir._param import Condition, Constraint, ParamDef, QuantizedSpec
+from designspace.ir._param import Condition, Constraint, ParamDef
 from designspace.ir._priors import Log, Logit, Power, Prior, PriorSpec, Weights
 from designspace.ir._results import ConstraintEval, ParamError, ValidationResult
 
@@ -32,6 +34,7 @@ __all__ = [
     "ConstraintEval",
     "Domain",
     "IntegerDomain",
+    "ListDomain",
     "Log",
     "Logit",
     "OrdinalDomain",

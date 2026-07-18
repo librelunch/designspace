@@ -561,3 +561,428 @@ Spec delta: Could state whether `.unflatten()` (which takes no activity
             (a struct's activity never depends on its *own* members'
             activity) rather than a guarantee about `unflatten`'s output
             shape.
+
+## D-18 (M4) — Design note: representing lifted vectors and Unknown in the evaluator
+
+IMPLEMENTATION_PLAN.md's M4 line directs a design note before implementation
+("this interaction — Kleene × aggregates × instance paths — is the
+highest-complexity point in the codebase"). This entry is that note.
+
+**Where the element template lives in the IR.** `space.params` stays the
+one flat `dict[str, ParamDef]` keyed by *definition path* — no side
+channel. A lift's element, when it is a struct or choice (i.e. has its own
+descendant params), is relocated into that same dict under a
+`"[]"`-bracketed prefix (`"edges[].src"`, `"edges[].dst"`), reusing
+resolve/_relocate.py's `relocate_child` unchanged (M3 built it generically
+over "a rename prefix and an injected condition"; `"edges[]."` is just
+another prefix string, and the injected condition is `None` here — see
+below). This matches the spec's own introspection convention verbatim:
+"introspection lists them once under definition paths (`edges[].…`)." A
+scalar/subset/permutation element has no descendants, so nothing is
+relocated — the element's chart/prior/quantized/periodic/default live
+directly on the new `ListDomain` IR node (below), not on `ParamDef`.
+Nested lifts (`.repeat(8).repeat(8)`) bracket-nest the same way
+(`"mask[][]"` has no descendants of its own since `bool` is a leaf, but a
+struct-of-lists-of-structs would read `"grid[][].width"`).
+
+```python
+@dataclass(frozen=True)
+class ListDomain:
+    element_kind: str              # "real" | ... | "space" | "choice" | "list" (nested)
+    element_domain: Domain         # recursive: another ListDomain for chained .repeat()
+    element_chart: Chart | None    # built from element_prior/element_quantized; None for non-chart kinds
+    element_prior: PriorSpec | None
+    element_periodic: bool
+    element_quantized: QuantizedSpec | None
+    element_default: Any           # pre-repeat "element default"
+    count: int | ArithExpr
+    list_default: Any = None       # post-repeat "list default", this level only
+```
+
+A list-typed `ParamDef` itself carries `chart=None, prior=None,
+periodic=False, quantized=None, default=None` (it joins
+`_NON_CHART_KINDS`) — every element-describing fact lives inside
+`ListDomain`, recursively, one level per `.repeat()` call. This is why no
+new `ParamDef` field was needed.
+
+**Why relocation cannot happen at resolution time (the key departure from
+M3).** M3's struct/choice relocation runs once, at `_emit()`, because a
+struct or choice has exactly one instantiation, known at resolution. A
+lift's count is explicitly *not* resolution-known in general ("Counts,
+unlike bounds, remain runtime-evaluated — lists are structure, not
+charts") — it may reference another param's value. So the descendant
+*template* (`"edges[].src"`) is relocated once, at resolution, with
+`injected_condition=None` (no per-instance condition is folded in yet —
+there is no instance yet); the template's own internal conditions
+(a sibling field's `.when()` referencing another field of the same
+element) are rewritten by the rename map exactly as M3 already does.
+**Per-instance expansion** — turning the template plus a concrete index
+`i` into `"edges[3].src"` with a concrete activity — happens at
+evaluation time (validate/sample/evaluate_constraints), via a new sibling
+of `relocate_child` that takes an integer index instead of a static
+prefix and substitutes the *innermost* unresolved `"[]"` in each
+descendant path with `"[i]"`. This is the one genuinely new piece of
+machinery `relocate_child` didn't already have; everything else about it
+(rename map, condition rewriting, constraint rewriting) is reused as-is.
+
+**Flat config/activity shape for concrete per-draw evaluation.** The
+existing evaluator (`eval/_kleene.py`) is untouched in its core recursion;
+it is fed an extended flat dict. For a lift at path `p` with realized
+count `n` for this draw:
+
+- `config[p]` — an `int`: the realized count (mirrors `.length()`
+  and lets `evaluate_arith` answer `ds.param(p).length()` by a single
+  dict lookup, exactly like any other leaf).
+- `config[f"{p}[{i}]"]` (scalar/subset/permutation element) or
+  `config[f"{p}[{i}].{field}"]` (struct/choice element, recursing) for
+  each `i` in `range(n)` — the per-instance value(s), keyed by *instance*
+  path per the existing grammar (already "multi-index ready" from M3).
+- `activity[p]` — whether the lift itself is active (existing mechanism,
+  unchanged: a condition target like any other param).
+- `activity[f"{p}[{i}]..."]` — per-instance leaf activity, computed by
+  expanding the element template's conditions for that `i` (only
+  meaningful for struct/choice elements whose fields carry their own
+  `.when()` against sibling fields; a bare scalar/subset/permutation
+  element has no such condition and is always active whenever the lift
+  itself is active and `i < n`).
+
+`flatten()`/`unflatten()` (config/) grow one more case alongside their
+existing struct/choice handling: a list value in the canonical nested
+config (`[0.1, 0.3]`, `[{"width":128}, {"width":256}]`) flattens to
+`out[p] = len(value)` plus a recursive `_flatten_level` call per element
+at prefix `f"{p}[{i}]."` (struct elements) or a direct
+`out[f"{p}[{i}]"] = value[i]` (scalar/subset/permutation/choice-as-a-
+value elements). `unflatten` reverses it by reading `flat[p]` as the
+count and rebuilding each `i` from the flat dict — this is the exact
+same recursion shape M3 already uses for struct/choice, parametrized by
+an integer range instead of a fixed set of field names.
+
+**Instance paths in expressions, out-of-range → Unknown.** A leaf
+reference like `ds.param("stops[0].dwell_min")` parses via
+`paths/_grammar.py` (unchanged) to a path with an instance bracket. Its
+evaluation is the *existing* `_leaf_value` lookup unchanged in mechanism:
+`config.get(path)` / `activity.get(path)`; the "out-of-range" rule is
+satisfied for free by construction, *provided* an out-of-range instance
+path is simply never written into `config`/`activity` at draw time (the
+sampler only materializes `i in range(n)`) and `_leaf_value` already
+treats an absent activity entry as `True`... which would be *wrong* here
+(it would read as active-but-missing, "validate() reports as missing",
+not Unknown). So `_leaf_value` gains one precondition specific to
+instance-bracketed paths: if any bracket index in the path is `>=` the
+realized count of its owning lift (looked up via `config[owning_lift_path]`,
+falling back to "lift itself inactive" if that key is also absent), the
+leaf is Unknown — checked *before* the ordinary activity-dict lookup, not
+instead of it (an in-range but individually-inactive instance leaf still
+goes through the ordinary activity path).
+
+**Vector expressions and aggregates.** `.field(name)` and the aggregate
+methods (`.sum()`, `.min()`, `.max()`, `.count_of()`, `.is_sorted()`,
+`.distinct()`) are new AST node kinds whose *operand* is always a
+lift-referencing `ParamExpr` or a `Field` node (never a scalar leaf).
+Evaluating the operand produces one of:
+
+1. `UNKNOWN` (rule 1) — the lift itself is inactive. This is mechanically
+   identical to a scalar inactive leaf: no new machinery, just the
+   existing activity lookup on the lift's own definition path.
+2. `[]` (rule 6, active-empty) — the lift is active and its realized
+   count is `0`.
+3. `list[Any | Unknown]` of length `n` — the lift is active with `n > 0`
+   elements, gathered by reading each instance's leaf (or, for
+   `.field(name)`, each instance's named descendant leaf, flattening
+   across nested lift levels per the spec's "leaves, flattened across all
+   levels" rule) through the *same* per-instance activity mechanism above
+   — so an individual element is `Unknown` exactly when that specific
+   instance's projected leaf is inactive (only possible for a struct
+   element field gated by a sibling `.when()`; a bare scalar/choice/
+   subset/permutation element list never has interior Unknowns, since
+   its elements carry no per-element condition of their own).
+
+Aggregate evaluation order, uniformly: resolve the operand to one of the
+three cases above; case 1 short-circuits the whole aggregate to
+`UNKNOWN`; case 2 applies the rule-6 empty-aggregate table verbatim
+(`sum/count_of/distinct/is_sorted` per the table, `min/max → UNKNOWN`);
+case 3 is where D-19 (below) governs interior-Unknown handling.
+
+## D-19 (M4) — Interior-Unknown handling for non-empty aggregates
+
+Question:   Rule 2 states "Comparisons and arithmetic with an Unknown
+            operand are Unknown... The same rule governs aggregates
+            containing Unknown elements," immediately after describing
+            `ds.count`'s range-tracking (`[t, t+u]`, Unknown only when the
+            comparison outcome differs across the achievable range). Read
+            broadly, "the same rule" could mean every vector aggregate
+            (`sum`, `min`, `max`, `count_of`, `is_sorted`, `distinct`)
+            should track an achievable-value range the way `count` does
+            and only resolve to Unknown when a downstream comparison's
+            outcome is range-dependent. Read narrowly, it just restates
+            the paragraph's opening sentence — plain Unknown-propagation
+            — applied to a vector's elements as if each were an ordinary
+            operand.
+Options:    (a) Full range-tracking for every aggregate: for `sum`,
+            compute achievable range from each Unknown element's
+            (already-enveloped, since resolution requires finite bounds)
+            domain and only report Unknown if the final comparison result
+            varies across it; similarly bound `min`/`max` by the envelope
+            extremes, and give `count_of`/`is_sorted`/`distinct`
+            comparison-aware range logic mirroring `_count_vs_threshold`.
+            (b) Plain propagation: any Unknown element in a non-empty
+            aggregated vector makes the aggregate itself Unknown, full
+            stop — no range computed, no interaction with the downstream
+            comparison. `count_of` gets no special range-tracking beyond
+            this, despite superficially resembling `ds.count`.
+Choice:     (b). The gate this milestone is actually held to (IMPLEMENTATION_PLAN.md's
+            M4 gate line) names the empty-aggregate table and the
+            inactive-lift-vs-active-empty pair — both about *whole-lift*
+            activity, never about interior Unknowns inside a non-empty
+            vector. No conformance law anywhere pins option (a)'s
+            behavior. Building range-tracking on speculation would mean
+            (i) inventing interval arithmetic ahead of M5, which the plan
+            explicitly scopes to "a minimal op set" over `+`/`−`/`×` by
+            constants and enveloped params — nothing about aggregating
+            across a runtime-variable-length vector — and (ii) freezing a
+            guess about behavior nothing requires, which cuts against
+            "never weaken a stated law" from the other direction (adding
+            unrequested surface is its own kind of scope creep per
+            CLAUDE.md's no-dead-scaffolding rule). (b) is also the
+            reading consistent with ordinary arithmetic elsewhere in the
+            evaluator (an `ArithOp` with one Unknown operand is Unknown,
+            no range tracked) — vectors are treated as an ordered
+            collection of operands, not a special case. This is a
+            judgment call, not a spec law, so its tests live in
+            `tests/unit/`, not `tests/conformance/` — nothing here is
+            permanent in the way the empty-aggregate table is.
+Spec delta: Clarify whether "the same rule" for aggregates means
+            `ds.count`-style range-tracking or plain propagation; if the
+            former, specify the range semantics for `sum`/`min`/`max`
+            (which have no natural finite "count" of outcomes to range
+            over without invoking interval arithmetic).
+
+## D-20 (M4) — `.space(prebuilt: Space)` and per-instance constraint instantiation
+
+Question:   D-15 (M3) deferred the `.space(prebuilt: Space)` struct-type-
+            method overload, noting its only stated motivation — per-
+            element constraints on repeated structs, since "the inline
+            form has nowhere to hang a `.forbid`" — is M4 machinery. M4's
+            spec text confirms this is exactly how per-instance
+            constraints are meant to be authored (Modifiers: "Constraints
+            declared inside a repeated element `Space` are instantiated
+            per element"; the vector-expressions example comment "row-
+            scope forbid on" sits directly on the pre-lift struct). The
+            spec does not spell out the mechanism connecting "a
+            `Constraint` declared on the element `Space`" to "one
+            `ConstraintEval` per instance path" at evaluation time.
+Options:    (a) Statically unroll per-element constraints at resolution
+            into `space.constraints`, one copy per possible index — only
+            works for a literal integer count, contradicts "counts...
+            remain runtime-evaluated." (b) Keep the element `Space`'s own
+            `constraints` tuple as a *template*, carried on the lift's
+            `ListDomain` (added as `element_constraints:
+            tuple[Constraint, ...]`, populated from the prebuilt Space
+            passed to `.space()`), and expand it per active instance at
+            evaluation time — the same per-instance expansion that
+            produces per-instance `ParamDef`/activity also rewrites each
+            template constraint's expr under the concrete instance prefix
+            and yields one `ConstraintEval` with `instance_path` set to
+            `f"{path}[{i}]"`.
+Choice:     (b). Only this option is consistent with runtime-evaluated
+            counts (a dynamic count can't be unrolled at resolution,
+            since it isn't known until a config exists) and with
+            `ConstraintEval.instance_path` existing as a field precisely
+            for this ("set for per-element instantiations" — IR section).
+            `.space(prebuilt)` accepts an already-fully-resolved child
+            `Space`; its `.constraints` become the element template
+            (relocated the same way its `.params`/`.conditions` are, via
+            `relocate_child`, so both paths and expressions are rewritten
+            uniformly); the *inline* `.space(*exprs)` form used for a
+            lift's element is legal too but has nowhere to hang a
+            per-element `.forbid()`, exactly as D-15 anticipated —
+            an element built inline can still declare ordinary struct
+            fields and conditions, just no element-scoped constraints.
+Spec delta: None — this resolves a mechanism gap, not a stated ambiguity;
+            the spec's two facts (runtime-evaluated counts;
+            `ConstraintEval.instance_path`) already imply this design.
+
+## D-21 (M4) — Repeat counts join the dependency graph and cycle detection
+
+Question:   Error row 7 covers "cycle in the condition/bound dependency
+            graph"; row 12 covers "repeat count not integer-typed." The
+            spec doesn't explicitly restate that a repeat count expression
+            referencing another param must be ordered after that param
+            (topological_order) or is subject to the same cycle check —
+            but a count is exactly the same kind of "must be known before
+            this param can be materialized" dependency conditions already
+            are.
+Options:    (a) Leave repeat-count references out of the dependency graph
+            and cycle check — only conditions participate, matching M1-M3
+            literally. (b) Fold `count.params` (when count is an
+            `ArithExpr`) into the same dependency set as `condition.params`
+            for both `topological_order` and `_check_condition_cycles`.
+Choice:     (b). A count referencing a not-yet-known param is no
+            different in kind from a condition doing so — both must
+            resolve before this param's activity/materialization is
+            computable — and the "Resolution" section's step 5 already
+            describes cycle detection over "the condition and bound
+            dependency graph," naming bounds (expression bounds, M5)
+            alongside conditions as a *pattern* of "things establishing
+            assignment order," which a runtime-evaluated count fits
+            exactly. Treating it as an ordinary dependency-graph edge
+            reuses `topological_order`/`_check_condition_cycles`/
+            `compute_activity` unchanged (they already iterate a
+            `path -> deps` mapping; count references are just one more
+            source of edges into that mapping) rather than inventing a
+            parallel ordering mechanism.
+Spec delta: Could state explicitly that repeat-count expressions
+            participate in the dependency graph and cycle detection
+            alongside conditions and (later) expression bounds.
+
+## D-22 (M4) — Negative evaluated repeat count (row 13)
+
+Question:   Row 13 ("Evaluated repeat count negative") is tagged V
+            (validation/fill/sample-time), not R — a literal negative
+            count is already rejected by ordinary integer-domain bound
+            checks if the count param's own declared domain excludes
+            negatives, but nothing stops `.repeat(ds.param("n").integer(-5, 5))`
+            from resolving, and nothing in the spec says what happens
+            when such a count actually evaluates negative for a given
+            config, since a Python list can't have negative length.
+Choice:     Two call sites, one rule: (1) `sample_one` evaluates the count
+            before drawing elements; a negative result raises
+            `SamplingError` immediately (same exception family as row 26,
+            same "can't materialize" character — sampling has no other
+            channel to report through, per "only operations with no
+            result channel raise"). (2) `validate()` never independently
+            "evaluates" a count against a submitted list — the submitted
+            list's own length *is* the count for validation purposes
+            (`len(value)`); a separately-referenced count expression
+            (e.g. `ds.param("n")` feeding `.repeat(ds.param("n"))`) is
+            cross-checked as `len(value) == evaluated_count`, reported as
+            `ParamError(reason="out_of_bounds")` on mismatch — a negative
+            evaluated count simply can never match any real list's
+            length, so it surfaces through the exact same mismatch check
+            without a separate code path.
+Spec delta: None — this is mechanism, not ambiguity; the two existing
+            channels (`SamplingError`, `ParamError`) already cover it.
+
+## D-23 (M4) — Explicitly out of M4 scope
+
+Question:   Several spec items sit textually near M4's material but
+            belong to later milestones per IMPLEMENTATION_PLAN.md, worth
+            recording so they aren't accidentally half-built while
+            touching adjacent code.
+Choice:     `.prop()` (Expressions' general ArithExpr method block, same
+            paragraph as `.length()`) is M9 (custom types) — not
+            implemented now. `apply_defaults`/`has_complete_defaults`
+            (Defaults section, which M4's element/list default *validation*
+            necessarily touches) stay M6 — M4 only validates default
+            *declarations* at resolution (row 21: domain membership,
+            element/list mutual exclusivity, static-count-only for list
+            defaults), the same way M1 validated scalar defaults at
+            resolution years before `apply_defaults` existed. `static_shape`
+            (`Capabilities`, IR section) is M10's DataFrame concern.
+            Expression bounds / interval arithmetic (`ds.param("x").integer(1,
+            ds.param("y"))`) remain M5, including for a repeat count that
+            happens to look like a bound-shaped expression — a count is
+            never desugared into a bound-origin constraint, it stays a
+            plain runtime-evaluated `ArithExpr`.
+Spec delta: None.
+
+## D-24 (M4) — Struct/choice elements nested under more than one `.repeat()` level: rejected, not silently wrong
+
+Question:   A struct or choice lift element's descendant *template* is
+            relocated into `space.params` under a single `"[]"`-bracketed
+            prefix (`"edges[].src"`, D-18) built from the outer param's
+            own path, regardless of how many `.repeat()` levels wrap it.
+            For a genuinely double-nested lift whose *innermost* element
+            is a struct/choice (`.space(...).repeat(3).repeat(2)` — a list
+            of lists of structs), the path grammar's own convention for a
+            nested-lift definition path is `"grid[][].width"` (one `"[]"`
+            per level, per "Paths and Scoping": `mask[][]` for two nested
+            scalar lifts) — but the relocation in `_emit` only ever writes
+            a single `"[]"`, producing a template at `"grid[].width"` that
+            doesn't match either bracket-depth convention and that the
+            per-instance evaluator (`eval/_kleene.py`'s `_expand_lift_activity`,
+            `config/_flatten.py`) has no path to correctly address (it
+            only ever substitutes *one* bracket level for a concrete
+            index). None of M4's named corpus fixtures (`delivery_routes`,
+            `solver_portfolio`, `memetic_pipeline`) need this — their
+            struct/choice lifts are single-level; nested repetition in
+            the corpus is always of *scalar* elements (which have no
+            descendant template at all, so arbitrary nesting is already
+            fully correct and tested).
+Options:    (a) Ship it anyway, silently producing a template at the
+            wrong bracket depth — works by accident for depth 1, breaks
+            in a way that's hard to diagnose (wrong/missing activity,
+            validate() blind to the shape) for depth > 1. (b) Extend the
+            relocation and per-instance expansion machinery to track
+            bracket depth generally, so an arbitrary chain of `.repeat()`
+            calls terminating in a struct/choice element works uniformly.
+            (c) Reject the construction at resolution with a clear
+            error naming the limitation, deferring (b) until a real need
+            (corpus fixture or user report) justifies the added
+            complexity.
+Choice:     (c) — `resolve/_pipeline.py`'s `_validate_lift` raises
+            `ResolutionError` when `depth > 1` and the innermost element
+            is `"space"` or `"choice"`. CLAUDE.md: "never resolve
+            silently" — (a) is exactly the silent-wrongness this rule
+            forbids, and it would surface as a confusing downstream
+            symptom (missing per-instance activity/validation) rather
+            than an error naming the actual limitation. (b) is real,
+            bounded work but strictly additive — nothing about rejecting
+            the case now forecloses implementing it later, and no
+            conformance law or corpus fixture is blocked by deferring it.
+            Scalar/subset/permutation/nested-`"list"` elements are
+            already fully general (no descendant template exists for
+            them at any depth, so the bracket-depth mismatch never
+            arises) — only struct/choice elements are affected.
+Spec delta: None — this is an implementation scope boundary, not a
+            spec ambiguity; the path grammar's own `mask[][]` convention
+            already says what the *correct* deeper form should look like
+            whenever it is implemented.
+
+## D-25 (M4) — `.field(name)` on a non-struct lift, or a name absent from the element: no resolution-time check
+
+Question:   `.field(name)` (struct-lift projection, e.g.
+            `ds.param("stops").field("dwell_min")`) is only meaningful
+            when the base lift's `element_kind == "space"` and `name` is
+            one of the element's declared descendant paths.
+            `resolve/_expr_checks.py`'s `_require_lift_domain` (backing
+            `Length`/`Sum`/`Min`/`Max`/`CountOf`/`IsSorted`/`Distinct`'s
+            row-24-style checks) verifies the operand resolves to a
+            `ListDomain` at all, but does not additionally verify (a)
+            that `element_kind == "space"` before allowing `.field()`,
+            or (b) that `name` matches a real element field. Concretely:
+            `ds.param("xs").real(0.0,1.0).repeat(3).field("y")` resolves
+            without error, and at evaluation time the projected leaf
+            `"xs[i].y"` is never written into `config` for a scalar
+            element, so `_leaf_value` returns Unknown for every
+            instance — the aggregate built on top (e.g. `.sum()`)
+            comes back Unknown, and a constraint built from it is
+            simply inapplicable. Same outcome for a real struct lift
+            with a misspelled field name.
+Options:    (a) Add a resolution-time check in `_require_lift_domain`
+            (or a new sibling) that rejects `.field()` unless the base
+            is a struct lift with a matching declared field, raising a
+            `ResolutionError` naming the bad field/base. (b) Leave it as
+            a silent Unknown-cascade: no new check, relying on the
+            evaluator's existing "absent from config -> Unknown" rule
+            (already documented at the top of `eval/_kleene.py`, and the
+            same mechanism that makes an out-of-range instance index
+            Unknown rather than an error).
+Choice:     (b) — the cascade is not a *silent wrongness* in the sense
+            CLAUDE.md's rule targets (a spec law quietly weakened or an
+            ambiguity resolved without a paper trail): it is the same
+            "missing path -> Unknown -> inapplicable" behavior the spec
+            itself prescribes for out-of-range instance indices and
+            inactive lifts, applied uniformly to a third "this path
+            structurally can never be written" case. No conformance law
+            or M4 corpus fixture requires catching a mismatched
+            `.field()` name at resolution time, and doing so would add a
+            new category of builder-time schema-checking (walking a
+            struct element's descendant paths from `_ElementSnapshot`
+            before the element's own `Space` has necessarily been fully
+            resolved) not required by any gate. Revisable later without
+            foreclosing anything: adding the check is strictly additive
+            (turns a previously-silent Unknown into an explicit error)
+            and breaks no config that was ever valid, so nothing is lost
+            by deferring it.
+Spec delta: None.

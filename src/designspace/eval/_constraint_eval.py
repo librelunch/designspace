@@ -17,12 +17,13 @@ distinction is resolved — see DECISIONS.md.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from designspace.build._space import Space
 from designspace.eval._kleene import Unknown, evaluate_bool
 from designspace.eval._margins import margin
-from designspace.ir import Constraint, ConstraintEval
+from designspace.ir import Constraint, ConstraintEval, ListDomain
 
 
 def evaluate_constraint(
@@ -40,6 +41,38 @@ def evaluate_constraint(
         satisfied=bool(value),
         margin=margin(constraint.expr, config, activity, space),
     )
+
+
+def instance_constraint_evals(
+    space: Space, config: dict[str, Any], activity: dict[str, bool]
+) -> list[ConstraintEval]:
+    """Constraints declared on a `.space(prebuilt)` lift element
+    (DECISIONS.md D-20) — carried as templates on `ListDomain.
+    element_constraints`, never in `space.constraints` — instantiated
+    once per active instance ("evaluation reports one `ConstraintEval`
+    per instance path," API_v3.md "Modifiers and Layering")."""
+    from designspace.resolve._relocate import instantiate_constraints
+
+    result: list[ConstraintEval] = []
+    for path, pd in space.params.items():
+        if pd.type_kind != "list":
+            continue
+        domain = pd.domain
+        assert isinstance(domain, ListDomain)
+        if not domain.element_constraints or not activity.get(path, True):
+            continue
+        n = config.get(path, 0)
+        if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+            continue
+        template_prefix = f"{path}[]."
+        for i in range(n):
+            concrete_prefix = f"{path}[{i}]."
+            for c in instantiate_constraints(
+                domain.element_constraints, template_prefix, concrete_prefix
+            ):
+                ce = evaluate_constraint(c, config, activity, space)
+                result.append(replace(ce, instance_path=f"{path}[{i}]"))
+    return result
 
 
 def is_violated(ce: ConstraintEval) -> bool:

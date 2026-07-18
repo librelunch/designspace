@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import replace
+from types import MappingProxyType
 from typing import Any, cast
 
 from designspace.build._paramexpr import ParamExpr
@@ -33,18 +34,26 @@ from designspace.expr import (
     Compare,
     Contains,
     Count,
+    CountOf,
+    Distinct,
     Expr,
+    Field,
     IfInactive,
     Implies,
     IsActive,
     IsIn,
+    IsSorted,
+    Length,
     Literal,
+    Max,
+    Min,
     Not,
     PositionOf,
     Size,
+    Sum,
     SumOver,
 )
-from designspace.ir import Condition, Constraint, ParamDef
+from designspace.ir import Condition, Constraint, ListDomain, ParamDef
 
 
 def rewrite_expr(node: Expr, rename: Mapping[str, str]) -> Expr:
@@ -102,6 +111,22 @@ def rewrite_expr(node: Expr, rename: Mapping[str, str]) -> Expr:
         return SumOver(cast(ArithExpr, rewrite_expr(node.operand, rename)), node.mapping)
     if isinstance(node, PositionOf):
         return PositionOf(cast(ArithExpr, rewrite_expr(node.operand, rename)), node.item)
+    if isinstance(node, Length):
+        return Length(cast(ArithExpr, rewrite_expr(node.operand, rename)))
+    if isinstance(node, Field):
+        return Field(rewrite_expr(node.operand, rename), node.name)
+    if isinstance(node, Sum):
+        return Sum(rewrite_expr(node.operand, rename))
+    if isinstance(node, Min):
+        return Min(rewrite_expr(node.operand, rename))
+    if isinstance(node, Max):
+        return Max(rewrite_expr(node.operand, rename))
+    if isinstance(node, CountOf):
+        return CountOf(rewrite_expr(node.operand, rename), node.values)
+    if isinstance(node, IsSorted):
+        return IsSorted(rewrite_expr(node.operand, rename), node.descending)
+    if isinstance(node, Distinct):
+        return Distinct(rewrite_expr(node.operand, rename), node.fields)
     raise TypeError(f"cannot relocate expr kind {node.kind!r}")  # pragma: no cover
 
 
@@ -148,3 +173,91 @@ def relocate_child(
         new_expr = rewrite_bool(c.expr, rename)
         constraints.append(replace(c, expr=new_expr, params=new_expr.params))
     return params, conditions, constraints
+
+
+def instantiate_element(
+    space: Any,  # designspace.build._space.Space; Any avoids an import cycle
+    template_prefix: str,
+    concrete_prefix: str,
+) -> tuple[dict[str, ParamDef], list[Condition]]:
+    """Expand one lift instance's descendant *template* — already merged
+    into `space.params` under a `"[]"`-bracketed prefix (e.g.
+    `"edges[]."`) by `relocate_child` at resolution (DECISIONS.md D-18) —
+    into concrete per-instance entries under an index-bracketed prefix
+    (e.g. `"edges[3]."`). A second, simpler find-and-replace pass:
+    `relocate_child` already rewrote each descendant's own condition
+    against its sibling scope, so this only ever substitutes one bracket
+    placeholder for a concrete index — every reference is guaranteed to
+    already be a hit, same as `relocate_child` itself.
+    """
+    rename = {
+        old_path: concrete_prefix + old_path[len(template_prefix) :]
+        for old_path in space.params
+        if old_path.startswith(template_prefix)
+    }
+    # A lifted choice's own discriminator template (bare, no descendant of
+    # its own — e.g. `"pipeline[]"`) is referenced *by* its variant
+    # payload templates' folded discriminator-equality condition, but
+    # never appears as a `space.params` key itself, so the loop above
+    # never covers it — add it explicitly.
+    rename[template_prefix[:-1]] = concrete_prefix[:-1]
+    params: dict[str, ParamDef] = {}
+    conditions: list[Condition] = []
+    for old_path in rename:
+        if old_path not in space.params:
+            continue
+        new_path = rename[old_path]
+        pd = space.params[old_path]
+        new_condition = rewrite_bool(pd.condition, rename) if pd.condition is not None else None
+        params[new_path] = replace(pd, path=new_path, condition=new_condition)
+        if new_condition is not None:
+            conditions.append(
+                Condition(target=new_path, expr=new_condition, params=new_condition.params)
+            )
+    return params, conditions
+
+
+def instantiate_constraints(
+    templates: Any,  # tuple[Constraint, ...]; Any to match ListDomain.element_constraints
+    template_prefix: str,
+    concrete_prefix: str,
+) -> list[Constraint]:
+    """The `Constraint`-shaped sibling of `instantiate_element`: expand a
+    lift's element-scoped constraint templates (`ListDomain.
+    element_constraints`, DECISIONS.md D-20) for one concrete instance.
+    Each template already carries its own referenced `params`, so the
+    rename map is derived from that directly — no `space.params` lookup
+    needed.
+    """
+    result: list[Constraint] = []
+    for c in templates:
+        rename = {
+            p: concrete_prefix + p[len(template_prefix) :]
+            for p in c.params
+            if p.startswith(template_prefix)
+        }
+        new_expr = rewrite_bool(c.expr, rename)
+        result.append(replace(c, expr=new_expr, params=new_expr.params))
+    return result
+
+
+def element_paramdef(path: str, domain: ListDomain) -> ParamDef:
+    """A synthetic `ParamDef` describing one lift *element* (DECISIONS.md
+    D-18): `ListDomain.element_*` reshaped into the ordinary `ParamDef`
+    fields, so the existing scalar machinery (chart-driven sampling,
+    domain/prior/quantized validation) applies to a lift element exactly
+    as it does to a non-lifted param — shared by validate/ and sample/.
+    """
+    return ParamDef(
+        path=path,
+        type_kind=domain.element_kind,
+        domain=domain.element_domain,
+        prior=domain.element_prior,
+        periodic=domain.element_periodic,
+        default=domain.element_default,
+        condition=None,
+        tags=frozenset(),
+        meta=MappingProxyType({}),
+        chart=domain.element_chart,
+        quantized=domain.element_quantized,
+    )

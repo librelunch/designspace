@@ -19,6 +19,8 @@ Internal to the library: not part of the public surface (mirrors how
 
 from __future__ import annotations
 
+import re
+from itertools import pairwise
 from typing import Any
 
 from designspace.build._paramexpr import ParamExpr
@@ -32,17 +34,25 @@ from designspace.expr import (
     Compare,
     Contains,
     Count,
+    CountOf,
+    Distinct,
     Expr,
+    Field,
     IfInactive,
     IsActive,
     IsIn,
+    IsSorted,
+    Length,
     Literal,
+    Max,
+    Min,
     Not,
     PositionOf,
     Size,
+    Sum,
     SumOver,
 )
-from designspace.ir import OrdinalDomain
+from designspace.ir import ListDomain, OrdinalDomain
 
 
 class Unknown:
@@ -72,6 +82,114 @@ def _leaf_value(path: str, config: dict[str, Any], activity: dict[str, bool]) ->
     return config[path]
 
 
+# -- vector expressions and aggregates (M4; DECISIONS.md D-18/D-19) ----------
+#
+# A vector expression (a lift-referencing `ParamExpr`, or a `.field()`
+# projection of one) resolves to `UNKNOWN` if the lift itself is inactive
+# (rule 1 — mechanically identical to a scalar inactive leaf) or to a
+# (possibly nested, for chained `.repeat()`) list of per-instance leaves,
+# each itself possibly `UNKNOWN` (an *interior* Unknown — only reachable
+# via `.field()` on a struct element whose field carries a sibling
+# `.when()`). `_vector_paths` builds the nested structure of *instance
+# paths* rather than values so `.field()` can chain onto it; `_vector_values`
+# is the thin values-view aggregates consume.
+
+
+def _gather_instance_paths(path: str, domain: Any, config: dict[str, Any]) -> Any:
+    assert isinstance(domain, ListDomain)
+    n = config.get(path, 0)
+    if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+        return []
+    if domain.element_kind == "list":
+        return [
+            _gather_instance_paths(f"{path}[{i}]", domain.element_domain, config)
+            for i in range(n)
+        ]
+    return [f"{path}[{i}]" for i in range(n)]
+
+
+def _map_leaves(structure: Any, fn: Any) -> Any:
+    if isinstance(structure, list):
+        return [_map_leaves(s, fn) for s in structure]
+    return fn(structure)
+
+
+def _flatten_leaves(structure: Any) -> list[Any]:
+    if isinstance(structure, list):
+        result: list[Any] = []
+        for s in structure:
+            result.extend(_flatten_leaves(s))
+        return result
+    return [structure]
+
+
+def _vector_paths(
+    expr: Expr, config: dict[str, Any], activity: dict[str, bool], space: Space
+) -> Any | Unknown:
+    if isinstance(expr, Field):
+        base = _vector_paths(expr.operand, config, activity, space)
+        if isinstance(base, Unknown):
+            return UNKNOWN
+        return _map_leaves(base, lambda p: f"{p}.{expr.name}")
+    assert isinstance(expr, ParamExpr)
+    path = expr.path
+    if not activity.get(path, True):
+        return UNKNOWN
+    if path not in config:
+        return UNKNOWN
+    return _gather_instance_paths(path, space.params[path].domain, config)
+
+
+def _vector_values(
+    expr: Expr, config: dict[str, Any], activity: dict[str, bool], space: Space
+) -> Any | Unknown:
+    paths = _vector_paths(expr, config, activity, space)
+    if isinstance(paths, Unknown):
+        return UNKNOWN
+    return _map_leaves(paths, lambda p: _leaf_value(p, config, activity))
+
+
+def _aggregate_leaves(
+    expr: Sum | Min | Max | CountOf | IsSorted | Distinct,
+    config: dict[str, Any],
+    activity: dict[str, bool],
+    space: Space,
+) -> list[Any] | Unknown:
+    """The flat leaf list an aggregate consumes, or `UNKNOWN` if the base
+    lift itself is inactive (rule 1). Callers still need to check for `[]`
+    (rule 6, empty) and interior `Unknown` entries (D-19) themselves, since
+    the empty/non-empty/Unknown-element handling differs per aggregate."""
+    values = _vector_values(expr.operand, config, activity, space)
+    if isinstance(values, Unknown):
+        return UNKNOWN
+    return _flatten_leaves(values)
+
+
+def _all_distinct(values: list[Any]) -> bool:
+    seen: list[Any] = []
+    for v in values:
+        if any(_values_equal(v, s) for s in seen):
+            return False
+        seen.append(v)
+    return True
+
+
+def _distinct_tuples(
+    expr: Distinct, config: dict[str, Any], activity: dict[str, bool], space: Space
+) -> list[tuple[Any, ...]] | Unknown:
+    paths = _vector_paths(expr.operand, config, activity, space)
+    if isinstance(paths, Unknown):
+        return UNKNOWN
+    flat_paths = _flatten_leaves(paths)
+    return [
+        tuple(_leaf_value(f"{p}.{f}", config, activity) for f in expr.fields) for p in flat_paths
+    ]
+
+
+def _tuple_equal(a: tuple[Any, ...], b: tuple[Any, ...]) -> bool:
+    return len(a) == len(b) and all(_values_equal(x, y) for x, y in zip(a, b, strict=True))
+
+
 def _values_equal(a: Any, b: Any) -> bool:
     """Equality for `Compare`/`IsIn` leaves.
 
@@ -93,9 +211,35 @@ def _values_equal(a: Any, b: Any) -> bool:
     return bool(a == b)
 
 
+_INDEX_RE = re.compile(r"\[\d+\]")
+
+
+def _resolve_param_domain(path: str, space: Space) -> Any:
+    """`path` may be an ordinary definition path, a struct/choice lift
+    instance path (`"stops[0].dwell"` — its `"[]"`-bracketed template
+    carries the real domain), or a direct scalar/choice lift element
+    (`"dropout[3]"` — no template, but the element domain lives on the
+    owning list's `ListDomain`). Mirrors resolve/_expr_checks.py's
+    `_resolve_entry`, at evaluation time (`space.params` is always the
+    resolved `ParamDef` dict here, never a builder-time one)."""
+    if path in space.params:
+        return space.params[path].domain
+    if "[" not in path:
+        return None
+    template = _INDEX_RE.sub("[]", path)
+    if template in space.params:
+        return space.params[template].domain
+    base = path[: path.rindex("[")]
+    if base in space.params:
+        domain = space.params[base].domain
+        if isinstance(domain, ListDomain):
+            return domain.element_domain
+    return None
+
+
 def _ordinal_domain_of(node: Expr, space: Space) -> OrdinalDomain | None:
     if isinstance(node, ParamExpr):
-        domain = space.params[node.path].domain
+        domain = _resolve_param_domain(node.path, space)
         if isinstance(domain, OrdinalDomain):
             return domain
     return None
@@ -201,6 +345,48 @@ def evaluate_arith(
     if isinstance(expr, PositionOf):
         value = evaluate_arith(expr.operand, config, activity, space)
         return UNKNOWN if isinstance(value, Unknown) else value.index(expr.item)
+    if isinstance(expr, Length):
+        assert isinstance(expr.operand, ParamExpr)
+        path = expr.operand.path
+        if not activity.get(path, True):
+            return UNKNOWN
+        return config.get(path, UNKNOWN)
+    if isinstance(expr, Sum):
+        leaves = _aggregate_leaves(expr, config, activity, space)
+        if isinstance(leaves, Unknown):
+            return UNKNOWN
+        if len(leaves) == 0:
+            return 0  # rule 6: empty aggregate
+        if any(isinstance(v, Unknown) for v in leaves):
+            return UNKNOWN  # D-19: interior Unknown -> aggregate Unknown
+        return sum(leaves)
+    if isinstance(expr, Min):
+        leaves = _aggregate_leaves(expr, config, activity, space)
+        if isinstance(leaves, Unknown):
+            return UNKNOWN
+        if len(leaves) == 0:
+            return UNKNOWN  # rule 6: min/max of empty -> Unknown
+        if any(isinstance(v, Unknown) for v in leaves):
+            return UNKNOWN
+        return min(leaves)
+    if isinstance(expr, Max):
+        leaves = _aggregate_leaves(expr, config, activity, space)
+        if isinstance(leaves, Unknown):
+            return UNKNOWN
+        if len(leaves) == 0:
+            return UNKNOWN
+        if any(isinstance(v, Unknown) for v in leaves):
+            return UNKNOWN
+        return max(leaves)
+    if isinstance(expr, CountOf):
+        leaves = _aggregate_leaves(expr, config, activity, space)
+        if isinstance(leaves, Unknown):
+            return UNKNOWN
+        if len(leaves) == 0:
+            return 0
+        if any(isinstance(v, Unknown) for v in leaves):
+            return UNKNOWN
+        return sum(1 for v in leaves if any(_values_equal(v, target) for target in expr.values))
     raise TypeError(f"cannot evaluate arith expr kind {expr.kind!r}")
 
 
@@ -278,6 +464,41 @@ def evaluate_bool(
     if isinstance(expr, Contains):
         value = evaluate_arith(expr.operand, config, activity, space)
         return UNKNOWN if isinstance(value, Unknown) else expr.item in value
+    if isinstance(expr, IsSorted):
+        leaves = _aggregate_leaves(expr, config, activity, space)
+        if isinstance(leaves, Unknown):
+            return UNKNOWN
+        if len(leaves) == 0:
+            return True  # rule 6
+        if any(isinstance(v, Unknown) for v in leaves):
+            return UNKNOWN
+        pairs = list(pairwise(leaves))
+        if expr.descending:
+            return all(a >= b for a, b in pairs)
+        return all(a <= b for a, b in pairs)
+    if isinstance(expr, Distinct):
+        if expr.fields:
+            tuples = _distinct_tuples(expr, config, activity, space)
+            if isinstance(tuples, Unknown):
+                return UNKNOWN
+            if len(tuples) == 0:
+                return True
+            if any(any(isinstance(x, Unknown) for x in t) for t in tuples):
+                return UNKNOWN
+            seen: list[tuple[Any, ...]] = []
+            for t in tuples:
+                if any(_tuple_equal(t, s) for s in seen):
+                    return False
+                seen.append(t)
+            return True
+        leaves = _aggregate_leaves(expr, config, activity, space)
+        if isinstance(leaves, Unknown):
+            return UNKNOWN
+        if len(leaves) == 0:
+            return True
+        if any(isinstance(v, Unknown) for v in leaves):
+            return UNKNOWN
+        return _all_distinct(leaves)
     raise TypeError(f"cannot evaluate bool expr kind {expr.kind!r}")
 
 
@@ -301,21 +522,103 @@ def _evaluate_count_compare(
 
 def compute_activity(space: Space, config: dict[str, Any]) -> dict[str, bool]:
     """Activity per param, walking the condition dependency order (rule 3:
-    Unknown coerces to False at `.when()`, cascading deactivation)."""
+    Unknown coerces to False at `.when()`, cascading deactivation).
+
+    Assumes `config` is *fully* materialized already (every lift's
+    realized count, and every instance's leaf values, already present) —
+    true for `validate()` (which flattens the whole submitted config up
+    front) but not for the sampler, which must interleave drawing values
+    with deciding activity and so does its own, incremental version of
+    the per-instance expansion below (sample/_sample.py).
+    """
     activity: dict[str, bool] = {}
     conditions_by_target = {c.target: c for c in space.conditions}
     for path in topological_order(space):
         condition = conditions_by_target.get(path)
         if condition is None:
-            activity[path] = True
+            active = True
         else:
             value = evaluate_bool(condition.expr, config, activity, space)
-            activity[path] = value is True
+            active = value is True
+        activity[path] = active
+        pd = space.params[path]
+        if active and pd.type_kind == "list":
+            _expand_lift_activity(space, path, pd.domain, config, activity)
     return activity
 
 
+def _expand_lift_activity(
+    space: Space, path: str, domain: Any, config: dict[str, Any], activity: dict[str, bool]
+) -> None:
+    """Struct/choice lift elements carry descendant *templates*
+    (`"edges[]."`, DECISIONS.md D-18) with their own conditions (a
+    sibling field's `.when()`); scalar/subset/permutation/nested-list
+    elements have no such per-element condition, so there is nothing to
+    expand for them (an in-range instance is active by construction
+    whenever the lift itself is). One active instance at a time, in
+    local dependency order within that instance (cross-field references
+    inside one struct element)."""
+    from designspace.resolve._relocate import instantiate_element
+
+    assert isinstance(domain, ListDomain)
+    if domain.element_kind not in ("space", "choice"):
+        return
+    n = config.get(path, 0)
+    if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+        return
+    template_prefix = f"{path}[]."
+    for i in range(n):
+        concrete_prefix = f"{path}[{i}]."
+        inst_params, inst_conditions = instantiate_element(space, template_prefix, concrete_prefix)
+        inst_conditions_by_target = {c.target: c for c in inst_conditions}
+        for local_path in local_topological_order(list(inst_params), inst_conditions_by_target):
+            cond = inst_conditions_by_target.get(local_path)
+            if cond is None:
+                activity[local_path] = True
+            else:
+                value = evaluate_bool(cond.expr, config, activity, space)
+                activity[local_path] = value is True
+
+
+def local_topological_order(paths: list[str], conditions_by_target: dict[str, Any]) -> list[str]:
+    """`topological_order`'s algorithm, scoped to one lift instance's
+    freshly-instantiated params (already guaranteed acyclic — the
+    element's own fields were cycle-checked when it was originally
+    resolved, before ever being lifted)."""
+    path_set = set(paths)
+    order: list[str] = []
+    done: set[str] = set()
+
+    def visit(p: str) -> None:
+        if p in done:
+            return
+        cond = conditions_by_target.get(p)
+        if cond is not None:
+            for dep in cond.params:
+                if dep in path_set:
+                    visit(dep)
+        done.add(p)
+        order.append(p)
+
+    for p in paths:
+        visit(p)
+    return order
+
+
+def _lift_count_deps(domain: Any) -> frozenset[str]:
+    """Repeat-count references join the dependency graph (DECISIONS.md
+    D-21) — recurse through chained/nested `.repeat()` levels."""
+    deps: frozenset[str] = frozenset()
+    while isinstance(domain, ListDomain):
+        if isinstance(domain.count, ArithExpr):
+            deps = deps | domain.count.params
+        domain = domain.element_domain
+    return deps
+
+
 def topological_order(space: Space) -> list[str]:
-    """Params in an order where each one's condition dependencies come first.
+    """Params in an order where each one's condition and repeat-count
+    dependencies come first.
 
     Not the public `.topological_order` (M6, Partial Configs) — an internal
     ordering the sampler and activity computation both need now.
@@ -327,10 +630,19 @@ def topological_order(space: Space) -> list[str]:
     def visit(path: str) -> None:
         if path in done:
             return
+        if path not in space.params:
+            # A per-instance virtual placeholder — e.g. a lifted choice's
+            # bare discriminator template ("pipeline[]", referenced by a
+            # variant payload's folded discriminator-equality condition,
+            # DECISIONS.md D-18) — not a real definition, so it has no
+            # further dependencies and never joins `order` itself.
+            done.add(path)
+            return
         condition = conditions_by_target.get(path)
-        if condition is not None:
-            for dep in condition.params:
-                visit(dep)
+        deps = condition.params if condition is not None else frozenset[str]()
+        deps = deps | _lift_count_deps(space.params[path].domain)
+        for dep in deps:
+            visit(dep)
         done.add(path)
         order.append(path)
 

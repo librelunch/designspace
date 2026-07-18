@@ -24,17 +24,29 @@ import numpy as np
 from designspace.build._space import Space
 from designspace.config import unflatten
 from designspace.errors import SamplingError
-from designspace.eval import evaluate_bool, evaluate_constraint, is_violated, topological_order
+from designspace.eval import (
+    Unknown,
+    evaluate_arith,
+    evaluate_bool,
+    evaluate_constraint,
+    instance_constraint_evals,
+    is_violated,
+    local_topological_order,
+    topological_order,
+)
+from designspace.expr import ArithExpr
 from designspace.ir import (
     CategoricalDomain,
     ChoiceDomain,
     Constraint,
+    ListDomain,
     OrdinalDomain,
     ParamDef,
     PermutationDomain,
     SubsetDomain,
     Weights,
 )
+from designspace.resolve._relocate import element_paramdef, instantiate_element
 
 _MAX_RETRIES = 10_000
 
@@ -107,30 +119,113 @@ def _draw_value(pd: ParamDef, rng: np.random.Generator) -> Any:
     )
 
 
+def _draw_lift(
+    space: Space,
+    path: str,
+    domain: ListDomain,
+    config: dict[str, Any],
+    activity: dict[str, bool],
+    rng: np.random.Generator,
+) -> None:
+    """Materializes an active lift at `path`: evaluates its (possibly
+    runtime-dependent) count, records it at the lift's own flat key
+    (DECISIONS.md D-18), then draws each instance."""
+    if isinstance(domain.count, ArithExpr):
+        n = evaluate_arith(domain.count, config, activity, space)
+        if isinstance(n, Unknown):
+            n = 0  # count depends on an inactive param: nothing to materialize
+    else:
+        n = domain.count
+    if n < 0:
+        raise SamplingError(
+            f"param {path!r}: repeat() count evaluated to a negative value ({n}) (row 13)"
+        )
+    config[path] = n
+    for i in range(n):
+        _draw_lift_element(space, f"{path}[{i}]", domain, config, activity, rng)
+
+
+def _draw_lift_element(
+    space: Space,
+    inst_path: str,
+    domain: ListDomain,
+    config: dict[str, Any],
+    activity: dict[str, bool],
+    rng: np.random.Generator,
+) -> None:
+    if domain.element_kind == "list":
+        assert isinstance(domain.element_domain, ListDomain)
+        _draw_lift(space, inst_path, domain.element_domain, config, activity, rng)
+        return
+    if domain.element_kind not in ("space", "choice"):
+        config[inst_path] = _draw_value(element_paramdef(inst_path, domain), rng)
+        activity[inst_path] = True
+        return
+    if domain.element_kind == "choice":
+        config[inst_path] = _draw_value(element_paramdef(inst_path, domain), rng)
+        activity[inst_path] = True
+    outer_path = inst_path[: inst_path.rindex("[")]
+    template_prefix = f"{outer_path}[]."
+    inst_params, inst_conditions = instantiate_element(space, template_prefix, f"{inst_path}.")
+    inst_conditions_by_target = {c.target: c for c in inst_conditions}
+    for local_path in local_topological_order(list(inst_params), inst_conditions_by_target):
+        cond = inst_conditions_by_target.get(local_path)
+        active = True if cond is None else evaluate_bool(cond.expr, config, activity, space) is True
+        activity[local_path] = active
+        pd = inst_params[local_path]
+        if not active or pd.type_kind == "space":
+            continue
+        if pd.type_kind == "list":
+            assert isinstance(pd.domain, ListDomain)
+            _draw_lift(space, local_path, pd.domain, config, activity, rng)
+        else:
+            config[local_path] = _draw_value(pd, rng)
+
+
 def _draw_config(space: Space, rng: np.random.Generator) -> tuple[dict[str, Any], dict[str, bool]]:
     conditions_by_target = {c.target: c for c in space.conditions}
     config: dict[str, Any] = {}
     activity: dict[str, bool] = {}
     for path in topological_order(space):
+        if "[]" in path:
+            continue  # a lift's descendant template (D-18) -- never drawn
+            # directly; materialized via _draw_lift when its owning list
+            # param (below) is processed.
         condition = conditions_by_target.get(path)
         if condition is None:
             active = True
         else:
             active = evaluate_bool(condition.expr, config, activity, space) is True
         activity[path] = active
-        if active and space.params[path].type_kind != "space":
-            config[path] = _draw_value(space.params[path], rng)
+        if not active:
+            continue
+        pd = space.params[path]
+        if pd.type_kind == "space":
+            continue
+        if pd.type_kind == "list":
+            assert isinstance(pd.domain, ListDomain)
+            _draw_lift(space, path, pd.domain, config, activity, rng)
+        else:
+            config[path] = _draw_value(pd, rng)
     return config, activity
 
 
 def _violations(
-    constraints: list[Constraint], config: dict[str, Any], activity: dict[str, bool], space: Space
+    constraints: list[Constraint],
+    config: dict[str, Any],
+    activity: dict[str, bool],
+    space: Space,
+    *,
+    reject_soft: bool,
 ) -> list[Constraint]:
     violated = []
     for c in constraints:
         ce = evaluate_constraint(c, config, activity, space)
         if is_violated(ce):
             violated.append(c)
+    for ce in instance_constraint_evals(space, config, activity):
+        if (reject_soft or ce.constraint.hard) and is_violated(ce):
+            violated.append(ce.constraint)
     return violated
 
 
@@ -144,7 +239,7 @@ def sample_one(space: Space, seed: Seed = None, reject_soft: bool = False) -> di
     constraint_by_id: dict[int, Constraint] = {}
     for _ in range(_MAX_RETRIES):
         config, activity = _draw_config(space, rng)
-        violated = _violations(constraints, config, activity, space)
+        violated = _violations(constraints, config, activity, space, reject_soft=reject_soft)
         if not violated:
             return unflatten(config, space)
         for c in violated:

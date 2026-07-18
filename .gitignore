@@ -11,4 +11,4 @@ __pycache__/
 
 .devenv
 .direnv
-settings.local.json
+.claude

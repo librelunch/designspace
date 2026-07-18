@@ -6,7 +6,11 @@ public surface (the public result types, `ConstraintEval`/`ValidationResult`,
 live in ir/).
 """
 
-from designspace.eval._constraint_eval import evaluate_constraint, is_violated
+from designspace.eval._constraint_eval import (
+    evaluate_constraint,
+    instance_constraint_evals,
+    is_violated,
+)
 from designspace.eval._kleene import (
     UNKNOWN,
     Kleene,
@@ -14,6 +18,7 @@ from designspace.eval._kleene import (
     compute_activity,
     evaluate_arith,
     evaluate_bool,
+    local_topological_order,
     topological_order,
 )
 from designspace.eval._margins import margin
@@ -26,7 +31,9 @@ __all__ = [
     "evaluate_arith",
     "evaluate_bool",
     "evaluate_constraint",
+    "instance_constraint_evals",
     "is_violated",
+    "local_topological_order",
     "margin",
     "topological_order",
 ]

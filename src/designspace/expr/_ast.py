@@ -388,3 +388,163 @@ class PositionOf(ArithExpr):
     @property
     def children(self) -> tuple[Expr, ...]:
         return (self.operand,)
+
+
+@dataclass(frozen=True, eq=False)
+class Length(ArithExpr):
+    """`ds.param("r").length()`: a lift's realized element count."""
+
+    operand: ArithExpr
+
+    @property
+    def kind(self) -> str:
+        return "length"
+
+    @property
+    def children(self) -> tuple[Expr, ...]:
+        return (self.operand,)
+
+
+class VectorExpr(Expr):
+    """Mixin exposing the aggregate namespace (API_v3.md, "Expressions" —
+    "Vector expressions and aggregates"): "a scalar lift *is* a vector
+    expression; `.field(name)` projects a struct lift into one." Shared by
+    `ParamExpr` (build/_paramexpr.py, when it references a lift) and
+    `Field` below — neither the mixin nor its methods validate that the
+    operand is actually lift-typed; that is resolve/'s job (M0's "no
+    validation happens here" principle, same as `.contains()`/`.size()`).
+    """
+
+    def field(self, name: str) -> Field:
+        return Field(self, name)
+
+    def sum(self) -> ArithExpr:
+        return Sum(self)
+
+    def min(self) -> ArithExpr:
+        return Min(self)
+
+    def max(self) -> ArithExpr:
+        return Max(self)
+
+    def count_of(self, *values: Any) -> ArithExpr:
+        return CountOf(self, tuple(values))
+
+    def is_sorted(self, descending: bool = False) -> BoolExpr:
+        return IsSorted(self, descending)
+
+    def distinct(self, *fields: str) -> BoolExpr:
+        return Distinct(self, tuple(fields))
+
+
+@dataclass(frozen=True, eq=False)
+class Field(VectorExpr):
+    """`.field(name)`: projects a struct lift into the vector of its
+    `name` member's values, one per instance (nested lifts: shape-
+    preserving; aggregates flatten across levels regardless)."""
+
+    operand: Expr
+    name: str
+
+    @property
+    def kind(self) -> str:
+        return "field"
+
+    @property
+    def children(self) -> tuple[Expr, ...]:
+        return (self.operand,)
+
+
+@dataclass(frozen=True, eq=False)
+class Sum(ArithExpr):
+    """`.sum()`: numeric aggregate over a vector's leaves."""
+
+    operand: Expr
+
+    @property
+    def kind(self) -> str:
+        return "sum"
+
+    @property
+    def children(self) -> tuple[Expr, ...]:
+        return (self.operand,)
+
+
+@dataclass(frozen=True, eq=False)
+class Min(ArithExpr):
+    """`.min()`: empty vector -> Unknown (rule 6)."""
+
+    operand: Expr
+
+    @property
+    def kind(self) -> str:
+        return "min"
+
+    @property
+    def children(self) -> tuple[Expr, ...]:
+        return (self.operand,)
+
+
+@dataclass(frozen=True, eq=False)
+class Max(ArithExpr):
+    """`.max()`: empty vector -> Unknown (rule 6)."""
+
+    operand: Expr
+
+    @property
+    def kind(self) -> str:
+        return "max"
+
+    @property
+    def children(self) -> tuple[Expr, ...]:
+        return (self.operand,)
+
+
+@dataclass(frozen=True, eq=False)
+class CountOf(ArithExpr):
+    """`.count_of(*values)`: count of leaves equal to any of `values`
+    (equality-comparable elements; on a lifted choice, counts variants)."""
+
+    operand: Expr
+    values: tuple[Any, ...]
+
+    @property
+    def kind(self) -> str:
+        return "count_of"
+
+    @property
+    def children(self) -> tuple[Expr, ...]:
+        return (self.operand,)
+
+
+@dataclass(frozen=True, eq=False)
+class IsSorted(BoolExpr):
+    """`.is_sorted(descending=False)`. Depth 1 only (row 24)."""
+
+    operand: Expr
+    descending: bool = False
+
+    @property
+    def kind(self) -> str:
+        return "is_sorted"
+
+    @property
+    def children(self) -> tuple[Expr, ...]:
+        return (self.operand,)
+
+
+@dataclass(frozen=True, eq=False)
+class Distinct(BoolExpr):
+    """`.distinct()` (scalar lift: pairwise-distinct elements) /
+    `.distinct(*fields)` (struct lift: distinct field tuples)."""
+
+    operand: Expr
+    fields: tuple[str, ...] = ()
+
+    @property
+    def kind(self) -> str:
+        return "distinct"
+
+    @property
+    def children(self) -> tuple[Expr, ...]:
+        return (self.operand,)

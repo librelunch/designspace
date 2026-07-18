@@ -30,7 +30,7 @@ from types import MappingProxyType
 from typing import Any
 
 from designspace.build._names import check_name
-from designspace.build._paramexpr import ParamExpr
+from designspace.build._paramexpr import ParamExpr, _ElementSnapshot
 from designspace.build._space import Space
 from designspace.charts import build_chart
 from designspace.errors import ResolutionError
@@ -43,6 +43,7 @@ from designspace.ir import (
     Condition,
     Constraint,
     IntegerDomain,
+    ListDomain,
     OrdinalDomain,
     ParamDef,
     PermutationDomain,
@@ -52,23 +53,27 @@ from designspace.ir import (
     Weights,
 )
 from designspace.resolve._desugar import desugar_bool
-from designspace.resolve._expr_checks import check_expr_types, check_refs_declared
+from designspace.resolve._expr_checks import check_expr_types, check_refs_declared, iter_nodes
 from designspace.resolve._relocate import and_, relocate_child
 
-_NON_CHART_KINDS = ("subset", "permutation", "choice", "space")
+_NON_CHART_KINDS = ("subset", "permutation", "choice", "space", "list")
 
 
 def resolve_space(exprs: tuple[ParamExpr, ...]) -> Space:
     defs = _collect(exprs)  # step 1
     _check_types_and_names(defs)  # step 2
     defs = _desugar(defs)  # step 3: implies -> ~left | right (D-1); log_scale
-    # already resolves eagerly at the builder; layer folding and expression-
-    # bound desugaring arrive with .repeat() (M4) and expression bounds (M5).
+    # already resolves eagerly at the builder; expression-bound desugaring
+    # arrives with M5. Lift ("repeat") layer folding already happened at the
+    # builder (`.repeat()`, build/_paramexpr.py) — this step only rewrites
+    # `.when()` conditions.
     defs_by_path = {d.path: d for d in defs}
     _resolve_condition_refs(defs, defs_by_path)  # step 4
     _check_condition_cycles(defs)  # step 5
-    _validate_declarations(defs)  # step 7 (bounds/weights/etc — must precede
-    # chart-building, which assumes sane bounds)
+    _validate_declarations(defs, defs_by_path)  # step 7 (bounds/weights/etc —
+    # must precede chart-building, which assumes sane bounds)
+    defs = _build_list_domains(defs)  # M4: fold each lift's `_ElementSnapshot`
+    # chain into a resolved, chart-carrying `ListDomain` (DECISIONS.md D-18).
     charts = _build_charts(defs)  # step 6
     return _emit(defs, charts)  # step 8
 
@@ -77,6 +82,56 @@ def _desugar(defs: tuple[ParamExpr, ...]) -> tuple[ParamExpr, ...]:
     return tuple(
         replace(d, condition=desugar_bool(d.condition)) if d.condition is not None else d
         for d in defs
+    )
+
+
+def _build_list_domains(defs: tuple[ParamExpr, ...]) -> tuple[ParamExpr, ...]:
+    """Fold each `.repeat()`-closed param's `_ElementSnapshot` chain into a
+    resolved `ListDomain` (DECISIONS.md D-18), building the innermost
+    element's chart along the way (`build_chart` is oblivious to lifts —
+    it just needs a path/type_kind/domain/prior/quantized, which the
+    snapshot already carries). Runs after `_validate_lift` has confirmed
+    the element's bounds/priors are sane, mirroring the ordering already
+    used for scalar params (validate before chart-building)."""
+    return tuple(
+        replace(d, domain=_build_list_domain(d.path, d.lift)) if d.lift is not None else d
+        for d in defs
+    )
+
+
+def _build_list_domain(path: str, lift: _ElementSnapshot) -> ListDomain:
+    assert lift.type_kind == "list"
+    assert lift.count is not None
+    inner = lift.element
+    assert inner is not None
+    if inner.type_kind == "list":
+        return ListDomain(
+            element_kind="list",
+            element_domain=_build_list_domain(path, inner),
+            element_chart=None,
+            element_prior=None,
+            element_periodic=False,
+            element_quantized=None,
+            element_default=None,
+            count=lift.count,
+            list_default=lift.list_default,
+        )
+    assert inner.domain is not None
+    element_chart = (
+        build_chart(path, inner.type_kind, inner.domain, inner.prior_spec, inner.quantized_spec)
+        if inner.type_kind in ("real", "integer")
+        else None
+    )
+    return ListDomain(
+        element_kind=inner.type_kind,
+        element_domain=inner.domain,
+        element_chart=element_chart,
+        element_prior=inner.prior_spec,
+        element_periodic=inner.periodic,
+        element_quantized=inner.quantized_spec,
+        element_default=inner.default_value,
+        count=lift.count,
+        list_default=lift.list_default,
     )
 
 
@@ -114,14 +169,18 @@ def _check_types_and_names(defs: tuple[ParamExpr, ...]) -> None:
             raise ResolutionError(f"duplicate param name {d.path!r} in this scope")
         seen.add(d.path)
 
-        if len(d.type_calls) == 0:
+        # `.repeat()` (M4) appends "repeat" to type_calls once per lift
+        # level but is not itself a type method — the element's own type
+        # method (real/integer/.../space/choice) must appear exactly once.
+        type_methods = [t for t in d.type_calls if t != "repeat"]
+        if len(type_methods) == 0:
             raise ResolutionError(
                 f"param {d.path!r} has no type: call exactly one of "
                 ".real/.integer/.categorical/.ordinal/.bool"
             )
-        if len(d.type_calls) > 1:
+        if len(type_methods) > 1:
             raise ResolutionError(
-                f"param {d.path!r} declares more than one type {d.type_calls!r}: "
+                f"param {d.path!r} declares more than one type {type_methods!r}: "
                 "exactly one type method is allowed"
             )
         _check_modifier_placement(d)
@@ -132,6 +191,11 @@ def _check_modifier_placement(d: ParamExpr) -> None:
     weighted = d.type_kind in ("categorical", "ordinal", "bool", "choice", "subset")
 
     if d.prior_spec is not None:
+        if d.lift is not None:
+            raise ResolutionError(
+                f"param {d.path!r}: prior()/log_scale() written after .repeat() applies "
+                "to the list, not the element — call it before .repeat() (row 11)"
+            )
         if isinstance(d.prior_spec, Weights) and not weighted:
             raise ResolutionError(
                 f"param {d.path!r}: prior(weights=...) only applies to "
@@ -141,10 +205,16 @@ def _check_modifier_placement(d: ParamExpr) -> None:
             raise ResolutionError(
                 f"param {d.path!r}: prior(dist) only applies to real or integer params"
             )
-    if d.quantized_spec is not None and not numeric:
-        raise ResolutionError(
-            f"param {d.path!r}: quantized() only applies to real or integer params"
-        )
+    if d.quantized_spec is not None:
+        if d.lift is not None:
+            raise ResolutionError(
+                f"param {d.path!r}: quantized() written after .repeat() applies to the "
+                "list, not the element — call it before .repeat() (row 11)"
+            )
+        if not numeric:
+            raise ResolutionError(
+                f"param {d.path!r}: quantized() only applies to real or integer params"
+            )
 
 
 # -- step 4: resolve references (+ row-14 operand type-checking) -------------
@@ -164,9 +234,24 @@ def _resolve_condition_refs(
 # -- step 5: cycle detection ---------------------------------------------------
 
 
+def _count_deps(lift: _ElementSnapshot | None) -> frozenset[str]:
+    """Repeat-count references, across a (possibly chained) lift, join the
+    same dependency graph as conditions (DECISIONS.md D-21): a count must
+    be known before this param's instances can be materialized, exactly
+    like a condition must be known before activity can be decided."""
+    deps: frozenset[str] = frozenset()
+    while lift is not None and lift.type_kind == "list":
+        if isinstance(lift.count, ArithExpr):
+            deps = deps | lift.count.params
+        lift = lift.element
+    return deps
+
+
 def _check_condition_cycles(defs: tuple[ParamExpr, ...]) -> None:
     deps: dict[str, frozenset[str]] = {
-        d.path: (d.condition.params if d.condition is not None else frozenset()) for d in defs
+        d.path: (d.condition.params if d.condition is not None else frozenset())
+        | _count_deps(d.lift)
+        for d in defs
     }
     for path, own_deps in deps.items():
         if path in own_deps:
@@ -193,12 +278,17 @@ def _check_condition_cycles(defs: tuple[ParamExpr, ...]) -> None:
 # -- step 7: validate declarations --------------------------------------------
 
 
-def _validate_declarations(defs: tuple[ParamExpr, ...]) -> None:
+def _validate_declarations(
+    defs: tuple[ParamExpr, ...], defs_by_path: dict[str, ParamExpr]
+) -> None:
     for d in defs:
-        _validate_domain(d)
-        _validate_prior(d)
-        _validate_quantized(d)
-        _validate_default(d)
+        if d.lift is not None:
+            _validate_lift(d, defs_by_path)
+        else:
+            _validate_domain(d)
+            _validate_prior(d)
+            _validate_quantized(d)
+            _validate_default(d)
         _validate_tags_meta(d)
 
 
@@ -362,6 +452,103 @@ def _validate_default(d: ParamExpr) -> None:
         raise ResolutionError(f"param {d.path!r}: default {value!r} is outside its domain")
 
 
+def _validate_lift(d: ParamExpr, defs_by_path: dict[str, ParamExpr]) -> None:
+    """Validates a `.repeat()`-closed param (DECISIONS.md D-18): each
+    level's count (row 12) and list default (row 21), then the innermost
+    element's own domain/prior/quantized/default via the *existing* scalar
+    validators — reused unchanged against a synthetic element-scoped
+    `ParamExpr` (path `f"{d.path}[]"`, one `"[]"` per nesting level),
+    exactly the definition-path convention the rest of M4 uses for lift
+    descendants.
+    """
+    assert d.lift is not None
+    snap = d.lift
+    depth = 0
+    any_list_default = False
+    while True:
+        depth += 1
+        assert snap.count is not None
+        _check_count_type(d.path, snap.count, defs_by_path)
+        _validate_list_default_shape(d.path, snap)
+        any_list_default = any_list_default or snap.list_default is not None
+        inner = snap.element
+        assert inner is not None
+        if inner.type_kind != "list":
+            break
+        snap = inner
+    if depth > 1 and inner.type_kind in ("space", "choice"):
+        raise ResolutionError(
+            f"param {d.path!r}: a struct/choice element nested under more than one "
+            ".repeat() level is not yet supported (M4 scope boundary, DECISIONS.md "
+            "D-24) — scalar/subset/permutation elements support arbitrary nesting"
+        )
+    element = ParamExpr(
+        path=d.path + "[]" * depth,
+        type_kind=inner.type_kind,
+        type_calls=(inner.type_kind,),
+        domain=inner.domain,
+        prior_spec=inner.prior_spec,
+        quantized_spec=inner.quantized_spec,
+        periodic=inner.periodic,
+        default_value=inner.default_value,
+        struct_space=inner.struct_space,
+        choice_payloads=inner.choice_payloads,
+    )
+    _validate_domain(element)
+    _validate_prior(element)
+    _validate_quantized(element)
+    _validate_default(element)
+    if inner.default_value is not None and any_list_default:
+        raise ResolutionError(
+            f"param {d.path!r}: element default and list default are mutually "
+            "exclusive (row 21)"
+        )
+
+
+def _check_count_type(
+    path: str, count: int | ArithExpr, defs_by_path: dict[str, ParamExpr]
+) -> None:
+    if isinstance(count, ArithExpr):
+        context = f"param {path!r} repeat() count"
+        check_refs_declared(count, defs_by_path, context=context)
+        for node in iter_nodes(count):
+            if isinstance(node, Literal):
+                if not isinstance(node.value, int) or isinstance(node.value, bool):
+                    raise ResolutionError(
+                        f"{context}: must be integer-typed, got literal {node.value!r} (row 12)"
+                    )
+            elif isinstance(node, ParamExpr):
+                kind = defs_by_path[node.path].type_kind
+                if kind != "integer":
+                    raise ResolutionError(
+                        f"{context}: references {node.path!r}, which is {kind!r}, "
+                        "not integer (row 12)"
+                    )
+        return
+    if not isinstance(count, int) or isinstance(count, bool):
+        raise ResolutionError(
+            f"param {path!r}: repeat() count must be an int or an integer-typed "
+            f"expression, got {count!r} (row 12)"
+        )
+    if count < 0:
+        raise ResolutionError(f"param {path!r}: repeat() count must be >= 0, got {count!r}")
+
+
+def _validate_list_default_shape(path: str, snap: _ElementSnapshot) -> None:
+    if snap.list_default is None:
+        return
+    if isinstance(snap.count, ArithExpr):
+        raise ResolutionError(
+            f"param {path!r}: list default requires a static (int) repeat count "
+            "at this level (row 21)"
+        )
+    if not isinstance(snap.list_default, list) or len(snap.list_default) != snap.count:
+        raise ResolutionError(
+            f"param {path!r}: list default length must match the static repeat "
+            f"count ({snap.count}) (row 21)"
+        )
+
+
 def _validate_tags_meta(d: ParamExpr) -> None:
     if "" in d.tags:
         raise ResolutionError(f"param {d.path!r}: empty-string tags are not allowed")
@@ -375,6 +562,46 @@ def _validate_tags_meta(d: ParamExpr) -> None:
 
 
 # -- step 8: emit IR -----------------------------------------------------------
+
+
+def _innermost_element(lift: _ElementSnapshot) -> _ElementSnapshot:
+    while lift.type_kind == "list":
+        assert lift.element is not None
+        lift = lift.element
+    return lift
+
+
+def _relocate_choice_variants(
+    discriminator_path: str,
+    prefix: str,
+    domain: ChoiceDomain,
+    choice_payloads: Any,
+    condition: Any,
+) -> tuple[dict[str, ParamDef], list[Condition], list[Constraint]]:
+    """Shared by a plain top-level choice and a lifted choice element
+    (`ListDomain.element_kind == "choice"`, DECISIONS.md D-18/D-20):
+    reference `discriminator_path` may be an ordinary definition path
+    (`"algo"`) or a `"[]"`-bracketed lift-element template (`"pipeline[]"`)
+    — either way it is just another `ParamExpr` leaf reference to rewrite,
+    which `relocate_child`'s per-instance sibling (`instantiate_element`)
+    already substitutes uniformly alongside the variant's own descendants.
+    """
+    params: dict[str, ParamDef] = {}
+    conditions: list[Condition] = []
+    constraints: list[Constraint] = []
+    for variant_name in domain.variants:
+        payload = choice_payloads.get(variant_name)
+        if payload is None:
+            continue
+        discriminator_eq = Compare("eq", ParamExpr(path=discriminator_path), Literal(variant_name))
+        injected = and_(condition, discriminator_eq)
+        child_params, child_conditions, child_constraints = relocate_child(
+            payload, new_prefix=f"{prefix}{variant_name}.", injected_condition=injected
+        )
+        params.update(child_params)
+        conditions.extend(child_conditions)
+        constraints.extend(child_constraints)
+    return params, conditions, constraints
 
 
 def _emit(defs: tuple[ParamExpr, ...], charts: dict[str, Chart | None]) -> Space:
@@ -409,18 +636,42 @@ def _emit(defs: tuple[ParamExpr, ...], charts: dict[str, Chart | None]) -> Space
             constraints.extend(child_constraints)
         elif d.type_kind == "choice":
             assert isinstance(d.domain, ChoiceDomain)
-            for variant_name in d.domain.variants:
-                payload = d.choice_payloads.get(variant_name)
-                if payload is None:
-                    continue
-                discriminator_eq = Compare("eq", ParamExpr(path=d.path), Literal(variant_name))
-                injected = and_(d.condition, discriminator_eq)
+            child_params, child_conditions, child_constraints = _relocate_choice_variants(
+                d.path, f"{d.path}.", d.domain, d.choice_payloads, d.condition
+            )
+            params.update(child_params)
+            conditions.extend(child_conditions)
+            constraints.extend(child_constraints)
+        elif d.type_kind == "list":
+            assert isinstance(d.domain, ListDomain)
+            assert d.lift is not None
+            leaf = _innermost_element(d.lift)
+            if leaf.type_kind == "space" and leaf.struct_space is not None:
                 child_params, child_conditions, child_constraints = relocate_child(
-                    payload, new_prefix=f"{d.path}.{variant_name}.", injected_condition=injected
+                    leaf.struct_space, new_prefix=f"{d.path}[].", injected_condition=None
                 )
                 params.update(child_params)
                 conditions.extend(child_conditions)
-                constraints.extend(child_constraints)
+                # Element-scoped constraints are per-instance templates
+                # (DECISIONS.md D-20) — carried on ListDomain, never
+                # flattened into `space.constraints` directly.
+                params[d.path] = replace(
+                    params[d.path],
+                    domain=replace(d.domain, element_constraints=tuple(child_constraints)),
+                )
+            elif leaf.type_kind == "choice":
+                assert isinstance(leaf.domain, ChoiceDomain)
+                variant_params, variant_conditions, variant_constraints = (
+                    _relocate_choice_variants(
+                        f"{d.path}[]", f"{d.path}[].", leaf.domain, leaf.choice_payloads, None
+                    )
+                )
+                params.update(variant_params)
+                conditions.extend(variant_conditions)
+                params[d.path] = replace(
+                    params[d.path],
+                    domain=replace(d.domain, element_constraints=tuple(variant_constraints)),
+                )
 
     return Space(
         params=MappingProxyType(params),
