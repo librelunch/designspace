@@ -117,14 +117,25 @@ def main() -> None:
     print(f"  flat keys: {list(flat)[:4]} ... ({len(flat)} total)")
     print(f"  unflatten(flatten(cfg)) == cfg: {restored == cfg}")
 
-    # Constraints on that config, labelled by kind. A forbid reads as
-    # "satisfied means infeasible"; a declared constraint is a plain annotation.
+    # Constraints on that config. Mind the polarity: a forbid's `satisfied`
+    # refers to its *forbidden* predicate, so satisfied=True would mean
+    # infeasible. Because this config is a feasible draw, the forbid reads as
+    # clear. We render forbids as feasibility and keep raw satisfied/margin only
+    # for `.constrain()`, where positive margin = slack reads intuitively.
     print("\nConstraints on the sampled config:")
     for ce in space.evaluate_constraints(cfg):
-        kind = "forbid " if ce.constraint.hard else "declare"
         tag = ", ".join(sorted(ce.constraint.tags)) or "-"
-        margin = f"{ce.margin:+.2f}" if ce.margin is not None else " n/a"
-        print(f"  {kind} [{tag:18}] satisfied={ce.satisfied!s:5} margin={margin}")
+        if ce.constraint.hard:
+            if not ce.applicable:
+                verdict = "inapplicable (Unknown)"
+            elif ce.satisfied:
+                verdict = "TRIPPED  -> infeasible"
+            else:
+                verdict = "clear    -> feasible"
+            print(f"  forbid  [{tag:18}] {verdict}")
+        else:
+            margin = f"{ce.margin:+.2f}" if ce.margin is not None else " n/a"
+            print(f"  declare [{tag:18}] satisfied={ce.satisfied!s:5} margin={margin}")
 
     # And a hand-written infeasible one: a pipeline of only evolutionary ops.
     print("\nA pipeline with no local_search step:")

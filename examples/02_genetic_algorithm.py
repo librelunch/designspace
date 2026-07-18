@@ -125,19 +125,27 @@ def main() -> None:
     for reason in space.infeasibility_reasons(bad):
         print(f"  reason: {reason}")
 
-    # Hard (forbid) and declared (constrain) constraints, side by side, with
-    # the meaning of `satisfied` spelled out for each kind.
+    # `evaluate_constraints` returns forbids and declared constraints together.
+    # Mind the polarity: a forbid's `satisfied` refers to its *forbidden*
+    # predicate, so `satisfied=True` means the forbidden state holds -> the
+    # config is infeasible. We therefore render forbids as feasibility, and keep
+    # the raw satisfied/margin only for `.constrain()`, where positive margin =
+    # slack reads the intuitive way.
     print("\nAll constraints on that config:")
     for ce in space.evaluate_constraints(bad):
-        kind = "forbid " if ce.constraint.hard else "declare"
         tag = ", ".join(sorted(ce.constraint.tags)) or "-"
         if ce.constraint.hard:
-            note = "VIOLATED (infeasible)" if ce.satisfied else "clear"
+            if not ce.applicable:
+                verdict = "inapplicable (Unknown)"
+            elif ce.satisfied:
+                verdict = "TRIPPED  -> infeasible"
+            else:
+                verdict = "clear    -> feasible"
+            print(f"  forbid  [{tag:18}] {verdict}")
         else:
-            note = "holds" if ce.satisfied else "below threshold"
-        margin = f"{ce.margin:+.4f}" if ce.margin is not None else "  n/a "
-        print(f"  {kind} [{tag:18}] satisfied={ce.satisfied!s:5} "
-              f"margin={margin}  -> {note}")
+            margin = f"{ce.margin:+.4f}" if ce.margin is not None else "  n/a "
+            print(f"  declare [{tag:18}] satisfied={ce.satisfied!s:5} "
+                  f"margin={margin}")
 
 
 if __name__ == "__main__":
