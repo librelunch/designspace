@@ -1,0 +1,288 @@
+"""Builder view types (API_v3.md, "Builder view types"; DECISIONS.md D-27,
+D-28).
+
+`ds.param(name)` returns a `FreshParamExpr` — a `ParamExpr` carrying the 9
+type methods. Each type method narrows to a type-specific view that omits
+the type methods, so a second one is a static type error (and, via
+`ParamExpr.__getattr__`, still the path-named row-2 `ResolutionError` at
+runtime — never a bare `AttributeError`). `.repeat()` — available on any
+typed view, not on `FreshParamExpr` or the base — narrows to `ListParamExpr`,
+which re-offers `.repeat()` for nested/variadic lifts.
+
+Class shape, bottom to top:
+    ParamExpr                      (build/_paramexpr.py — no type methods, no .repeat())
+    +-- FreshParamExpr             9 type methods only
+    +-- _TypedParamExpr            .repeat() only — shared by every narrowed view
+        +-- _NumericParamExpr      + .log_scale()/.quantized() — Real/Integer only
+        |   +-- RealParamExpr
+        |   +-- IntegerParamExpr
+        +-- BoolParamExpr
+        +-- CategoricalParamExpr
+        +-- OrdinalParamExpr
+        +-- SubsetParamExpr
+        +-- PermutationParamExpr
+        +-- ChoiceParamExpr
+        +-- StructParamExpr
+        +-- ListParamExpr
+
+None of these subclasses add fields (API_v3.md: "they add no state beyond
+ParamExpr"); each is a thin method surface over the same dataclass fields,
+constructed via `ParamExpr._as()`.
+"""
+
+from __future__ import annotations
+
+import builtins
+from collections.abc import Sequence
+from dataclasses import replace
+from types import MappingProxyType
+from typing import Any, Self
+
+from designspace.build._paramexpr import ParamExpr, _ElementSnapshot
+from designspace.errors import ResolutionError
+from designspace.expr import ArithExpr
+from designspace.ir import (
+    BoolDomain,
+    CategoricalDomain,
+    ChoiceDomain,
+    IntegerDomain,
+    Log,
+    OrdinalDomain,
+    PermutationDomain,
+    QuantizedSpec,
+    RealDomain,
+    StructDomain,
+    SubsetDomain,
+)
+
+
+class FreshParamExpr(ParamExpr):
+    """`ds.param(name)`'s return type: a `ParamExpr` that additionally
+    carries the 9 type methods, each choosing the param's type exactly
+    once (API_v3.md, "Construction" / "Builder view types")."""
+
+    def real(
+        self, lo: float | ArithExpr, hi: float | ArithExpr, periodic: builtins.bool = False
+    ) -> RealParamExpr:
+        return self._as(
+            RealParamExpr,
+            type_kind="real",
+            domain=RealDomain(lo, hi),
+            periodic=periodic,
+            type_calls=(*self.type_calls, "real"),
+        )
+
+    def integer(self, lo: int | ArithExpr, hi: int | ArithExpr) -> IntegerParamExpr:
+        return self._as(
+            IntegerParamExpr,
+            type_kind="integer",
+            domain=IntegerDomain(lo, hi),
+            type_calls=(*self.type_calls, "integer"),
+        )
+
+    def categorical(self, *values: Any) -> CategoricalParamExpr:
+        return self._as(
+            CategoricalParamExpr,
+            type_kind="categorical",
+            domain=CategoricalDomain(tuple(values)),
+            type_calls=(*self.type_calls, "categorical"),
+        )
+
+    def ordinal(self, *values: Any) -> OrdinalParamExpr:
+        return self._as(
+            OrdinalParamExpr,
+            type_kind="ordinal",
+            domain=OrdinalDomain(tuple(values)),
+            type_calls=(*self.type_calls, "ordinal"),
+        )
+
+    def bool(self) -> BoolParamExpr:
+        return self._as(
+            BoolParamExpr,
+            type_kind="bool",
+            domain=BoolDomain(),
+            type_calls=(*self.type_calls, "bool"),
+        )
+
+    def subset(
+        self, items: Sequence[Any], min_size: int = 0, max_size: int | None = None
+    ) -> SubsetParamExpr:
+        return self._as(
+            SubsetParamExpr,
+            type_kind="subset",
+            domain=SubsetDomain(tuple(items), min_size, max_size),
+            type_calls=(*self.type_calls, "subset"),
+        )
+
+    def permutation(self, items: Sequence[Any]) -> PermutationParamExpr:
+        return self._as(
+            PermutationParamExpr,
+            type_kind="permutation",
+            domain=PermutationDomain(tuple(items)),
+            type_calls=(*self.type_calls, "permutation"),
+        )
+
+    def choice(
+        self, *variants: str | tuple[str, Any], **keyword_variants: Any
+    ) -> ChoiceParamExpr:
+        names: list[str] = []
+        payloads: dict[str, Any] = {}
+        has_payload: set[str] = set()
+        for v in variants:
+            if isinstance(v, str):
+                names.append(v)
+            else:
+                name, payload = v
+                names.append(name)
+                if payload is not None:
+                    payloads[name] = payload
+                    has_payload.add(name)
+        for name, payload in keyword_variants.items():
+            names.append(name)
+            payloads[name] = payload
+            has_payload.add(name)
+        return self._as(
+            ChoiceParamExpr,
+            type_kind="choice",
+            domain=ChoiceDomain(tuple(names), frozenset(has_payload)),
+            choice_payloads=MappingProxyType(payloads),
+            type_calls=(*self.type_calls, "choice"),
+        )
+
+    def space(self, *exprs: Any) -> StructParamExpr:
+        from designspace.build._space import Space
+        from designspace.resolve._pipeline import resolve_space
+
+        # `.space(prebuilt: Space)` (DECISIONS.md D-20/D-15): the only route
+        # to per-element constraints on a repeated struct — the inline
+        # `.space(*exprs)` form has nowhere to hang a `.forbid()`. A single
+        # positional `Space` argument is unambiguous: the inline form's
+        # `*exprs` are always bare `ParamExpr`s, never a `Space`.
+        if len(exprs) == 1 and isinstance(exprs[0], Space):
+            child = exprs[0]
+        else:
+            child = resolve_space(exprs)
+        return self._as(
+            StructParamExpr,
+            type_kind="space",
+            domain=StructDomain(),
+            struct_space=child,
+            type_calls=(*self.type_calls, "space"),
+        )
+
+
+class _TypedParamExpr(ParamExpr):
+    """Shared by every narrowed view (a type has been chosen, or a lift
+    applied): `.repeat()` (API_v3.md, "The lift") — the one modifier valid
+    across every element type, including a list itself (nested lifts)."""
+
+    def repeat(self, *counts: int | ArithExpr) -> ListParamExpr:
+        if len(counts) == 0:
+            raise ResolutionError(f"param {self.path!r}: repeat() requires at least one count")
+        # Variadic sugar: `.repeat(2, 3)` reads as shape (2, 3), first count
+        # outermost, desugaring to chained lifts in *reverse* order —
+        # `.repeat(3).repeat(2)` (API_v3.md, "The lift").
+        ordered = list(reversed(counts))
+        result = self._repeat_one(ordered[0])
+        for c in ordered[1:]:
+            result = result._repeat_one(c)
+        return result
+
+    def _repeat_one(self, count: int | ArithExpr) -> ListParamExpr:
+        if self.type_kind == "list":
+            assert self.lift is not None
+            inner = self.lift
+        else:
+            # Every _TypedParamExpr instance was built either by a type
+            # method (FreshParamExpr) or by a prior _repeat_one() — both set
+            # type_kind to a concrete string, never leave it None.
+            assert self.type_kind is not None
+            inner = _ElementSnapshot(
+                type_kind=self.type_kind,
+                domain=self.domain,
+                prior_spec=self.prior_spec,
+                quantized_spec=self.quantized_spec,
+                periodic=self.periodic,
+                default_value=self.default_value,
+                struct_space=self.struct_space,
+                choice_payloads=self.choice_payloads,
+            )
+        new_lift = _ElementSnapshot(type_kind="list", element=inner, count=count)
+        return self._as(
+            ListParamExpr,
+            type_kind="list",
+            domain=None,
+            prior_spec=None,
+            quantized_spec=None,
+            periodic=False,
+            default_value=None,
+            struct_space=None,
+            choice_payloads=MappingProxyType({}),
+            lift=new_lift,
+            type_calls=(*self.type_calls, "repeat"),
+        )
+
+
+class _NumericParamExpr(_TypedParamExpr):
+    """Real/Integer only: `.log_scale()`/`.quantized()` (API_v3.md,
+    "Modifiers and Layering"). Absent from every other view — misuse
+    (`.categorical(...).log_scale()`) is a static `attr-defined` error and,
+    at runtime, `ParamExpr.__getattr__` re-raises it as row 11's
+    path-named `ResolutionError` (DECISIONS.md D-28)."""
+
+    def log_scale(self) -> Self:
+        return self.prior(Log())
+
+    def quantized(
+        self,
+        step: float | None = None,
+        factor: float | None = None,
+        include_hi: builtins.bool = False,
+    ) -> Self:
+        return replace(self, quantized_spec=QuantizedSpec(step, factor, include_hi))
+
+
+class RealParamExpr(_NumericParamExpr):
+    pass
+
+
+class IntegerParamExpr(_NumericParamExpr):
+    pass
+
+
+class BoolParamExpr(_TypedParamExpr):
+    # Already a BoolExpr transitively (ParamExpr is BoolExpr-inheriting) —
+    # API_v3.md: "BoolParamExpr is additionally a BoolExpr (a boolean param
+    # is usable directly as a condition)".
+    pass
+
+
+class CategoricalParamExpr(_TypedParamExpr):
+    pass
+
+
+class OrdinalParamExpr(_TypedParamExpr):
+    pass
+
+
+class SubsetParamExpr(_TypedParamExpr):
+    pass
+
+
+class PermutationParamExpr(_TypedParamExpr):
+    pass
+
+
+class ChoiceParamExpr(_TypedParamExpr):
+    pass
+
+
+class StructParamExpr(_TypedParamExpr):
+    pass
+
+
+class ListParamExpr(_TypedParamExpr):
+    """`.repeat()`'s return type; re-offers `.repeat()` (inherited from
+    `_TypedParamExpr`) for nested/variadic lifts."""
+
+    pass

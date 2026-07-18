@@ -64,3 +64,174 @@ Deferred:   §Space — Metaprogramming names `TypedParamExpr` (return of
             one-line forward note was added at that line. The builder-layer
             `type_kind`-from-class / `type_calls`-retirement question gets its own
             design note before M4.6 implementation (see M4.6 directive).
+
+## D-28 (M4.6) — View-class mechanism: `type_kind`/`type_calls`, the method
+split, and two departures from the plan's Build section
+
+Question:   The M4.6 directive asks two things settled on paper before coding:
+            (1) how `ParamExpr.type_kind` is derived from the view class and
+            whether `type_calls` is retired; (2) by extension, exactly which
+            methods move off the base `ParamExpr` and how the `__getattr__`
+            row-2 trap is implemented so it composes with the *existing*,
+            already-tested resolution-time checks (`_check_types_and_names`,
+            `_check_modifier_placement`) without weakening the error table.
+            Working through (2) surfaced two further ambiguities: the spec's
+            "Builder view types" paragraph groups `.contains()/.size()/
+            .position_of()/.sum_over()` under *both* `SubsetParamExpr` and
+            `PermutationParamExpr`, contradicting row 18 (`.contains()` on
+            permutation is a resolution error) and the pre-existing,
+            already-tested `_require_subset_domain`/`_require_permutation_domain`
+            split; and the plan's Build section says modifiers/aggregates
+            "stay on the base" while the Gate requires a static (mypy)
+            rejection of `.categorical(...).log_scale()`, which is only
+            achievable if `.log_scale()` is *not* inherited by
+            `CategoricalParamExpr`.
+Options:    For (1): (a) derive `type_kind` from the view's class (a
+            `ClassVar` per view) and retire `type_calls`; (b) keep `type_kind`
+            a plain instance field exactly as today, keep `type_calls` as the
+            resolution-time backstop.
+            For the combinatorial-query grouping: (a) mirror the spec
+            paragraph literally, adding `.contains()`/`.size()`/`.sum_over()`
+            to `PermutationParamExpr` too; (b) leave these methods where they
+            are today (universal, on the base), unchanged.
+            For the modifier-narrowing boundary: (a) take the plan's Build
+            section literally — nothing moves off the base but the 9 type
+            methods and `.repeat()`; accept the Gate's `.log_scale()` example
+            as unreachable/aspirational; (b) additionally move `.log_scale()`/
+            `.quantized()` into a Real/Integer-only mixin, since the Gate
+            names them explicitly and they are the only modifiers the spec
+            ties to specific types outside the type methods.
+Choice:     (b) in all three cases.
+            **type_kind/type_calls.** `type_kind` stays a plain instance
+            field, set by the type methods exactly as before (unaffected by
+            which subclass holds the method). `type_calls` is *retained*,
+            unchanged in shape or the one place it's read
+            (`_check_types_and_names`). Reasoning: since a fluent second type
+            call now fails structurally (the method is simply absent on the
+            narrowed view — see below), `type_calls` can never again
+            accumulate more than one real entry via the builder API; but
+            API_v3.md's own text ("resolution still rejects any definition
+            that carries more than one type however it was built... the law
+            holds for programmatically-constructed definitions as well as
+            fluent ones") requires a mechanism that survives someone
+            constructing a bare `ParamExpr(...)` by hand with conflicting
+            state — a class-derived `type_kind` cannot represent "two types"
+            at all (it is a single string), so history-tracking via
+            `type_calls` is the only representation that can. It becomes a
+            backstop exercised only by hand-built defs, not dead code (M4.6
+            gate requires exactly this: a "programmatically-built two-type
+            definition" test alongside the fluent one).
+
+            **The class hierarchy.** `build/_paramexpr.py` keeps `ParamExpr`
+            (all fields unchanged, including `type_kind`/`type_calls`) with
+            the identity/domain-level modifiers that stay universal
+            (`.prior()`, `.default()`, `.when()`, `.tag()`, `.meta()`), the
+            combinatorial queries (`.contains()`, `.size()`, `.sum_over()`,
+            `.position_of()`), `.length()`, and the inherited `VectorExpr`
+            aggregates (`.field()`, `.sum()`, `.min()`, `.max()`,
+            `.count_of()`, `.is_sorted()`, `.distinct()`) — API_v3.md requires
+            the base to *be* a `VectorExpr` ("ParamExpr is the base type. It
+            is an ArithExpr/BoolExpr/VectorExpr"), so these cannot be removed
+            from it without contradicting that sentence, and reference-position
+            usage (`ds.param("layers").field("width").sum()`, written before
+            any type is known at the reference site) needs them universally
+            available regardless. A private `_as(cls, **changes)` helper on
+            `ParamExpr` builds a *different* concrete subclass from `self`'s
+            current field values (`dataclasses.replace()` can't do this — it
+            always returns `type(self)`). New `build/_views.py` holds:
+            `FreshParamExpr(ParamExpr)` — the 9 type methods, each returning
+            `self._as(TargetView, ...)`; `_TypedParamExpr(ParamExpr)` — the
+            shared `.repeat()`/`._repeat_one()` implementation (identical
+            logic to before, relocated), inherited by every narrowed view and
+            by `ListParamExpr` itself (so nested lifts and `.repeat(2, 3)`
+            keep working unchanged); `_NumericParamExpr(_TypedParamExpr)` —
+            `.log_scale()`/`.quantized()`, inherited only by `RealParamExpr`/
+            `IntegerParamExpr`; the 9 named views plus `ListParamExpr`, each a
+            thin `pass`-body subclass of the appropriate one of the above.
+            Ordinary modifiers (`.prior()`, `.tag()`, …) need no special
+            handling: `dataclasses.replace()` on an undecorated subclass of a
+            frozen dataclass returns `type(self)`, so they preserve the
+            caller's view automatically.
+
+            **Combinatorial queries stay universal, not split per the spec
+            paragraph.** `.contains()`/`.size()`/`.sum_over()`/`.position_of()`
+            remain on the base, unchanged from pre-M4.6 behavior — *not*
+            narrowed to match the literal "SubsetParamExpr/PermutationParamExpr
+            have `.contains()`/`.size()`/`.position_of()`/`.sum_over()"
+            wording. That wording, read as an exhaustive per-class table,
+            would put `.contains()` on `PermutationParamExpr`, but row 18
+            (frozen error-table text, tag R) *requires* `.contains()` on a
+            permutation to be a resolution error, and the already-implemented,
+            already-tested `_require_subset_domain`/`_require_permutation_domain`
+            checks in `resolve/_expr_checks.py` already enforce exactly that
+            split (`.contains()`/`.size()`/`.sum_over()` require a subset
+              domain; `.position_of()` requires a permutation domain). CLAUDE.md
+            forbids weakening a stated law to resolve an ambiguity, so the
+            parenthetical is read as loose descriptive prose (naming the kinds
+            of query methods combinatorial params use) rather than a precise
+            membership table, and the existing, law-consistent split is left
+            untouched. Static (mypy) per-view narrowing of these four methods
+            is not attempted this milestone — no Gate test requires it, and
+            row 18 already covers the runtime law regardless of what an IDE
+            offers.
+
+            **`__getattr__`, and where it deliberately overrides the plan's
+            own "non-type-method miss stays a normal AttributeError" line.**
+            One `__getattr__` on the base `ParamExpr`, inherited everywhere;
+            it fires only when normal attribute lookup fails (i.e., only on
+            the views that genuinely lack the method):
+              - The 9 type-method names → `ResolutionError`, path-named,
+                "(row 2)" — fires on any narrowed view or `ListParamExpr`
+                (which lack them) but never on `FreshParamExpr` (which has
+                them as real methods, so lookup never fails).
+              - `log_scale`/`quantized` → `ResolutionError`, path-named,
+                "(row 11)" — branches on `self.lift is not None` to
+                distinguish "written after `.repeat()`" from "wrong type",
+                matching `_check_modifier_placement`'s existing wording
+                closely enough that `match="row 11"` in
+                `tests/unit/test_resolve_m4.py::TestRow11MisplacedLayerModifier`
+                keeps passing unchanged. Fires on every view except
+                `RealParamExpr`/`IntegerParamExpr`.
+              - Anything else → plain `AttributeError`, per the plan.
+            The `log_scale`/`quantized` branch is a **deliberate departure**
+            from the plan's Build-section sentence "a non-type-method miss
+            stays a normal AttributeError" — that sentence was written with
+            only the 9 type methods in view and doesn't account for the
+            Gate's separate requirement that `.log_scale()` be statically
+            absent from `CategoricalParamExpr`. Once `.log_scale()`/
+            `.quantized()` move into `_NumericParamExpr` (required for the
+            Gate's mypy check), leaving their absence as a bare
+            `AttributeError` would silently downgrade row 11 (frozen
+            error-table text, tag R: must be a `ResolutionError`) for the
+            fluent path, and would also break the existing tests
+            `TestRow11ModifierPlacement.test_quantized_on_categorical_raises`
+            and `TestRow11MisplacedLayerModifier.{test_prior_after_repeat_raises,
+            test_quantized_after_repeat_raises}`, none of which this milestone
+            is permitted to weaken. Per the plan's own conflict rule (spec
+            outranks plan), the frozen error table wins over the Build
+            section's one-line generalization. `.repeat()` before a type is
+            chosen (`ds.param("x").repeat(4)`) is *not* given the same
+            treatment — it stays a plain `AttributeError` (mypy already
+            catches it statically; no test exercises the runtime path; the
+            plan's default sentence is left standing where nothing forces an
+            exception).
+
+            **Resolution-time backstops that become hand-built-only.** After
+            this split, `_check_types_and_names`'s `len(type_methods) > 1`
+            branch and `_check_modifier_placement`'s numeric/weighted checks
+            for `quantized_spec` are no longer reachable via the fluent
+            builder (the `__getattr__` trap fires first) — they remain live
+            only as the "however it was built" backstop for a hand-constructed
+            `ParamExpr`. This mirrors `type_calls`'s own status exactly and is
+            not dead code: the M4.6 gate requires a message-content test for
+            both the fluent and the programmatically-built two-type case, and
+            an equivalent programmatically-built test is added for the
+            quantized-on-categorical backstop.
+Spec delta: The "Builder view types" paragraph's parenthetical grouping of
+            `.contains()/.size()/.position_of()/.sum_over()` under both
+            `SubsetParamExpr` and `PermutationParamExpr` should be reworded to
+            match row 18 and the Combinatorial table's existing per-method
+            ownership (`.contains()`/`.size()`/`.sum_over()` → subset;
+            `.position_of()` → permutation) — not fixed in this milestone
+            since the spec text is otherwise correct and this is a wording-only
+            fix to a non-normative descriptive aside.

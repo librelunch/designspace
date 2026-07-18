@@ -9,15 +9,23 @@ public modifier method shares the field's natural name (`prior`, `default`,
 `quantized`, `meta`) — a dataclass field and a same-named method in one class
 body collide (the `def` statement overwrites the field's class-level default),
 so the method needs its own name for the state it reads and writes.
+
+The type methods and `.repeat()` live in `build/_views.py`, not here — see
+API_v3.md, "Builder view types" and DECISIONS.md D-27/D-28. `ParamExpr` is
+the base type: no type methods, no `.repeat()`, but every modifier that stays
+universal across param types (`.prior()`, `.default()`, `.when()`, `.tag()`,
+`.meta()`), the combinatorial queries, and the `VectorExpr` aggregates
+(reference-position usage needs these regardless of which type, if any, the
+referenced param turns out to declare).
 """
 
 from __future__ import annotations
 
 import builtins
 from collections.abc import Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any, Self, TypeVar
 
 from designspace.errors import ResolutionError
 from designspace.expr import (
@@ -31,21 +39,30 @@ from designspace.expr import (
     SumOver,
     VectorExpr,
 )
-from designspace.ir import (
-    BoolDomain,
-    CategoricalDomain,
-    ChoiceDomain,
-    Domain,
-    IntegerDomain,
-    Log,
-    OrdinalDomain,
-    PermutationDomain,
-    QuantizedSpec,
-    RealDomain,
-    StructDomain,
-    SubsetDomain,
-    Weights,
+from designspace.ir import Domain, QuantizedSpec, Weights
+
+_ViewT = TypeVar("_ViewT", bound="ParamExpr")
+
+# Names `__getattr__` recognizes as *meaningful* misses (DECISIONS.md D-28):
+# a second type method (row 2) or a numeric-only modifier misapplied to a
+# non-numeric view / written after `.repeat()` (row 11). Both are frozen
+# error-table rows (tag R, ResolutionError) and must not degrade to a bare
+# AttributeError just because the view narrowing hid the method. Any other
+# attribute miss is a genuine typo and stays a plain AttributeError.
+_TYPE_METHOD_NAMES = frozenset(
+    {
+        "real",
+        "integer",
+        "categorical",
+        "ordinal",
+        "bool",
+        "subset",
+        "permutation",
+        "choice",
+        "space",
+    }
 )
+_NUMERIC_ONLY_MODIFIERS = frozenset({"log_scale", "quantized"})
 
 
 @dataclass(frozen=True)
@@ -80,6 +97,9 @@ class _ElementSnapshot:
 class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     """A parameter, in reference position (bare) or definition position
     (after a type method and any modifiers).
+
+    The base type (API_v3.md, "Builder view types"): every param object,
+    whatever its narrowed view, `isinstance`s as `ParamExpr`.
     """
 
     path: str
@@ -120,172 +140,61 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     def params(self) -> frozenset[str]:
         return frozenset({self.path})
 
-    # -- type methods (exactly one expected; enforced at resolution) --------
+    def _as(self, cls: type[_ViewT], **changes: Any) -> _ViewT:
+        """Build a *different* concrete view from `self`'s current field
+        values (DECISIONS.md D-28) — `dataclasses.replace()` always returns
+        `type(self)`, which is right for ordinary modifiers (they must
+        preserve the caller's view) but wrong for the type methods and
+        `.repeat()`, which narrow to a specific new view.
+        """
+        kwargs: dict[str, Any] = {f.name: getattr(self, f.name) for f in fields(self)}
+        kwargs.update(changes)
+        return cls(**kwargs)
 
-    def real(
-        self, lo: float | ArithExpr, hi: float | ArithExpr, periodic: builtins.bool = False
-    ) -> ParamExpr:
-        return replace(
-            self,
-            type_kind="real",
-            domain=RealDomain(lo, hi),
-            periodic=periodic,
-            type_calls=(*self.type_calls, "real"),
-        )
+    # `__getattr__` must be invisible to mypy (DECISIONS.md D-28): a class
+    # with a *statically visible* `__getattr__` is treated by mypy as
+    # accepting any attribute name, which would silently defeat the M4.6
+    # gate's static-typing check (`.categorical(...).log_scale()` must be a
+    # real `attr-defined` error). `if not TYPE_CHECKING:` makes mypy skip
+    # this definition entirely while it still runs normally at import time —
+    # confirmed empirically: `attr-defined` fires under mypy, the runtime
+    # exception still raises under CPython.
+    if not TYPE_CHECKING:
 
-    def integer(self, lo: int | ArithExpr, hi: int | ArithExpr) -> ParamExpr:
-        return replace(
-            self,
-            type_kind="integer",
-            domain=IntegerDomain(lo, hi),
-            type_calls=(*self.type_calls, "integer"),
-        )
-
-    def categorical(self, *values: Any) -> ParamExpr:
-        return replace(
-            self,
-            type_kind="categorical",
-            domain=CategoricalDomain(tuple(values)),
-            type_calls=(*self.type_calls, "categorical"),
-        )
-
-    def ordinal(self, *values: Any) -> ParamExpr:
-        return replace(
-            self,
-            type_kind="ordinal",
-            domain=OrdinalDomain(tuple(values)),
-            type_calls=(*self.type_calls, "ordinal"),
-        )
-
-    def bool(self) -> ParamExpr:
-        return replace(
-            self,
-            type_kind="bool",
-            domain=BoolDomain(),
-            type_calls=(*self.type_calls, "bool"),
-        )
-
-    def subset(
-        self, items: Sequence[Any], min_size: int = 0, max_size: int | None = None
-    ) -> ParamExpr:
-        return replace(
-            self,
-            type_kind="subset",
-            domain=SubsetDomain(tuple(items), min_size, max_size),
-            type_calls=(*self.type_calls, "subset"),
-        )
-
-    def permutation(self, items: Sequence[Any]) -> ParamExpr:
-        return replace(
-            self,
-            type_kind="permutation",
-            domain=PermutationDomain(tuple(items)),
-            type_calls=(*self.type_calls, "permutation"),
-        )
-
-    def choice(
-        self, *variants: str | tuple[str, Any], **keyword_variants: Any
-    ) -> ParamExpr:
-        names: list[str] = []
-        payloads: dict[str, Any] = {}
-        has_payload: set[str] = set()
-        for v in variants:
-            if isinstance(v, str):
-                names.append(v)
-            else:
-                name, payload = v
-                names.append(name)
-                if payload is not None:
-                    payloads[name] = payload
-                    has_payload.add(name)
-        for name, payload in keyword_variants.items():
-            names.append(name)
-            payloads[name] = payload
-            has_payload.add(name)
-        return replace(
-            self,
-            type_kind="choice",
-            domain=ChoiceDomain(tuple(names), frozenset(has_payload)),
-            choice_payloads=MappingProxyType(payloads),
-            type_calls=(*self.type_calls, "choice"),
-        )
-
-    def space(self, *exprs: Any) -> ParamExpr:
-        from designspace.build._space import Space
-        from designspace.resolve._pipeline import resolve_space
-
-        # `.space(prebuilt: Space)` (DECISIONS.md D-20/D-15): the only route
-        # to per-element constraints on a repeated struct — the inline
-        # `.space(*exprs)` form has nowhere to hang a `.forbid()`. A single
-        # positional `Space` argument is unambiguous: the inline form's
-        # `*exprs` are always bare `ParamExpr`s, never a `Space`.
-        if len(exprs) == 1 and isinstance(exprs[0], Space):
-            child = exprs[0]
-        else:
-            child = resolve_space(exprs)
-        return replace(
-            self,
-            type_kind="space",
-            domain=StructDomain(),
-            struct_space=child,
-            type_calls=(*self.type_calls, "space"),
-        )
-
-    # -- the lift (M4) --------------------------------------------------------
-
-    def repeat(self, *counts: int | ArithExpr) -> ParamExpr:
-        if len(counts) == 0:
-            raise ResolutionError(f"param {self.path!r}: repeat() requires at least one count")
-        if len(counts) > 1:
-            # Variadic sugar: `.repeat(2, 3)` reads as shape (2, 3), first
-            # count outermost, desugaring to chained lifts in *reverse*
-            # order — `.repeat(3).repeat(2)` (API_v3.md, "The lift").
-            result = self
-            for c in reversed(counts):
-                result = result.repeat(c)
-            return result
-        (count,) = counts
-        if self.type_kind is None:
-            raise ResolutionError(f"param {self.path!r}: repeat() requires a type before .repeat()")
-        if self.type_kind == "list":
-            assert self.lift is not None
-            inner = self.lift
-        else:
-            inner = _ElementSnapshot(
-                type_kind=self.type_kind,
-                domain=self.domain,
-                prior_spec=self.prior_spec,
-                quantized_spec=self.quantized_spec,
-                periodic=self.periodic,
-                default_value=self.default_value,
-                struct_space=self.struct_space,
-                choice_payloads=self.choice_payloads,
-            )
-        new_lift = _ElementSnapshot(type_kind="list", element=inner, count=count)
-        return replace(
-            self,
-            type_kind="list",
-            domain=None,
-            prior_spec=None,
-            quantized_spec=None,
-            periodic=False,
-            default_value=None,
-            struct_space=None,
-            choice_payloads=MappingProxyType({}),
-            lift=new_lift,
-            type_calls=(*self.type_calls, "repeat"),
-        )
+        def __getattr__(self, name: str) -> Any:
+            if name in _TYPE_METHOD_NAMES:
+                raise ResolutionError(
+                    f"param {self.path!r} declares more than one type: exactly "
+                    "one type method is allowed (row 2)"
+                )
+            if name in _NUMERIC_ONLY_MODIFIERS:
+                if self.lift is not None:
+                    raise ResolutionError(
+                        f"param {self.path!r}: {name}() written after .repeat() applies "
+                        "to the list, not the element — call it before .repeat() (row 11)"
+                    )
+                raise ResolutionError(
+                    f"param {self.path!r}: {name}() only applies to real or integer "
+                    "params (row 11)"
+                )
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
 
     # `.field()` and the aggregate methods (`.sum()`, `.min()`, `.max()`,
     # `.count_of()`, `.is_sorted()`, `.distinct()`) are inherited from
-    # VectorExpr.
+    # VectorExpr — universal (DECISIONS.md D-28): API_v3.md requires the
+    # base to *be* a VectorExpr, and a bare reference (`ds.param("layers")`,
+    # before any type is known at the reference site) needs them regardless
+    # of what the referenced param turns out to declare.
 
     def length(self) -> ArithExpr:
         return Length(self)
 
-    # -- combinatorial expression methods (subset/permutation only; validity
-    # is a resolution-time check, not a construction-time one, per M0's "no
-    # evaluation, no resolution happens here") -------------------------------
+    # -- combinatorial expression methods: kept universal, not narrowed to
+    # SubsetParamExpr/PermutationParamExpr (DECISIONS.md D-28) — validity is
+    # a resolution-time check (row 18: `.contains()` on permutation, etc.),
+    # not a construction-time one, per M0's "no evaluation, no resolution
+    # happens here" and the existing `_require_subset_domain`/
+    # `_require_permutation_domain` split in resolve/_expr_checks.py -------
 
     def contains(self, item: Any) -> BoolExpr:
         return Contains(self, item)
@@ -301,7 +210,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
 
     # -- domain-level modifiers (last-write-wins) ----------------------------
 
-    def prior(self, dist: Any = None, *, weights: Sequence[float] | None = None) -> ParamExpr:
+    def prior(self, dist: Any = None, *, weights: Sequence[float] | None = None) -> Self:
         if (dist is None) == (weights is None):
             raise ResolutionError(
                 f"param {self.path!r}: prior() requires exactly one of a "
@@ -311,18 +220,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
             return replace(self, prior_spec=Weights(tuple(weights)))
         return replace(self, prior_spec=dist)
 
-    def log_scale(self) -> ParamExpr:
-        return self.prior(Log())
-
-    def quantized(
-        self,
-        step: float | None = None,
-        factor: float | None = None,
-        include_hi: builtins.bool = False,
-    ) -> ParamExpr:
-        return replace(self, quantized_spec=QuantizedSpec(step, factor, include_hi))
-
-    def default(self, value: Any) -> ParamExpr:
+    def default(self, value: Any) -> Self:
         # Position-sensitive (API_v3.md, "Modifiers and Layering"): before
         # `.repeat()` this is the element default; after, it's the list
         # default for the *current* (innermost-so-far) repeat level.
@@ -333,16 +231,16 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
 
     # -- identity-level modifiers (accumulate, except default which is LWW) -
 
-    def when(self, condition: BoolExpr) -> ParamExpr:
+    def when(self, condition: BoolExpr) -> Self:
         if not isinstance(condition, BoolExpr):
             raise TypeError(".when() requires a BoolExpr condition")
         merged = condition if self.condition is None else (self.condition & condition)
         return replace(self, condition=merged)
 
-    def tag(self, *tags: str) -> ParamExpr:
+    def tag(self, *tags: str) -> Self:
         return replace(self, tags=self.tags | frozenset(tags))
 
-    def meta(self, mapping: dict[str, Any] | None = None, **kwargs: Any) -> ParamExpr:
+    def meta(self, mapping: dict[str, Any] | None = None, **kwargs: Any) -> Self:
         merged = dict(self.meta_map)
         if mapping:
             merged.update(mapping)
