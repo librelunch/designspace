@@ -151,7 +151,7 @@ Modifiers are chainable and immutable — each returns a new expression. They be
 |---|---|---|
 | `.prior(dist)` | real, integer | Any object satisfying `Prior` (see Charts). |
 | `.prior(weights=[...])` | categorical, ordinal, bool, **choice** | Non-negative, not all zero, aligned to declaration order. Bool: `[False_w, True_w]`. |
-| `.prior(weights=[...])` | subset | **Independent inclusion probabilities in `[0,1]`** per item. Sampling: independent Bernoullis + rejection on size bounds; realized marginals under active size bounds deliberately differ from the declared values. |
+| `.prior(weights=[...])` | subset | **Independent inclusion probabilities in `[0,1]`** per item. Absent `.prior()`, each item defaults to `0.5` (the maximum-entropy Bernoulli). Sampling: independent Bernoullis + rejection on size bounds; realized marginals under active size bounds deliberately differ from the declared values. |
 | `.log_scale()` | real, integer | Sugar for `.prior(ds.Log())`; participates in prior last-write-wins. Requires `lo > 0`. |
 | `.quantized(step=None, factor=None, include_hi=False)` | real, integer | Linear grid `lo, lo+step, …` or geometric grid `lo, lo·f, lo·f², …` (`factor > 1`); exactly one of `step`/`factor`. See Charts for measure and tolerance. |
 | `.default(value)` | all | **Element default** when applied before a lift. Validated against the domain at resolution. |
@@ -175,7 +175,7 @@ ds.param("grid").real(0.0, 1.0).repeat(2, 3)                      # variadic sug
 ds.param("pipeline").choice(...).repeat(n)                        # heterogeneous list — legal
 ```
 
-- `count: int | ArithExpr`, resolution-checked to be integer-typed; a negative evaluated count is a validation error; `0` yields `[]`. Counts, unlike bounds, remain runtime-evaluated — lists are structure, not charts.
+- `count: int | ArithExpr`, resolution-checked to be integer-typed; a negative evaluated count is a validation error; `0` yields `[]`. Counts, unlike bounds, remain runtime-evaluated — lists are structure, not charts. A count that references another param nonetheless joins the dependency graph and cycle check (that param must be assigned before the list can be materialized), exactly as a condition does.
 - **Variadic sugar.** `.repeat(*counts)` reads as a numpy shape — first count outermost — and desugars to chained lifts in reverse order: `.repeat(2, 3)` ≡ `.repeat(3).repeat(2)`, fingerprint-equal by the sugar-equivalence law. Any count may be an `ArithExpr` per axis. The chain retains one capability the sugar elides: per-level list modifiers between lifts (`.repeat(8).default([...]).repeat(8)`).
 - Element values are the element type's self-contained value (scalars, dicts, choice values).
 - Constraints declared inside a repeated element `Space` are **instantiated per element**: introspection lists them once under definition paths (`edges[].…`); evaluation reports one `ConstraintEval` per instance path.
@@ -227,7 +227,7 @@ ds.param("x").is_active()               # total: always True/False
 ds.param("s").contains(item)            # subset only (invalid on permutation)
 ds.param("flag")                        # bool param, directly
 expr & expr    expr | expr    ~expr
-expr.implies(other)                     # sugar for ~expr | other
+expr.implies(other)                     # dedicated Implies node; desugars to ~expr | other at resolution
 ds.all_(*exprs)   ds.any_(*exprs)       # variadic; zero args = literal True / False
 ds.count(*bool_exprs) <op> value        # number of True operands (ArithExpr)
 ```
@@ -238,7 +238,8 @@ ds.count(*bool_exprs) <op> value        # number of True operands (ArithExpr)
 ds.param("x") + - * / ** % (expr | literal)
 ds.param("s").size()                    # subset cardinality
 ds.param("s").sum_over(mapping)         # subset: Σ mapping[item] over included items;
-                                        #   mapping stored literally in the AST; keys ⊆ item universe
+                                        #   mapping stored literally in the AST; keys ⊆ item universe;
+                                        #   an included item absent from the mapping contributes 0
 ds.param("p").position_of(item)         # permutation index; item must be a member
 ds.param("r").length()                  # lift length
 ds.param("c").prop(name)                # custom type property (scalar-typed)
@@ -263,7 +264,9 @@ ds.param("rows").space(
 ).repeat(8)                                        # ds.param("cells").sum() → per row
 ```
 
-Instance paths are legal in expressions: `ds.param("stops[0].dwell_min") < 10`. An out-of-range index makes the leaf inactive (→ Unknown). Ordinals: comparison only; two ordinal *params* compare only if they declare identical value sequences. Categoricals: `==`, `!=`, `.is_in()` only.
+Instance paths are legal in expressions: `ds.param("stops[0].dwell_min") < 10`. An out-of-range index makes the leaf inactive (→ Unknown) — this is a *runtime* condition (the index depends on the realized count), distinct from a *structural* one caught at resolution. `.field(name)` requires a struct lift whose element declares `name`; projecting an undeclared field, or `.field()` on a non-struct lift, is a resolution error (a nonexistent definition path — row 6), not a silent Unknown. Ordinals: comparison only; two ordinal *params* compare only if they declare identical value sequences; comparing an ordinal against a literal that is not one of its declared values is a resolution error (row 18). Categoricals: `==`, `!=`, `.is_in()` only.
+
+**Runtime equality.** `==`, `!=`, and `.is_in()` compare `bool` by type-tagged identity against everything else (so `True ≠ 1` — bool is strict), `int` and `float` numerically against each other (`1 == 1.0`), and every other pair (strings and other `Any`-typed categorical/ordinal values) by exact type match. This runtime rule is deliberately distinct from declaration-time distinctness (rows 3–4) and fingerprint canonicalization, which type-tag uniformly; a categorical that declares both `1` and `1.0` as distinct variants therefore cannot be told apart by a runtime `==`.
 
 **Guardrails.** `__bool__` and `__contains__` on expressions raise informative `TypeError`s, so `expr1 and expr2`, `0 < ds.param("x") < 1`, and `v in ds.param("s")` fail loudly instead of silently miscompiling.
 
@@ -283,7 +286,7 @@ Expressions evaluate in Kleene logic; **Unknown** arises only from inactivity.
 | U | F | F | U |
 | F | F | F | F |
 
-Comparisons and arithmetic with an Unknown operand are Unknown. `ds.count` tracks the range `[t, t + u]` (True count, Unknown count): Unknown iff the comparison outcome differs across the range. The same rule governs aggregates containing Unknown elements.
+Comparisons and arithmetic with an Unknown operand are Unknown. Range-tracking is specific to `ds.count`, which tracks `[t, t + u]` (True count, Unknown count) and is Unknown iff the comparison outcome differs across that range. Every *other* aggregate (`sum`, `min`, `max`, `count_of`, `is_sorted`, `distinct`) containing any Unknown element is itself Unknown — plain propagation, no range computed: a non-empty vector is treated as an ordered collection of operands, and one Unknown operand makes the whole Unknown, exactly as for ordinary arithmetic. (`count_of` resembles `ds.count` but is a distinct construct over a vector and does not range-track.)
 
 3. **Coercion at `.when()`:** Unknown → False. Deactivation therefore cascades along `topological_order`.
 4. **Coercion at `.forbid()`/`.constrain()` on complete configs:** Unknown → **inapplicable** — not violated, `margin = None`, `ConstraintEval.applicable = False`.
@@ -331,7 +334,7 @@ Feasibility is defined by param validity plus forbids **only**. `validate().vali
 
 `None` absorbs through composition. The composition rules preserve the satisfaction invariant (`&` holds iff min ≥ 0, etc.), so composite geometric constraints (e.g. exclusion zones) keep usable margins.
 
-**Continuous-equality warning.** An `==` constraint over purely continuous, unquantized operands is measure-zero under sampling; resolution emits a warning pointing at generative reparameterization (see Solver Integration) or `.custom()`.
+**Continuous-equality warning.** An `==` constraint over purely continuous, unquantized operands is measure-zero under sampling; resolution emits a warning pointing at generative reparameterization (see Solver Integration) or `.custom()`. *Purely* qualifies the whole comparison: the warning fires only when no operand is discrete-typed (categorical / ordinal / bool / integer / quantized) and at least one is an unquantized real — a discrete operand anywhere suppresses it.
 
 ### Expression bounds are sugar
 
@@ -358,9 +361,11 @@ Bounds-aware and parameterless; resolution composes them with `[lo, hi]`:
 | Uniform (default) | `lo + u·(hi − lo)` | — |
 | `ds.Log()` | `exp(log lo + u·(log hi − log lo))` | `lo > 0` |
 | `ds.Logit()` | `σ(logit(lo) + u·(logit(hi) − logit(lo)))` | `0 < lo ≤ hi < 1` |
-| `ds.Power(p)` | `(lo^p + u·(hi^p − lo^p))^(1/p)` | domain valid for `p` |
+| `ds.Power(p)` | `(lo^p + u·(hi^p − lo^p))^(1/p)` | `p ≠ 0`; `tᵖ` monotone on `[lo, hi]` — `lo ≥ 0` unless `p` is a positive odd integer, and `lo > 0` when `p < 0` |
 
-Each has a closed-form inverse, so `to_unit(value)` always exists for built-ins. `lo == hi` yields the constant chart (still generative).
+The `Requires` column is the operative rule (`p ≠ 0`; `lo ≥ 0` unless `p` is a positive odd integer; `lo > 0` when `p < 0`); it guarantees the closed-form (signed-root) chart is a strictly increasing bijection onto `[lo, hi]`. Monotonicity of `tᵖ` is necessary but not the test — the rule is stricter, because the signed-root formula does not recover `[lo, hi]` on every monotone domain. It rejects (row 9): a domain straddling 0 (`lo < 0 < hi`, non-odd-integer `p`) — including the degenerate `lo^p == hi^p` (`Power(2)` over `[-a, a]`) and the domain-incomplete `Power(2)` over `[-2, 3]` (which would map onto `[2, 3]`) — and an all-negative even-`p` domain (`Power(2)` over `[-4, -2]`), which is monotone yet unrecoverable by the formula.
+
+Each has a closed-form inverse, so `to_unit(value)` always exists for built-ins. `lo == hi` yields the constant chart (still generative); `to_unit` at that degenerate point is unspecified and returns `0.0` — nothing observable depends on it, since `from_unit` returns the single legal value for every `u`.
 
 ### External priors
 
@@ -372,7 +377,7 @@ The continuous chart is built over `[lo, hi + 1)` and the emitted value is `floo
 
 ### Quantization
 
-Grid `g_k = lo + k·step` (or `g_k = lo·factor^k`); chart built over the extension `[g_0, g_K + cell)`; emitted value = greatest grid point ≤ the continuous draw. Consequences: uniform prior ⇒ equiprobable grid points; any prior ⇒ each point's probability is the prior measure of its cell; an integer param *is* a quantized real with `step=1`. `include_hi=True` appends `hi` as a final grid point with its own cell. Degenerate `step ≥ hi − lo` yields the single-point grid `{lo}` (plus `hi` if included); `step ≤ 0` or non-finite is a resolution error.
+Grid `g_k = lo + k·step` (or `g_k = lo·factor^k`); chart built over the extension `[g_0, g_K + cell)`; emitted value = greatest grid point ≤ the continuous draw. Consequences: uniform prior ⇒ equiprobable grid points; any prior ⇒ each point's probability is the prior measure of its cell; an integer param *is* a quantized real with `step=1`. `include_hi=True` appends `hi` as a final grid point whose own cell width follows the same local-spacing formula as a grid point one step further out (`step`, or `hi·(factor − 1)`). Degenerate `step ≥ hi − lo` (geometric analogue: `factor ≥ hi / lo`) yields the single-point grid `{lo}` (plus `hi` if included); `step ≤ 0` or non-finite is a resolution error.
 
 **Grid membership and canonicalization.** Validation recovers `k = round((v − lo)/step)`; valid iff `0 ≤ k ≤ K` and `|v − (lo + k·step)| ≤ tol` (default `rtol=1e-9`, overridable). `config_hash` canonicalizes to `lo + k·step` computed exactly this way. Canonicalization is context-free — all grids, like all charts, are static.
 
@@ -382,7 +387,7 @@ Grid `g_k = lo + k·step` (or `g_k = lo·factor^k`); chart built over the extens
 
 ### All charts are static
 
-Every chart is built once, at resolution, over the param's (envelope) bounds — expression bounds having been desugared first (see *Expression bounds are sugar*). Chart-family requirements (`Log()` needs `lo > 0`, `Logit()` needs `(0,1)`) are checked against the envelope. `ParamDef.chart` is a plain attribute. The genotype→phenotype map therefore never depends on other genes — u-space coordinates are comparable across configs.
+Every chart is built once, at resolution, over the param's (envelope) bounds — expression bounds having been desugared first (see *Expression bounds are sugar*). Chart-family requirements (`Log()` needs `lo > 0`, `Logit()` needs `(0,1)`, `Power(p)`'s monotonicity domain) are checked against the *declared* envelope bounds `(lo, hi)`, which do not move under quantization or the integer extension — even though the continuous chart math is built over a wider bound (`hi + 1` for integers, the grid extension for quantized). `ParamDef.chart` is a plain attribute. The genotype→phenotype map therefore never depends on other genes — u-space coordinates are comparable across configs.
 
 The reference sampler *may* recognize a bound-origin constraint whose referenced params are already assigned and draw from the correspondingly tightened chart instead of rejecting — observably identical, because truncation is conditioning (tightening an external prior to a sub-interval needs `cdf`; absent that, rejection).
 
@@ -437,7 +442,7 @@ Defaults validate against their (static) domain at resolution — **never a sile
 .evaluate_constraints(config) -> list[ConstraintEval]
 ```
 
-Relations: `is_feasible(c) == validate(c).valid`, both defined by param errors plus hard constraints; `evaluate_constraints` reports every constraint (hard and declared) with `applicable` and `margin`. `context` enables evaluating constraints that reference other params (bound-origin couplings included); without it, `validate_param` reports those as unevaluated rather than guessing. `validate` and `config_hash` operate on the **raw phenotype representation** only; transformed views have no identity.
+Relations: `is_feasible(c) == validate(c).valid`, both defined by param errors plus hard constraints; `evaluate_constraints` reports every constraint (hard and declared) with `applicable` and `margin`. `context` enables evaluating constraints that reference other params (bound-origin couplings included); without it, `validate_param` reports those as unevaluated rather than guessing — concretely, an under-determined constraint (one referencing a param absent from `context`) is **omitted** from `validate_param`'s `constraint_evals` rather than appearing with a placeholder: `ConstraintEval` has no "pending on missing context" state, and reusing `applicable=False` would conflate it with a genuine Kleene-Unknown. `validate` and `config_hash` operate on the **raw phenotype representation** only; transformed views have no identity.
 
 ---
 
@@ -484,7 +489,7 @@ Relations: `is_feasible(c) == validate(c).valid`, both defined by param errors p
 .capability_report(encodings=None) -> dict[str, Capabilities]
 ```
 
-`dependency_graph` maps each definition path to the params it depends on via conditions and constraints (bound-origin constraints included; only conditions and bound-origin constraints impose assignment order).
+`dependency_graph` maps each definition path to the params it depends on via conditions, constraints, and repeat counts (bound-origin constraints and repeat counts included; only conditions, bound-origin constraints, and repeat counts impose assignment order — a runtime-evaluated count is not a bound, but it must still be assigned before its list).
 
 ---
 
@@ -617,6 +622,8 @@ ds.destructure(config, param_path) -> tuple     # (name, payload) — a derived 
 
 `config_diff`: a variant switch decomposes into the discriminator diff (old/new are variant **names**) plus newly-inactive/newly-active payload diffs using the `None` conventions. Repeat length changes align **positionally** — an insertion-at-front reports as a full rewrite; alignment-aware diffing is consumer polish.
 
+`unflatten` takes no activity argument, so a struct's presence is inferred from whether any descendant leaf is present: a zero-declared-member struct round-trips as `{}`, but an *active* struct all of whose members are individually inactive is indistinguishable from an *inactive* struct and is omitted. "Unconditionally-present" (the `.space()` struct type) describes **validity** — a struct's activity never depends on its own members' activity — not a guarantee about `unflatten`'s output shape.
+
 ---
 
 ## Config Representation
@@ -706,7 +713,8 @@ class ParamDef:
     path: str                     # definition path
     type_kind: str                # "real" | "integer" | ... | "space" | "choice" | "list"
     domain: Domain                # type-specific; recursive: list(element_domain)
-    prior: Prior | None
+    prior: Prior | None           # also holds a Weights payload for categorical/ordinal/bool/choice/subset
+    quantized: QuantizedSpec | None   # step/factor/include_hi grid spec; None otherwise
     periodic: bool
     default: Any | None
     condition: BoolExpr | None
@@ -797,10 +805,12 @@ class Capabilities:
 2. Type-check — every param has exactly one type; layer placement of modifiers
 3. Desugar — `log_scale`, `implies`, layer folding
 4. Resolve references — paths bind; types compatible
-5. Cycle detection on the condition and bound dependency graph, including self-reference
+5. Cycle detection on the condition, bound, and repeat-count dependency graph, including self-reference
 6. Compute bound envelopes (interval arithmetic along the dependency DAG); desugar expression bounds into envelope bounds + bound-origin constraints; build charts — all static
 7. Validate defaults (static domains), anchors, priors, weights
 8. Emit IR
+
+**Resolution timing.** Resolution is unspecified relative to construction. A space built in argument position (a choice variant or struct body) may carry a `.when()` condition that references a param binding only in an *enclosing* scope — the sole scoping rule's up-walk — which cannot resolve while that payload is built standalone. Reference, type, and cycle checks (rows 6, 7, 14) over such conditions are therefore deferred to a finalization pass over the fully-merged space, and any resulting error surfaces no later than the **first terminal operation** — `sample`, `sample_one`, `validate`, `validate_param`, `evaluate_constraints`, and (once implemented) `fingerprint`, `to_json`, and every introspection surface must trigger this finalization. The error is still a `ResolutionError` (phase R), computed from space structure alone with no config; only its timing moves. Constraint (`.forbid()`/`.constrain()`) references stay strict and raise eagerly, since cross-scope constraints use the down-reference-at-the-common-ancestor route instead.
 
 ### Error table
 
@@ -813,19 +823,19 @@ Tagged **R** (resolution-time) or **V** (validation/fill/sample-time).
 | 3 | Duplicate declared values (categorical, ordinal, subset items, permutation items; type-tagged equality) | R |
 | 4 | Mixed-type categorical values sharing a string image | R |
 | 5 | Name or variant name containing `.` `[` `]` — checked on the resolved name for all syntactic routes; duplicate variant names within one choice | R |
-| 6 | Reference to a nonexistent param (condition, bound, constraint); `[]` definition path in an expression | R |
-| 7 | Cycle in the condition/bound dependency graph; a param's condition or bounds referencing itself | R |
+| 6 | Reference to a nonexistent param (condition, bound, constraint); `[]` definition path in an expression; `.field()` on a non-struct lift or naming an undeclared element field | R |
+| 7 | Cycle in the condition/bound/repeat-count dependency graph; a param's condition, bounds, or repeat count referencing itself | R |
 | 8 | `lo > hi`; non-finite bound; NaN/inf anywhere in IR floats | R |
-| 9 | `log_scale`/`Log` with non-positive `lo`; `Logit` outside `(0,1)`; `Power` domain violation | R |
+| 9 | `log_scale`/`Log` with non-positive `lo`; `Logit` outside `(0,1)`; `Power` domain violation (`p == 0`; non-integer `p` with `lo < 0`; `p < 0` with `lo ≤ 0`; a domain straddling 0 when `p` is not a positive odd integer) | R |
 | 10 | `quantized`: `step ≤ 0`, `factor ≤ 1`, non-finite, or both given | R |
-| 11 | Misplaced layer modifier (e.g. `.repeat(n).log_scale()`) | R |
+| 11 | Misplaced layer modifier (e.g. `.repeat(n).log_scale()`); domain-level modifier applied to an incompatible type (e.g. `.prior(weights=…)` on a real) | R |
 | 12 | Repeat count not integer-typed | R |
 | 13 | Evaluated repeat count negative | V |
-| 14 | Arithmetic on ordinal or categorical; ordinal–ordinal comparison over differing value sequences | R |
+| 14 | Arithmetic on ordinal or categorical; ordering comparison (`<`, `>`, `<=`, `>=`) on a categorical; ordinal–ordinal comparison over differing value sequences | R |
 | 15 | Unknown `.symbolic()` primitive | R |
 | 16 | `.prop()` on undeclared property; non-scalar property type; type mismatch in comparison | R |
 | 17 | Prior weights: wrong length; subset inclusion probabilities outside `[0,1]`; categorical/ordinal/bool/choice weights negative or all-zero | R |
-| 18 | `sum_over` keys outside the item universe; `position_of` non-member; `.contains()` on permutation | R |
+| 18 | `sum_over` keys outside the item universe; `position_of` non-member; `.contains()` on permutation; ordinal comparison against a literal that is not a declared value | R |
 | 19 | External prior support exceeding (envelope) bounds without `cdf` | R |
 | 20 | Bound expression with no computable interval hull (workaround: write the desugared form by hand) | R |
 | 21 | Default outside domain; list default under dynamic count; list default length mismatch; element and list default together | R |
@@ -835,6 +845,7 @@ Tagged **R** (resolution-time) or **V** (validation/fill/sample-time).
 | 25 | `==` over purely continuous unquantized aggregate/operands | R (warning) |
 | 26 | Sampling retry exhaustion; non-generative materialization without default | V |
 | 27 | `from_json`: unknown format version; missing `custom_types` entry for a `type_key` | V |
+| 28 | Subset size bounds nonsensical: `min_size > max_size`; `min_size < 0`; `min_size` exceeds the item universe | R |
 
 ### Degeneracy table
 
@@ -897,7 +908,7 @@ Core: `numpy` (RNG), `polars` (`sample()` output). Built-in priors are implement
 The spec's executable laws double as the acceptance suite:
 
 - **Charts:** known-answer vectors for the four families (including subnormal-range log); floor-integer uniformity; quantized cell measure (uniform ⇒ equiprobable grid); grid canonicalization invariance under bit-different representations.
-- **Kleene:** the truth table; `count` range rule; empty-aggregate values; inactive-lift-projection ≠ active-empty-list.
+- **Kleene:** the truth table; `count` range rule; non-`count` aggregates plain-propagate Unknown (no range tracking); empty-aggregate values; inactive-lift-projection ≠ active-empty-list.
 - **Margins:** sign convention per form; Boolean composition preserves the satisfaction invariant.
 - **Defaults:** `apply_defaults` idempotent, monotone, activity-respecting.
 - **Identity:** sugar-equivalence pairs fingerprint-equal (`log_scale`/prior, `implies`, variadic repeat/chain, expression bounds/manual expansion); permuted declarations differ; scope monotonicity (meta/tags/anchors/declared-constraint changes are `sampling`-equal, `full`-distinct); round-trip law; mark-sentinel distinctness; type-tag distinctness (`1` vs `1.0` vs `True`); `−0.0 ≡ 0.0`; known-answer digest vectors.

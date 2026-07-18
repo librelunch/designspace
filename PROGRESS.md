@@ -1,6 +1,6 @@
 # Progress
 
-Current milestone: **M5 — Expression bounds** (not started)
+Current milestone: **M4.5 — Faithfulness corrections** (not started); then M5 — Expression bounds
 
 | Milestone | Completed | Tests | DECISIONS entries |
 |---|---|---|---|
@@ -11,3 +11,8 @@ Current milestone: **M5 — Expression bounds** (not started)
 | M4 — Lifts and aggregates | 2026-07-18 | 449 | D-18, D-19, D-20, D-21, D-22, D-23, D-24, D-25 |
 
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
+
+The "DECISIONS entries" column above is a **historical** record. As of M4.5 those
+entries (D-1 … D-26) were resolved into API_v3.md (as normative spec text) or into
+the plan (M4.5's build/deferred lists), and `DECISIONS.md` was reset to an empty
+ledger for future use. The original entries remain in this repo's git history.

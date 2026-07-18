@@ -112,6 +112,60 @@ Each fixture is a real space from the spec's design history. Add each at the mil
 **Directive:** before implementing, write a short design note in `DECISIONS.md` for the evaluator's representation of vector values with Unknown elements (this interaction — Kleene × aggregates × instance paths — is the highest-complexity point in the codebase). Then write the full law set, then implement.
 **Gate:** empty-aggregate values table; inactive-lift vs active-empty side-by-side test (the spec's worked example, verbatim); variadic/chain fingerprint-equality deferred to M7 but structural equality asserted now; per-instance instantiation counts; `is_sorted` depth-2 rejection. Corpus: `delivery_routes`, `solver_portfolio`, `memetic_pipeline`.
 
+### M4.5 — Faithfulness corrections (no new feature surface)
+Corrects M2–M4 resolution behavior to match API_v3.md after the spec was made
+precise on points that the (now-cleared) `DECISIONS.md` had recorded as open.
+Pure alignment: three resolution-time rejections that turn a previously-silent
+Unknown-cascade or a wrong chart into a loud `ResolutionError`, plus one
+conformance-law promotion. No public `__init__` additions; no milestone reorder.
+
+**Spec (already folded in):** Charts §Power monotonicity domain (row 9);
+Expressions §`.field()` struct-lift + declared-field requirement (row 6) and
+ordinal non-member-literal rejection (row 18); Three-valued semantics §non-`count`
+aggregates plain-propagate Unknown; Modifiers §repeat counts join the dependency
+graph and cycle check (rows 7); extended/added error rows 6, 9, 11, 14, 18, 28.
+
+**Build:**
+- `charts/_builtin.py::check_power_domain` — reject a domain straddling 0
+  (`lo < 0 < hi`) unless `p` is a positive odd integer, and the degenerate
+  `lo^p == hi^p`; message names the param and the `(p, lo, hi)` violation.
+- `resolve/_expr_checks.py` — a `.field()` check (new sibling of
+  `_require_lift_domain`): reject unless the base lift's `element_kind == "space"`
+  and `name` is a declared descendant field of the element; message names the bad
+  field/base (row 6).
+- `resolve/_expr_checks.py` (`check_expr_types`, ordinal branch) — reject an
+  ordinal `Compare` whose literal operand is not a declared value (row 18).
+- Promote D-19's aggregate plain-propagation tests from `tests/unit/` to
+  `tests/conformance/` (they now assert a stated law).
+
+*No new code for rows 11, 14, 28:* the incompatible-type modifier (row 11),
+categorical ordering (row 14), and subset size-bound (row 28) rejections are
+**already** enforced in code (added in M1/M3 via D-3/D-16); M4.5 only aligned
+their spec wording. The only genuinely new rejections are Power (row 9), `.field()`
+(row 6), and the ordinal non-member literal (row 18).
+
+**Gate:** each new rejection has a message-content test naming the offending path
+(rows 6, 9, 18); a new Charts conformance law — a valid `Power` chart is a
+monotone bijection onto `[lo, hi]` (`from_unit(0)==lo`, `from_unit(1)==hi`,
+strictly monotone), and every row-9 Power violation raises; the promoted aggregate
+plain-propagation law. **These are additive loud-rejections** — every prior
+conformance law and all nine corpus fixtures must stay green, confirming none
+relied on the silent path.
+
+**Deferred / tracked (folded here from cleared DECISIONS, revisit when a fixture
+forces it):**
+- Nested struct/choice lift at repeat depth > 1 (`grid[][].width`) stays rejected
+  with a clear `ResolutionError` (the path grammar's `mask[][]` says what the
+  correct deeper form looks like; nested *scalar* lifts are already fully general).
+  Completing it — bracket-depth-general relocation/expansion — is strictly
+  additive and blocks no law.
+- The finalization pass `resolve/_pipeline.py::check_fully_resolved` (deferred
+  row-6/7/14 over merged conditions) is currently wired into every terminal op
+  that exists (validate ×3, sample ×2). **M7/M8 must also call it from
+  `fingerprint()`, `to_json()`, and every introspection surface** — otherwise a
+  space with a genuine typo could produce freeze-relevant output without ever
+  triggering its R-error. Add this to the M7 gate.
+
 ### M5 — Expression bounds
 **Spec:** Constraints §Expression bounds are sugar; error rows for uncomputable hulls; dependency-graph/topological-order entries for bound-origin constraints; Charts §tighten-not-reject (implement last, behind the conformance equivalence test).
 **Build:** interval arithmetic over a **minimal** op set — `+`, `−`, `×` by constants and enveloped params; anything else is the uncomputable-hull error. `Constraint.origin`.
