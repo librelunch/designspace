@@ -11,7 +11,7 @@ Current milestone: **M6 — Defaults and partial-config API** (not started)
 | M4 — Lifts and aggregates | 2026-07-18 | 449 | D-18, D-19, D-20, D-21, D-22, D-23, D-24, D-25 |
 | M4.5 — Faithfulness corrections | 2026-07-18 | 475 | _none_ |
 | M4.6 — Build-layer view types | 2026-07-18 | 509 | D-27, D-28 |
-| M5 — Expression bounds | 2026-07-19 | 549 | D-29 |
+| M5 — Expression bounds | 2026-07-19 | 550 | D-29 |
 
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
 

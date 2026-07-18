@@ -119,6 +119,21 @@ class TestTightenNotReject:
         )
         assert not _tightenable(space.params["x"])
 
+    def test_log_scaled_bound_expression_samples_feasibly(self):
+        """`_tightenable` also admits Log/Logit/Power (not just the default
+        uniform prior exercised elsewhere in this file) — exercise one of
+        them end-to-end so the sub-interval-preserves-the-family-requirement
+        argument in DECISIONS.md D-29 is checked empirically, not just
+        reasoned to on paper (`Log` needs `lo > 0`; a tightened `[1, y]` for
+        `y` in `[1, 100]` always does)."""
+        space = ds.space(
+            ds.param("y").real(1.0, 100.0),
+            ds.param("x").real(1.0, ds.param("y")).log_scale(),
+        )
+        assert space.params["x"].prior is not None
+        for cfg in space.sample_dicts(200, seed=2):
+            assert 1.0 <= cfg["x"] <= cfg["y"]
+
     def test_sampling_succeeds_even_when_the_coupling_dominates_the_envelope(self):
         """`x`'s envelope is pinned to `y`'s declared hi (20.0), but every
         draw of `y` is confined to a narrow window near the envelope's low

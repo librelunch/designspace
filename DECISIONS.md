@@ -452,15 +452,32 @@ Choice:     (1)(a). A hi-bound's envelope must be the *widest* value the
             came back `validate().valid == True` under the naive (4)(a)-then-
             unmodified-`is_violated` combination, which is exactly the class
             of bug this project's "never resolve an ambiguity by weakening a
-            stated law" rule exists to catch before it ships. This choice also
-            has a forward-looking payoff: M7 promises the sugared form and its
-            manual expansion are fingerprint-equal with `origin` excluded from
-            the preimage — but the *expr shape* is not excluded, so the two
-            forms must already store the same shape. Storing `x <= y` (the
-            literal sugar text) is what makes that future equality possible at
-            all; a forbidden-state `x > y` would have made it structurally
-            impossible no matter what `origin` does. The sharp edge this
-            creates: the "hand-written equivalent" of the sugar is
+            stated law" rule exists to catch before it ships. **This leaves an
+            open question for M7, flagged here rather than resolved:** the
+            spec promises the sugared form and its manual expansion are
+            fingerprint-equal with `origin` excluded from the preimage — i.e.,
+            the two must already share the same expr shape, differing only in
+            `origin`. But the *only* public-API route to a hard constraint
+            shaped `x <= y` is `.forbid(x <= y)`, which — under this
+            milestone's own origin-keyed `is_violated` — forbids the *good*
+            state (inverted feasibility from the sugar's intent). So the
+            "manual expansion" M7's sugar-equivalence law must pair the sugar
+            with is itself ambiguous: pairing with `.forbid(x <= y)` keeps the
+            expr shape (fingerprint-equal candidate) but collides two
+            semantically-opposite spaces under one fingerprint; pairing with
+            the semantically-correct `.forbid(x > y)` gives the right
+            feasibility but a *different* expr shape (not fingerprint-equal by
+            the stated mechanism). Storing `x <= y` here does not settle
+            this — it was forced by the margin requirement above, independent
+            of M7 — and M7's implementation must resolve the polarity/
+            preimage interaction on its own terms (a plausible route: give
+            `fingerprint()`'s scope-derivation step special-case knowledge
+            that a bound-origin constraint's canonical/comparable form is its
+            *negation* of whatever `.forbid()` would store, so the preimage
+            compares like-for-like without changing what `is_violated` does
+            at runtime — not designed or implemented here). The sharp edge
+            this milestone's choice does create in the meantime: the
+            "hand-written equivalent" of the sugar, *for feasibility*, is
             `.forbid(ds.param("x") > ds.param("y"))`, *not*
             `.forbid(ds.param("x") <= ds.param("y"))` — a user who reads the
             spec's desugaring sentence and transcribes it verbatim into a
@@ -486,12 +503,18 @@ Choice:     (1)(a). A hi-bound's envelope must be the *widest* value the
             nothing about correctness depends on the family list being
             complete, only on it being *sound* (never tightening somewhere
             truncation ≠ conditioning).
-Spec delta: None. All five points are resolvable within the existing text
-            once (4)'s tension is noticed — API_v3.md's sugar-description and
-            margin sentences are both literally true simultaneously, they
+Spec delta: None yet. Four of five points are resolvable within the existing
+            text once (4)'s tension is noticed — API_v3.md's sugar-description
+            and margin sentences are both literally true simultaneously, they
             just require `is_violated`'s hard/polarity coupling (a resolve/
             eval-layer mechanism, not spec text) to key off `origin` instead
             of `hard` for this one provenance. Candidate for a future
             clarifying footnote at "Expression bounds are sugar": the implicit
             constraint's polarity is *not* `.forbid()`'s "argument names the
-            forbidden state" convention.
+            forbidden state" convention. **Open, tracked for M7** (per (4)'s
+            choice text above): whether/how the sugar-equivalence
+            fingerprint-equality law (`fingerprint()`, "Identity and
+            Serialization") accounts for a bound-origin constraint's expr
+            shape (`x <= y`) differing from its feasibility-equivalent
+            `.forbid()` form (`x > y`) — M5 does not resolve this, only
+            surfaces it; do not assume it is settled when M7 begins.
