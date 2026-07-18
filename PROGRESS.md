@@ -1,6 +1,6 @@
 # Progress
 
-Current milestone: **M5 — Expression bounds** (not started)
+Current milestone: **M4.6 — Build-layer view types** (not started); M5 — Expression bounds follows
 
 | Milestone | Completed | Tests | DECISIONS entries |
 |---|---|---|---|

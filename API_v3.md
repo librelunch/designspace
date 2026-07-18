@@ -68,8 +68,10 @@ df = space.sample(1000, seed=0)
 
 | Function | Returns | Purpose |
 |---|---|---|
-| `ds.param(name)` | `ParamExpr` | Define or reference a parameter |
+| `ds.param(name)` | `FreshParamExpr` | Define or reference a parameter |
 | `ds.space(*exprs)` | `Space` | Collect params into a space |
+
+`FreshParamExpr` is a `ParamExpr` carrying the type methods; each type method narrows to a type-specific view (see *Builder view types* under Parameter Types). `ParamExpr` remains the base type of every param object.
 
 `ds.embed` is removed; use the `.space()` type method (below), which subsumes it.
 
@@ -79,7 +81,17 @@ Names may not contain `.`, `[`, or `]` (reserved by the path grammar). Declarati
 
 ## Parameter Types
 
-Each `ds.param(name)` in definition position takes **exactly one** type method.
+Each `ds.param(name)` in definition position takes **exactly one** type method. This is enforced two ways: the builder view types (below) make a second type method a static type error, and resolution rejects any definition that carries more than one type however it was built (error table row 2).
+
+### Builder view types
+
+The builder is statically typed so that an IDE offers only the methods valid at each step, and choosing a second type is caught before resolution.
+
+- `ParamExpr` is the **base** type. It is an `ArithExpr`/`BoolExpr`/`VectorExpr` (usable in reference position) and carries the identity-, domain-, and lift-level modifiers, but **no** type methods. `isinstance(x, ParamExpr)` holds for every param object, in reference or definition position.
+- `ds.param(name)` returns a **`FreshParamExpr`** — a `ParamExpr` that additionally carries the type methods. It is the only object on which a type is chosen.
+- Each type method returns a **type-specific view**, a subclass of `ParamExpr`: `.real → RealParamExpr`, `.integer → IntegerParamExpr`, `.bool → BoolParamExpr`, `.categorical → CategoricalParamExpr`, `.ordinal → OrdinalParamExpr`, `.subset → SubsetParamExpr`, `.permutation → PermutationParamExpr`, `.choice → ChoiceParamExpr`, `.space → StructParamExpr`. `.repeat()`, available on any typed view (a type is required before a lift), returns a **`ListParamExpr`**, which itself re-offers `.repeat()` for nested lifts. Each view exposes only the modifiers and query methods valid for its type (`RealParamExpr`/`IntegerParamExpr` have `.log_scale()`/`.quantized()`; `SubsetParamExpr`/`PermutationParamExpr` have `.contains()`/`.size()`/`.position_of()`/`.sum_over()`; `ListParamExpr` has the vector aggregates, `.field()`, and `.length()`) and **omits the type methods** — so `ds.param("x").real(0, 1).bool()` is a static type error. `BoolParamExpr` is additionally a `BoolExpr` (a boolean param is usable directly as a condition).
+
+The view types are a **build-layer** convenience: they add no state beyond `ParamExpr`, have no serialized footprint, and do not appear in the IR — `ParamDef.type_kind` remains a string (see IR), and resolution and every downstream layer read `ParamDef`, unaffected. Choosing a second type still raises the path-named resolution error (row 2) for any definition that reaches resolution, so the law holds for programmatically-constructed definitions as well as fluent ones.
 
 ### Scalar
 
@@ -521,6 +533,8 @@ ds.space_from_ir(params, conditions, constraints, anchors=None, meta=None) -> Sp
 .map_params(fn: Callable[[ParamDef], ParamDef]) -> Space     # sugar
 .without_constraints(tags=...) -> Space                       # sugar
 ```
+
+`TypedParamExpr` is the type-specific builder view for `pd`'s type (see *Builder view types*); when this surface lands (M8) it becomes the common base of those views. Until then the views subclass `ParamExpr` directly.
 
 Resolution re-validates whatever comes in. Expressions are values — rewrites reattach existing `BoolExpr` objects; `.kind`/`.children` walking covers expression-level rewrites. `ds.all_`/`ds.any_` provide fold identities for generated constraint sets. Degenerate arities produced by generators are legal with defined semantics (see Degeneracy Table). A space-valued param (searching a catalog of inner spaces) needs no new machinery: a `.custom()` type with `fingerprint()` as value identity.
 

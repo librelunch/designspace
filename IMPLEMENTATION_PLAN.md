@@ -166,6 +166,62 @@ forces it):**
   space with a genuine typo could produce freeze-relevant output without ever
   triggering its R-error. Add this to the M7 gate.
 
+### M4.6 — Build-layer view types (static typing; no runtime-value or IR change)
+Splits the single builder `ParamExpr` into statically-typed view subclasses so the
+fluent API offers only the methods valid at each step and a second type method is a
+type error. **No observable value, JSON format, fingerprint, chart, or conformance
+law changes**; the IR is untouched (`ParamDef.type_kind` stays a string). Pure
+build-layer ergonomics.
+
+**Spec (already folded in):** §Construction (`ds.param -> FreshParamExpr`); §Parameter
+Types new *Builder view types* subsection (base `ParamExpr` with no type methods;
+`FreshParamExpr` adds them; each type method narrows to `RealParamExpr` /
+`IntegerParamExpr` / `BoolParamExpr` / `CategoricalParamExpr` / `OrdinalParamExpr` /
+`SubsetParamExpr` / `PermutationParamExpr` / `ChoiceParamExpr` / `StructParamExpr`,
+and `.repeat() -> ListParamExpr`; each view exposes only its valid modifiers/queries
+and omits the type methods; `BoolParamExpr` is also a `BoolExpr`); §Space —
+Metaprogramming forward note that `TypedParamExpr` (M8) will become the views' common
+base. See **D-27**.
+
+**Directive:** before implementing, write a design note in `DECISIONS.md` for the
+builder-layer representation of a param's type once the class encodes it — how
+`ParamExpr.type_kind` is derived from the view class and whether `type_calls` is
+retired (its sole job, catching a second type method, the views now cover
+structurally). This touches resolution's synthetic constructions; settle it on paper
+first, then write the laws, then implement.
+
+**Build:**
+- `build/_paramexpr.py` / new `build/_views.py` — the view subclasses. Move the 9
+  type methods off the base onto `FreshParamExpr`; put `.repeat()` on the typed
+  views and `ListParamExpr` (a type is required before a lift), not on the base or
+  `FreshParamExpr`; the base keeps modifiers, expression operators, and the
+  aggregates. Each type method and `.repeat()` constructs its target view (a
+  `_as(cls)` helper, since `dataclasses.replace()` returns `type(self)`); modifiers
+  keep their view via `replace`. `ListParamExpr.repeat()` re-nests for `.repeat(2, 3)`.
+- `__getattr__` on the typed views re-raises the path-named `ResolutionError` for a
+  type-method name (preserving row 2's message on `.real(0,1).bool()`, not a bare
+  `AttributeError`); a non-type-method miss stays a normal `AttributeError`.
+- The construction trap sites, which must build the right class: `build/_functions.py`
+  (`param()` returns `FreshParamExpr`), and resolution's internal `ParamExpr(...)`
+  constructions at `resolve/_pipeline.py` (synthetic list element ~549/552, which
+  today also *fabricates* `type_calls`; discriminator ref ~660) — these build base
+  `ParamExpr`, which is fine, but must not depend on the removed fields.
+- `__init__.py` exports exactly the view types implemented here; `param_from_def` /
+  `TypedParamExpr` remain **M8** (not added now).
+
+**Gate:** all prior conformance laws and all nine corpus fixtures stay green (this
+change alters no value or format). Plus: a message-content test that **both**
+`ds.param("x").real(0,1).bool()` (fluent) **and** a programmatically-built two-type
+definition raise a **path-named `ResolutionError`** (row 2 preserved, never
+downgraded to `AttributeError`); a static-typing negative check proving each view
+omits the type methods and the wrong-type modifiers (e.g. a `type: ignore[attr-defined]`
+round-trip on `.real(0,1).bool()` and `.categorical(...).log_scale()`);
+`mypy --strict`, `ruff`, full `pytest` green.
+
+**Deferred:** making `TypedParamExpr` the common base of the views (aligns
+`param_from_def`) is left to **M8** to avoid introducing a metaprogramming-surface
+name early; the views subclass `ParamExpr` directly until then (D-27).
+
 ### M5 — Expression bounds
 **Spec:** Constraints §Expression bounds are sugar; error rows for uncomputable hulls; dependency-graph/topological-order entries for bound-origin constraints; Charts §tighten-not-reject (implement last, behind the conformance equivalence test).
 **Build:** interval arithmetic over a **minimal** op set — `+`, `−`, `×` by constants and enveloped params; anything else is the uncomputable-hull error. `Constraint.origin`.
