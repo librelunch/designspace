@@ -1,5 +1,5 @@
 """M4.6 gate: build-layer view types (API_v3.md, "Builder view types";
-DECISIONS.md D-27, D-28).
+DECISIONS.md D-27, D-28, D-29).
 
 Pure build-layer typing sugar — no observable value, JSON format,
 fingerprint, chart, or conformance-law change. These tests check the
@@ -30,7 +30,7 @@ from designspace.build import (
 )
 from designspace.errors import ResolutionError
 from designspace.expr import BoolExpr
-from designspace.ir import CategoricalDomain, IntegerDomain, QuantizedSpec
+from designspace.ir import CategoricalDomain, QuantizedSpec, RealDomain
 
 
 class TestParamReturnsFreshParamExpr:
@@ -129,11 +129,14 @@ class TestModifiersPreserveView:
 
 class TestRow2SecondTypeMethod:
     """API_v3.md, "Builder view types": choosing a second type still raises
-    the path-named row-2 ResolutionError "however it was built" — both the
-    fluent route (now caught immediately, before any `ds.space()` call, by
-    the narrowed view simply lacking the method) and a hand-built definition
-    that bypasses the view system entirely (caught by the pre-existing
-    `_check_types_and_names` resolution pass, unchanged)."""
+    the path-named row-2 ResolutionError, caught immediately on the fluent
+    route (before any `ds.space()` call, since the narrowed view simply
+    lacks the method). The "however it was built" half of the law — a
+    hand-built definition that bypasses the fluent builder — is covered
+    more strongly in TestTypeKindIsNotAConstructorArgument below: since
+    DECISIONS.md D-29, there is no longer a resolution-time check to test,
+    because there is no longer any way to *construct* such an object at
+    all."""
 
     def test_fluent_second_type_method_raises_immediately(self):
         with pytest.raises(ResolutionError, match="'x'"):
@@ -151,18 +154,32 @@ class TestRow2SecondTypeMethod:
         with pytest.raises(ResolutionError, match="'x'"):
             ds.space(ds.param("x").real(0.0, 1.0).integer(0, 5))
 
-    def test_programmatically_built_two_type_definition_raises(self):
-        # Bypasses the view system entirely: a bare ParamExpr constructed
-        # by hand with conflicting type_calls history, exactly as a
-        # metaprogramming caller (not the fluent builder) might produce.
-        bad = ParamExpr(
-            path="x",
-            type_kind="integer",
-            type_calls=("real", "integer"),
-            domain=IntegerDomain(0, 5),
-        )
-        with pytest.raises(ResolutionError, match="'x'"):
-            ds.space(bad)
+
+class TestTypeKindIsNotAConstructorArgument:
+    """DECISIONS.md D-29: `type_kind` moved from a plain field to a
+    `ClassVar` fixed per view, excluded from `__init__` everywhere in the
+    hierarchy. This makes row 2's "however it was built" guarantee
+    structural rather than checked: there is no longer any way — fluent or
+    hand-built — to construct an object whose `type_kind` disagrees with
+    its class, so `ParamExpr(type_kind=...)` fails before resolution (or
+    `_check_types_and_names`) ever runs."""
+
+    def test_base_paramexpr_rejects_type_kind_kwarg(self):
+        with pytest.raises(TypeError):
+            ParamExpr(path="x", type_kind="integer")  # type: ignore[call-arg]
+
+    def test_leaf_view_rejects_type_kind_kwarg(self):
+        with pytest.raises(TypeError):
+            RealParamExpr(  # type: ignore[call-arg]
+                path="x", domain=RealDomain(0.0, 1.0), type_kind="integer"
+            )
+
+    def test_fresh_param_expr_type_kind_is_none(self):
+        assert ds.param("x").type_kind is None
+
+    def test_leaf_type_kind_matches_class(self):
+        assert ds.param("x").real(0.0, 1.0).type_kind == "real"
+        assert ds.param("x").integer(0, 5).type_kind == "integer"
 
 
 class TestRow11WrongTypeModifierIsStaticallyHidden:
@@ -194,13 +211,14 @@ class TestRow11WrongTypeModifierIsStaticallyHidden:
             ds.param("x").real(0.0, 1.0).repeat(4).quantized(step=0.1)
 
     def test_programmatically_built_quantized_on_categorical_raises(self):
-        # The resolution-time backstop for _check_modifier_placement,
-        # exercised the same way as the row-2 backstop above: a hand-built
-        # ParamExpr that never went through .quantized() at all.
-        bad = ParamExpr(
+        # _check_modifier_placement's backstop, unaffected by D-29: unlike
+        # type_kind, quantized_spec remains a plain, freely-settable field
+        # on every view — .quantized() just isn't the route to it here. A
+        # CategoricalParamExpr built directly (bypassing .quantized(),
+        # which doesn't exist on this view) can still carry one, and
+        # resolution still has to catch it.
+        bad = CategoricalParamExpr(
             path="x",
-            type_kind="categorical",
-            type_calls=("categorical",),
             domain=CategoricalDomain(("a", "b")),
             quantized_spec=QuantizedSpec(step=1.0, factor=None),
         )

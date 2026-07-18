@@ -235,3 +235,112 @@ Spec delta: The "Builder view types" paragraph's parenthetical grouping of
             `.position_of()` → permutation) — not fixed in this milestone
             since the spec text is otherwise correct and this is a wording-only
             fix to a non-normative descriptive aside.
+
+## D-29 (M4.6) — `type_kind` becomes a `ClassVar`; `type_calls` retired
+
+Question:   D-28 kept `type_kind` a plain instance field and `type_calls` a
+            plain instance field, reasoning that (a) resolve/_pipeline.py's
+            internal synthetic-element construction builds a bare `ParamExpr`
+            outside the view hierarchy and needs *something* settable to
+            carry its kind, and (b) row 2's "however it was built" law needs
+            a hand-buildable *invalid* state to check against, which a
+            class-derived `type_kind` cannot represent. Post-implementation
+            review asked directly: is that still true once the fluent route
+            can no longer produce a type mismatch at all (D-28 already
+            established this), and can (a) be worked around cheaply enough
+            that (b) stops being a reason to keep a redundant field around?
+Options:    (a) leave D-28's choice as shipped — plain field, `type_calls`
+            retained as a resolution-time backstop for hand-built defs;
+            (b) make `type_kind` a genuine `ClassVar` per view (excluded
+            from `__init__` via dataclass's own ClassVar handling) and
+            retire `type_calls` and the "more than one type" branch of
+            `_check_types_and_names` entirely, accepting that
+            resolve/_pipeline.py's synthetic-element construction must
+            change to match.
+Choice:     (b). Empirically verified (not assumed) two things that make (b)
+            cheap: first, declaring `type_kind` as a genuine
+            `ClassVar[str | None]` *on `ParamExpr` itself* (the only class in
+            the hierarchy actually processed by `@dataclass`) means every
+            subclass can override it with a plain class attribute —
+            `RealParamExpr.type_kind: ClassVar[str] = "real"` — without
+            itself needing `@dataclass` redecoration; dataclass's field
+            collection excludes `ClassVar`-annotated names wherever they are
+            declared, so no subclass ever gets `type_kind` back as a
+            constructor argument (`ParamExpr(path="x", type_kind="integer")`
+            raises `TypeError: unexpected keyword argument`, both on the
+            base and on every leaf). This was not obvious in advance — an
+            earlier, wrong mental model (that every subclass needs its own
+            `@dataclass` redecoration for `ClassVar` exclusion to apply) was
+            corrected by writing and running the actual pattern before
+            committing to it, twice: once to confirm a `ClassVar` declared
+            *only* on a subclass, with the field still real on the base, is
+            a complete no-op (the inherited `__init__` unconditionally sets
+            the instance attribute, silently shadowing the class constant —
+            `Real(path="x").type_kind` reads `None`, and `Real(path="x",
+            type_kind="integer")` is accepted and reads back `"integer"`);
+            and once more to confirm declaring it as `ClassVar` on the base
+            itself is sufficient and needs no redecoration downstream.
+
+            Second, (a)'s reason (a) dissolves with a mechanism change, not
+            a compromise: `_ElementSnapshot.type_kind: str` becomes
+            `_ElementSnapshot.element_class: type[ParamExpr]` — captured as
+            `type(self)` in `_TypedParamExpr._repeat_one()` (always a
+            concrete leaf class there, never `None`, since `.repeat()` only
+            exists on typed views and modifiers preserve the caller's class
+            via `replace()`). resolve/_pipeline.py's synthetic-element
+            construction becomes `inner.element_class(path=..., domain=...,
+            ...)` — reinstantiating the *actual* view the element was
+            declared with, not a bare `ParamExpr` carrying a borrowed
+            `type_kind` string. This is strictly better than the dispatch
+            table (`{"real": RealParamExpr, ...}`) considered and rejected
+            in the same discussion: no table to keep in sync when a new type
+            is added, and it eliminates a second redundant field
+            (`_ElementSnapshot.type_kind`) that D-28 didn't touch. Every
+            other read site that needs the plain IR string (`ListDomain.
+            element_kind`, `build_chart`'s `type_kind` argument) now derives
+            it via `element_class.type_kind` — one source of truth. Two
+            string comparisons became class comparisons for the same reason
+            (`inner.element_class is ListParamExpr` instead of
+            `inner.type_kind == "list"`; `inner.element_class in
+            (StructParamExpr, ChoiceParamExpr)` instead of a string-tuple
+            membership test) — not required for correctness, but consistent
+            with leaning on the type system where D-28 was leaning on string
+            comparison out of caution.
+
+            With (a) gone, `type_calls` has no remaining job: the "more than
+            one type" branch of `_check_types_and_names` is deleted outright
+            (not just unreachable-but-kept, as D-28 left it) — there is no
+            longer any object, fluent or hand-built, that can carry
+            conflicting type information for it to check. The "no type
+            chosen" branch survives as `if d.type_kind is None`, reading the
+            same `ClassVar` a `FreshParamExpr`/bare `ParamExpr` inherits.
+            Row 2's "however it was built" guarantee is now stronger than a
+            resolution-time check: it holds at the Python object-model level,
+            before `ds.space()` is ever called, provable by the language
+            itself rather than by a test asserting a check still fires.
+            `_check_modifier_placement`'s numeric/weighted backstop is
+            unaffected and stays — `quantized_spec`/`prior_spec` remain
+            ordinary settable fields on every view (D-28's universal-modifier
+            choice was untouched by this decision), so a hand-built
+            `CategoricalParamExpr(quantized_spec=...)` is still constructible
+            and still needs resolution to catch it; only the *type*-carrying
+            field moved, not every field capable of an internally
+            inconsistent value.
+
+            Test consequence: `TestRow2SecondTypeMethod
+            .test_programmatically_built_two_type_definition_raises`
+            (D-28's gate test for the hand-built case) no longer has
+            anything to construct — its scenario is a `TypeError` at the
+            `ParamExpr(...)` call itself, before any `ResolutionError` logic
+            runs. Replaced with `TestTypeKindIsNotAConstructorArgument`,
+            asserting the stronger guarantee directly (`type_kind=` rejected
+            on both the base and a leaf view; `FreshParamExpr`/leaf
+            `type_kind` reads correctly). The quantized-on-categorical
+            backstop test is retained, updated to construct
+            `CategoricalParamExpr(...)` directly instead of a bare
+            `ParamExpr(type_kind=..., type_calls=...)`.
+Spec delta: None — API_v3.md's `ParamDef.type_kind remains a string` and
+            "the views add no state beyond ParamExpr" both still hold
+            (`ClassVar`s are not dataclass fields, so `fields(RealParamExpr)
+            == fields(ParamExpr)` continues to be true); this is purely a
+            builder-layer mechanism refinement of D-28's own choice.

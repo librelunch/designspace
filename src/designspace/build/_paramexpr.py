@@ -11,12 +11,19 @@ body collide (the `def` statement overwrites the field's class-level default),
 so the method needs its own name for the state it reads and writes.
 
 The type methods and `.repeat()` live in `build/_views.py`, not here — see
-API_v3.md, "Builder view types" and DECISIONS.md D-27/D-28. `ParamExpr` is
+API_v3.md, "Builder view types" and DECISIONS.md D-27/D-29. `ParamExpr` is
 the base type: no type methods, no `.repeat()`, but every modifier that stays
 universal across param types (`.prior()`, `.default()`, `.when()`, `.tag()`,
 `.meta()`), the combinatorial queries, and the `VectorExpr` aggregates
 (reference-position usage needs these regardless of which type, if any, the
 referenced param turns out to declare).
+
+`type_kind` is a `ClassVar`, not a field (DECISIONS.md D-29, superseding
+D-28's plain-field choice): each view in `build/_views.py` declares its own
+fixed `type_kind` (`RealParamExpr.type_kind = "real"`, …), so it is excluded
+from `__init__` entirely — `ParamExpr(path="x", type_kind="integer")` is a
+`TypeError`, not a value resolution can misread. A bare `ParamExpr`/
+`FreshParamExpr` (no type chosen) inherits the base's `None`.
 """
 
 from __future__ import annotations
@@ -25,7 +32,7 @@ import builtins
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields, replace
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Self, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar
 
 from designspace.errors import ResolutionError
 from designspace.expr import (
@@ -70,15 +77,23 @@ class _ElementSnapshot:
     """Builder-time closure of "everything left of `.repeat()`" (API_v3.md,
     "Modifiers and Layering" — "The lift"; DECISIONS.md D-18).
 
-    When `type_kind == "list"`, this snapshot describes one `.repeat()`
-    level: `element`/`count`/`list_default` are populated and the leaf
-    fields below are unused — `element` recurses for a chained/variadic
+    When `element_class is ListParamExpr`, this snapshot describes one
+    `.repeat()` level: `element`/`count`/`list_default` are populated and the
+    leaf fields below are unused — `element` recurses for a chained/variadic
     `.repeat().repeat()`. Otherwise it describes the element itself (a
     scalar/subset/permutation/choice/struct type), mirroring the same-named
     `ParamExpr` fields it was snapshotted from.
+
+    `element_class` (DECISIONS.md D-29) is the actual view class the element
+    was declared with (`type(self)` at `.repeat()`-time — always a concrete
+    leaf, since `.repeat()` only exists on typed views) rather than a
+    `type_kind` string: resolve/_pipeline.py reconstructs the element by
+    calling `element_class(...)` directly, and reads `element_class.type_kind`
+    (the view's `ClassVar`) wherever the IR still needs the plain string
+    (`ListDomain.element_kind`).
     """
 
-    type_kind: str
+    element_class: type[ParamExpr]
     domain: Domain | None = None
     prior_spec: Any = None
     quantized_spec: QuantizedSpec | None = None
@@ -103,8 +118,12 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     """
 
     path: str
-    type_kind: str | None = None
-    type_calls: tuple[str, ...] = ()
+    # ClassVar, not a field (DECISIONS.md D-29): excluded from __init__, so
+    # ParamExpr(path="x", type_kind="integer") is a TypeError, not a value
+    # resolution has to police. Each view in build/_views.py overrides this
+    # with its own fixed string; a bare ParamExpr/FreshParamExpr (no type
+    # chosen) inherits None.
+    type_kind: ClassVar[str | None] = None
     domain: Domain | None = None
     periodic: builtins.bool = False
     prior_spec: Any = None
@@ -122,10 +141,12 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     )
     struct_space: Any = None  # Space | None; typed Any to avoid an import cycle
     # -- the lift (M4): set once `.repeat()` has been called at least once;
-    # `type_kind`/`domain`/`prior_spec`/etc above are then reset (the fields
-    # this dataclass would otherwise be reusing to mean two different things
-    # at once) and every element-describing fact lives in `lift` instead —
-    # see `_ElementSnapshot` and DECISIONS.md D-18.
+    # `domain`/`prior_spec`/etc above are then reset (the fields this
+    # dataclass would otherwise be reusing to mean two different things at
+    # once — the class itself, a `ListParamExpr`, already carries the "this
+    # is a list" fact via its `type_kind` ClassVar) and every
+    # element-describing fact lives in `lift` instead — see
+    # `_ElementSnapshot` and DECISIONS.md D-18/D-29.
     lift: _ElementSnapshot | None = None
 
     @property

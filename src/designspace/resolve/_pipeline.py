@@ -32,6 +32,7 @@ from typing import Any
 from designspace.build._names import check_name
 from designspace.build._paramexpr import ParamExpr, _ElementSnapshot
 from designspace.build._space import Space
+from designspace.build._views import ChoiceParamExpr, ListParamExpr, StructParamExpr
 from designspace.charts import build_chart
 from designspace.errors import ResolutionError
 from designspace.expr import ArithExpr, Compare, Literal
@@ -156,11 +157,11 @@ def _build_list_domains(defs: tuple[ParamExpr, ...]) -> tuple[ParamExpr, ...]:
 
 
 def _build_list_domain(path: str, lift: _ElementSnapshot) -> ListDomain:
-    assert lift.type_kind == "list"
+    assert lift.element_class is ListParamExpr
     assert lift.count is not None
     inner = lift.element
     assert inner is not None
-    if inner.type_kind == "list":
+    if inner.element_class is ListParamExpr:
         return ListDomain(
             element_kind="list",
             element_domain=_build_list_domain(path, inner),
@@ -173,13 +174,15 @@ def _build_list_domain(path: str, lift: _ElementSnapshot) -> ListDomain:
             list_default=lift.list_default,
         )
     assert inner.domain is not None
+    inner_kind = inner.element_class.type_kind
+    assert inner_kind is not None  # every concrete leaf but FreshParamExpr sets one
     element_chart = (
-        build_chart(path, inner.type_kind, inner.domain, inner.prior_spec, inner.quantized_spec)
-        if inner.type_kind in ("real", "integer")
+        build_chart(path, inner_kind, inner.domain, inner.prior_spec, inner.quantized_spec)
+        if inner_kind in ("real", "integer")
         else None
     )
     return ListDomain(
-        element_kind=inner.type_kind,
+        element_kind=inner_kind,
         element_domain=inner.domain,
         element_chart=element_chart,
         element_prior=inner.prior_spec,
@@ -225,19 +228,17 @@ def _check_types_and_names(defs: tuple[ParamExpr, ...]) -> None:
             raise ResolutionError(f"duplicate param name {d.path!r} in this scope")
         seen.add(d.path)
 
-        # `.repeat()` (M4) appends "repeat" to type_calls once per lift
-        # level but is not itself a type method — the element's own type
-        # method (real/integer/.../space/choice) must appear exactly once.
-        type_methods = [t for t in d.type_calls if t != "repeat"]
-        if len(type_methods) == 0:
+        # "More than one type" (row 2's other half) is now structurally
+        # impossible to reach here (DECISIONS.md D-29): type_kind is a
+        # ClassVar fixed by whichever view class built `d`, so there is no
+        # runtime state left to misrepresent it, fluent or hand-built alike
+        # — ParamExpr(type_kind=...) is a TypeError before this function
+        # would ever see the object. Only "no type chosen" (a bare
+        # FreshParamExpr/ParamExpr reaching resolution) remains checkable.
+        if d.type_kind is None:
             raise ResolutionError(
                 f"param {d.path!r} has no type: call exactly one of "
                 ".real/.integer/.categorical/.ordinal/.bool"
-            )
-        if len(type_methods) > 1:
-            raise ResolutionError(
-                f"param {d.path!r} declares more than one type {type_methods!r}: "
-                "exactly one type method is allowed"
             )
         _check_modifier_placement(d)
 
@@ -300,7 +301,7 @@ def _count_deps(lift: _ElementSnapshot | None) -> frozenset[str]:
     be known before this param's instances can be materialized, exactly
     like a condition must be known before activity can be decided."""
     deps: frozenset[str] = frozenset()
-    while lift is not None and lift.type_kind == "list":
+    while lift is not None and lift.element_class is ListParamExpr:
         if isinstance(lift.count, ArithExpr):
             deps = deps | lift.count.params
         lift = lift.element
@@ -537,19 +538,21 @@ def _validate_lift(d: ParamExpr, defs_by_path: dict[str, ParamExpr]) -> None:
         any_list_default = any_list_default or snap.list_default is not None
         inner = snap.element
         assert inner is not None
-        if inner.type_kind != "list":
+        if inner.element_class is not ListParamExpr:
             break
         snap = inner
-    if depth > 1 and inner.type_kind in ("space", "choice"):
+    if depth > 1 and inner.element_class in (StructParamExpr, ChoiceParamExpr):
         raise ResolutionError(
             f"param {d.path!r}: a struct/choice element nested under more than one "
             ".repeat() level is not yet supported (M4 scope boundary, DECISIONS.md "
             "D-24) — scalar/subset/permutation elements support arbitrary nesting"
         )
-    element = ParamExpr(
+    # inner.element_class (DECISIONS.md D-29) is the actual view the element
+    # was declared with — reconstructing via that class, not a bare
+    # ParamExpr, is what gives `element` a real (ClassVar-derived) type_kind
+    # at all, since type_kind is no longer a settable field.
+    element = inner.element_class(
         path=d.path + "[]" * depth,
-        type_kind=inner.type_kind,
-        type_calls=(inner.type_kind,),
         domain=inner.domain,
         prior_spec=inner.prior_spec,
         quantized_spec=inner.quantized_spec,
@@ -629,7 +632,7 @@ def _validate_tags_meta(d: ParamExpr) -> None:
 
 
 def _innermost_element(lift: _ElementSnapshot) -> _ElementSnapshot:
-    while lift.type_kind == "list":
+    while lift.element_class is ListParamExpr:
         assert lift.element is not None
         lift = lift.element
     return lift
@@ -710,7 +713,7 @@ def _emit(defs: tuple[ParamExpr, ...], charts: dict[str, Chart | None]) -> Space
             assert isinstance(d.domain, ListDomain)
             assert d.lift is not None
             leaf = _innermost_element(d.lift)
-            if leaf.type_kind == "space" and leaf.struct_space is not None:
+            if leaf.element_class is StructParamExpr and leaf.struct_space is not None:
                 child_params, child_conditions, child_constraints = relocate_child(
                     leaf.struct_space, new_prefix=f"{d.path}[].", injected_condition=None
                 )
@@ -723,7 +726,7 @@ def _emit(defs: tuple[ParamExpr, ...], charts: dict[str, Chart | None]) -> Space
                     params[d.path],
                     domain=replace(d.domain, element_constraints=tuple(child_constraints)),
                 )
-            elif leaf.type_kind == "choice":
+            elif leaf.element_class is ChoiceParamExpr:
                 assert isinstance(leaf.domain, ChoiceDomain)
                 variant_params, variant_conditions, variant_constraints = (
                     _relocate_choice_variants(

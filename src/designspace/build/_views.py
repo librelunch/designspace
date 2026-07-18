@@ -1,5 +1,5 @@
 """Builder view types (API_v3.md, "Builder view types"; DECISIONS.md D-27,
-D-28).
+D-29).
 
 `ds.param(name)` returns a `FreshParamExpr` — a `ParamExpr` carrying the 9
 type methods. Each type method narrows to a type-specific view that omits
@@ -10,24 +10,30 @@ typed view, not on `FreshParamExpr` or the base — narrows to `ListParamExpr`,
 which re-offers `.repeat()` for nested/variadic lifts.
 
 Class shape, bottom to top:
-    ParamExpr                      (build/_paramexpr.py — no type methods, no .repeat())
-    +-- FreshParamExpr             9 type methods only
+    ParamExpr                      (build/_paramexpr.py — no type methods, no .repeat();
+                                     type_kind: ClassVar[str | None] = None)
+    +-- FreshParamExpr             9 type methods only; inherits type_kind = None
     +-- _TypedParamExpr            .repeat() only — shared by every narrowed view
         +-- _NumericParamExpr      + .log_scale()/.quantized() — Real/Integer only
-        |   +-- RealParamExpr
-        |   +-- IntegerParamExpr
-        +-- BoolParamExpr
-        +-- CategoricalParamExpr
-        +-- OrdinalParamExpr
-        +-- SubsetParamExpr
-        +-- PermutationParamExpr
-        +-- ChoiceParamExpr
-        +-- StructParamExpr
-        +-- ListParamExpr
+        |   +-- RealParamExpr      type_kind = "real"
+        |   +-- IntegerParamExpr   type_kind = "integer"
+        +-- BoolParamExpr          type_kind = "bool"
+        +-- CategoricalParamExpr   type_kind = "categorical"
+        +-- OrdinalParamExpr       type_kind = "ordinal"
+        +-- SubsetParamExpr        type_kind = "subset"
+        +-- PermutationParamExpr   type_kind = "permutation"
+        +-- ChoiceParamExpr        type_kind = "choice"
+        +-- StructParamExpr        type_kind = "space"
+        +-- ListParamExpr          type_kind = "list"
 
 None of these subclasses add fields (API_v3.md: "they add no state beyond
-ParamExpr"); each is a thin method surface over the same dataclass fields,
-constructed via `ParamExpr._as()`.
+ParamExpr"); each is a thin method surface (plus, on the 10 leaves, a fixed
+`type_kind` override) over the same dataclass fields, constructed via
+`ParamExpr._as()`. None needs `@dataclass` redecoration — `type_kind` was
+declared `ClassVar` on `ParamExpr` itself, so dataclass field processing
+never sees it as a field anywhere in the hierarchy; a plain class-attribute
+override is enough (DECISIONS.md D-29), and no subclass's `__init__` ever
+accepts `type_kind` as an argument.
 """
 
 from __future__ import annotations
@@ -36,7 +42,7 @@ import builtins
 from collections.abc import Sequence
 from dataclasses import replace
 from types import MappingProxyType
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 
 from designspace.build._paramexpr import ParamExpr, _ElementSnapshot
 from designspace.errors import ResolutionError
@@ -64,63 +70,29 @@ class FreshParamExpr(ParamExpr):
     def real(
         self, lo: float | ArithExpr, hi: float | ArithExpr, periodic: builtins.bool = False
     ) -> RealParamExpr:
-        return self._as(
-            RealParamExpr,
-            type_kind="real",
-            domain=RealDomain(lo, hi),
-            periodic=periodic,
-            type_calls=(*self.type_calls, "real"),
-        )
+        return self._as(RealParamExpr, domain=RealDomain(lo, hi), periodic=periodic)
 
     def integer(self, lo: int | ArithExpr, hi: int | ArithExpr) -> IntegerParamExpr:
-        return self._as(
-            IntegerParamExpr,
-            type_kind="integer",
-            domain=IntegerDomain(lo, hi),
-            type_calls=(*self.type_calls, "integer"),
-        )
+        return self._as(IntegerParamExpr, domain=IntegerDomain(lo, hi))
 
     def categorical(self, *values: Any) -> CategoricalParamExpr:
-        return self._as(
-            CategoricalParamExpr,
-            type_kind="categorical",
-            domain=CategoricalDomain(tuple(values)),
-            type_calls=(*self.type_calls, "categorical"),
-        )
+        return self._as(CategoricalParamExpr, domain=CategoricalDomain(tuple(values)))
 
     def ordinal(self, *values: Any) -> OrdinalParamExpr:
-        return self._as(
-            OrdinalParamExpr,
-            type_kind="ordinal",
-            domain=OrdinalDomain(tuple(values)),
-            type_calls=(*self.type_calls, "ordinal"),
-        )
+        return self._as(OrdinalParamExpr, domain=OrdinalDomain(tuple(values)))
 
     def bool(self) -> BoolParamExpr:
-        return self._as(
-            BoolParamExpr,
-            type_kind="bool",
-            domain=BoolDomain(),
-            type_calls=(*self.type_calls, "bool"),
-        )
+        return self._as(BoolParamExpr, domain=BoolDomain())
 
     def subset(
         self, items: Sequence[Any], min_size: int = 0, max_size: int | None = None
     ) -> SubsetParamExpr:
         return self._as(
-            SubsetParamExpr,
-            type_kind="subset",
-            domain=SubsetDomain(tuple(items), min_size, max_size),
-            type_calls=(*self.type_calls, "subset"),
+            SubsetParamExpr, domain=SubsetDomain(tuple(items), min_size, max_size)
         )
 
     def permutation(self, items: Sequence[Any]) -> PermutationParamExpr:
-        return self._as(
-            PermutationParamExpr,
-            type_kind="permutation",
-            domain=PermutationDomain(tuple(items)),
-            type_calls=(*self.type_calls, "permutation"),
-        )
+        return self._as(PermutationParamExpr, domain=PermutationDomain(tuple(items)))
 
     def choice(
         self, *variants: str | tuple[str, Any], **keyword_variants: Any
@@ -143,10 +115,8 @@ class FreshParamExpr(ParamExpr):
             has_payload.add(name)
         return self._as(
             ChoiceParamExpr,
-            type_kind="choice",
             domain=ChoiceDomain(tuple(names), frozenset(has_payload)),
             choice_payloads=MappingProxyType(payloads),
-            type_calls=(*self.type_calls, "choice"),
         )
 
     def space(self, *exprs: Any) -> StructParamExpr:
@@ -162,13 +132,7 @@ class FreshParamExpr(ParamExpr):
             child = exprs[0]
         else:
             child = resolve_space(exprs)
-        return self._as(
-            StructParamExpr,
-            type_kind="space",
-            domain=StructDomain(),
-            struct_space=child,
-            type_calls=(*self.type_calls, "space"),
-        )
+        return self._as(StructParamExpr, domain=StructDomain(), struct_space=child)
 
 
 class _TypedParamExpr(ParamExpr):
@@ -189,16 +153,16 @@ class _TypedParamExpr(ParamExpr):
         return result
 
     def _repeat_one(self, count: int | ArithExpr) -> ListParamExpr:
-        if self.type_kind == "list":
+        if isinstance(self, ListParamExpr):
             assert self.lift is not None
             inner = self.lift
         else:
-            # Every _TypedParamExpr instance was built either by a type
-            # method (FreshParamExpr) or by a prior _repeat_one() — both set
-            # type_kind to a concrete string, never leave it None.
-            assert self.type_kind is not None
+            # type(self) is always a concrete leaf here (DECISIONS.md D-29):
+            # .repeat() only exists on typed views, and modifiers preserve
+            # the caller's class via replace(), so this is exactly the view
+            # the element was declared with — e.g. RealParamExpr.
             inner = _ElementSnapshot(
-                type_kind=self.type_kind,
+                element_class=type(self),
                 domain=self.domain,
                 prior_spec=self.prior_spec,
                 quantized_spec=self.quantized_spec,
@@ -207,10 +171,9 @@ class _TypedParamExpr(ParamExpr):
                 struct_space=self.struct_space,
                 choice_payloads=self.choice_payloads,
             )
-        new_lift = _ElementSnapshot(type_kind="list", element=inner, count=count)
+        new_lift = _ElementSnapshot(element_class=ListParamExpr, element=inner, count=count)
         return self._as(
             ListParamExpr,
-            type_kind="list",
             domain=None,
             prior_spec=None,
             quantized_spec=None,
@@ -219,7 +182,6 @@ class _TypedParamExpr(ParamExpr):
             struct_space=None,
             choice_payloads=MappingProxyType({}),
             lift=new_lift,
-            type_calls=(*self.type_calls, "repeat"),
         )
 
 
@@ -243,46 +205,46 @@ class _NumericParamExpr(_TypedParamExpr):
 
 
 class RealParamExpr(_NumericParamExpr):
-    pass
+    type_kind: ClassVar[str] = "real"
 
 
 class IntegerParamExpr(_NumericParamExpr):
-    pass
+    type_kind: ClassVar[str] = "integer"
 
 
 class BoolParamExpr(_TypedParamExpr):
     # Already a BoolExpr transitively (ParamExpr is BoolExpr-inheriting) —
     # API_v3.md: "BoolParamExpr is additionally a BoolExpr (a boolean param
     # is usable directly as a condition)".
-    pass
+    type_kind: ClassVar[str] = "bool"
 
 
 class CategoricalParamExpr(_TypedParamExpr):
-    pass
+    type_kind: ClassVar[str] = "categorical"
 
 
 class OrdinalParamExpr(_TypedParamExpr):
-    pass
+    type_kind: ClassVar[str] = "ordinal"
 
 
 class SubsetParamExpr(_TypedParamExpr):
-    pass
+    type_kind: ClassVar[str] = "subset"
 
 
 class PermutationParamExpr(_TypedParamExpr):
-    pass
+    type_kind: ClassVar[str] = "permutation"
 
 
 class ChoiceParamExpr(_TypedParamExpr):
-    pass
+    type_kind: ClassVar[str] = "choice"
 
 
 class StructParamExpr(_TypedParamExpr):
-    pass
+    type_kind: ClassVar[str] = "space"
 
 
 class ListParamExpr(_TypedParamExpr):
     """`.repeat()`'s return type; re-offers `.repeat()` (inherited from
     `_TypedParamExpr`) for nested/variadic lifts."""
 
-    pass
+    type_kind: ClassVar[str] = "list"
