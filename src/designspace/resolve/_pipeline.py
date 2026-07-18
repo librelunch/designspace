@@ -229,7 +229,7 @@ def _check_types_and_names(defs: tuple[ParamExpr, ...]) -> None:
         seen.add(d.path)
 
         # "More than one type" (row 2's other half) is now structurally
-        # impossible to reach here (DECISIONS.md D-29): type_kind is a
+        # impossible to reach here (DECISIONS.md D-28): type_kind is a
         # ClassVar fixed by whichever view class built `d`, so there is no
         # runtime state left to misrepresent it, fluent or hand-built alike
         # — ParamExpr(type_kind=...) is a TypeError before this function
@@ -547,7 +547,7 @@ def _validate_lift(d: ParamExpr, defs_by_path: dict[str, ParamExpr]) -> None:
             ".repeat() level is not yet supported (M4 scope boundary, DECISIONS.md "
             "D-24) — scalar/subset/permutation elements support arbitrary nesting"
         )
-    # inner.element_class (DECISIONS.md D-29) is the actual view the element
+    # inner.element_class (DECISIONS.md D-28) is the actual view the element
     # was declared with — reconstructing via that class, not a bare
     # ParamExpr, is what gives `element` a real (ClassVar-derived) type_kind
     # at all, since type_kind is no longer a settable field.

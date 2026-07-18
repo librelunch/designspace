@@ -1,5 +1,5 @@
 """M4.6 gate: build-layer view types (API_v3.md, "Builder view types";
-DECISIONS.md D-27, D-28, D-29).
+DECISIONS.md D-27, D-28).
 
 Pure build-layer typing sugar — no observable value, JSON format,
 fingerprint, chart, or conformance-law change. These tests check the
@@ -134,7 +134,7 @@ class TestRow2SecondTypeMethod:
     lacks the method). The "however it was built" half of the law — a
     hand-built definition that bypasses the fluent builder — is covered
     more strongly in TestTypeKindIsNotAConstructorArgument below: since
-    DECISIONS.md D-29, there is no longer a resolution-time check to test,
+    DECISIONS.md D-28, there is no longer a resolution-time check to test,
     because there is no longer any way to *construct* such an object at
     all."""
 
@@ -156,7 +156,7 @@ class TestRow2SecondTypeMethod:
 
 
 class TestTypeKindIsNotAConstructorArgument:
-    """DECISIONS.md D-29: `type_kind` moved from a plain field to a
+    """DECISIONS.md D-28: `type_kind` moved from a plain field to a
     `ClassVar` fixed per view, excluded from `__init__` everywhere in the
     hierarchy. This makes row 2's "however it was built" guarantee
     structural rather than checked: there is no longer any way — fluent or
@@ -211,7 +211,7 @@ class TestRow11WrongTypeModifierIsStaticallyHidden:
             ds.param("x").real(0.0, 1.0).repeat(4).quantized(step=0.1)
 
     def test_programmatically_built_quantized_on_categorical_raises(self):
-        # _check_modifier_placement's backstop, unaffected by D-29: unlike
+        # _check_modifier_placement's backstop, unaffected by D-28: unlike
         # type_kind, quantized_spec remains a plain, freely-settable field
         # on every view — .quantized() just isn't the route to it here. A
         # CategoricalParamExpr built directly (bypassing .quantized(),

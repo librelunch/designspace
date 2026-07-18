@@ -11,19 +11,19 @@ body collide (the `def` statement overwrites the field's class-level default),
 so the method needs its own name for the state it reads and writes.
 
 The type methods and `.repeat()` live in `build/_views.py`, not here — see
-API_v3.md, "Builder view types" and DECISIONS.md D-27/D-29. `ParamExpr` is
+API_v3.md, "Builder view types" and DECISIONS.md D-27/D-28. `ParamExpr` is
 the base type: no type methods, no `.repeat()`, but every modifier that stays
 universal across param types (`.prior()`, `.default()`, `.when()`, `.tag()`,
 `.meta()`), the combinatorial queries, and the `VectorExpr` aggregates
 (reference-position usage needs these regardless of which type, if any, the
 referenced param turns out to declare).
 
-`type_kind` is a `ClassVar`, not a field (DECISIONS.md D-29, superseding
-D-28's plain-field choice): each view in `build/_views.py` declares its own
-fixed `type_kind` (`RealParamExpr.type_kind = "real"`, …), so it is excluded
-from `__init__` entirely — `ParamExpr(path="x", type_kind="integer")` is a
-`TypeError`, not a value resolution can misread. A bare `ParamExpr`/
-`FreshParamExpr` (no type chosen) inherits the base's `None`.
+`type_kind` is a `ClassVar`, not a field (DECISIONS.md D-28): each view in
+`build/_views.py` declares its own fixed `type_kind`
+(`RealParamExpr.type_kind = "real"`, …), so it is excluded from `__init__`
+entirely — `ParamExpr(path="x", type_kind="integer")` is a `TypeError`, not
+a value resolution can misread. A bare `ParamExpr`/`FreshParamExpr` (no type
+chosen) inherits the base's `None`.
 """
 
 from __future__ import annotations
@@ -84,7 +84,7 @@ class _ElementSnapshot:
     scalar/subset/permutation/choice/struct type), mirroring the same-named
     `ParamExpr` fields it was snapshotted from.
 
-    `element_class` (DECISIONS.md D-29) is the actual view class the element
+    `element_class` (DECISIONS.md D-28) is the actual view class the element
     was declared with (`type(self)` at `.repeat()`-time — always a concrete
     leaf, since `.repeat()` only exists on typed views) rather than a
     `type_kind` string: resolve/_pipeline.py reconstructs the element by
@@ -118,7 +118,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     """
 
     path: str
-    # ClassVar, not a field (DECISIONS.md D-29): excluded from __init__, so
+    # ClassVar, not a field (DECISIONS.md D-28): excluded from __init__, so
     # ParamExpr(path="x", type_kind="integer") is a TypeError, not a value
     # resolution has to police. Each view in build/_views.py overrides this
     # with its own fixed string; a bare ParamExpr/FreshParamExpr (no type
@@ -146,7 +146,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     # once — the class itself, a `ListParamExpr`, already carries the "this
     # is a list" fact via its `type_kind` ClassVar) and every
     # element-describing fact lives in `lift` instead — see
-    # `_ElementSnapshot` and DECISIONS.md D-18/D-29.
+    # `_ElementSnapshot` and DECISIONS.md D-18/D-28.
     lift: _ElementSnapshot | None = None
 
     @property

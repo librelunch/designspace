@@ -1,5 +1,5 @@
 """Builder view types (API_v3.md, "Builder view types"; DECISIONS.md D-27,
-D-29).
+D-28).
 
 `ds.param(name)` returns a `FreshParamExpr` — a `ParamExpr` carrying the 9
 type methods. Each type method narrows to a type-specific view that omits
@@ -32,7 +32,7 @@ ParamExpr"); each is a thin method surface (plus, on the 10 leaves, a fixed
 `ParamExpr._as()`. None needs `@dataclass` redecoration — `type_kind` was
 declared `ClassVar` on `ParamExpr` itself, so dataclass field processing
 never sees it as a field anywhere in the hierarchy; a plain class-attribute
-override is enough (DECISIONS.md D-29), and no subclass's `__init__` ever
+override is enough (DECISIONS.md D-28), and no subclass's `__init__` ever
 accepts `type_kind` as an argument.
 """
 
@@ -157,7 +157,7 @@ class _TypedParamExpr(ParamExpr):
             assert self.lift is not None
             inner = self.lift
         else:
-            # type(self) is always a concrete leaf here (DECISIONS.md D-29):
+            # type(self) is always a concrete leaf here (DECISIONS.md D-28):
             # .repeat() only exists on typed views, and modifiers preserve
             # the caller's class via replace(), so this is exactly the view
             # the element was declared with — e.g. RealParamExpr.

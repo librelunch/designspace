@@ -10,7 +10,7 @@ Current milestone: **M5 — Expression bounds** (not started)
 | M3 — Structure: choice, struct, subset, permutation, paths | 2026-07-17 | 369 | D-11, D-12, D-13, D-14, D-15, D-16, D-17 |
 | M4 — Lifts and aggregates | 2026-07-18 | 449 | D-18, D-19, D-20, D-21, D-22, D-23, D-24, D-25 |
 | M4.5 — Faithfulness corrections | 2026-07-18 | 475 | _none_ |
-| M4.6 — Build-layer view types | 2026-07-18 | 509 | D-27, D-28, D-29 |
+| M4.6 — Build-layer view types | 2026-07-18 | 509 | D-27, D-28 |
 
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
 
