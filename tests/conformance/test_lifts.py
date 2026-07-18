@@ -18,9 +18,14 @@ aggregates"; "Three-valued semantics" rules 1 and 6; "Paths and Scoping").
   form `.repeat(b).repeat(a)` (fingerprint equality is M7; structural
   equality is asserted now, per IMPLEMENTATION_PLAN.md's M4 gate).
 - Instance paths in expressions: an out-of-range index is Unknown.
-
-The D-19 judgment call (interior-Unknown handling inside a *non-empty*
-aggregate) is not a spec law — see tests/unit/test_lifts.py.
+- `.field(name)` on a non-struct lift, or naming an undeclared element
+  field, is a resolution error (row 6) — not a silent Unknown cascade
+  (M4.5 faithfulness correction, superseding the earlier D-25 judgment
+  call).
+- Non-`count` aggregates plain-propagate Unknown (Three-valued semantics
+  rule 2): any interior-Unknown element in a *non-empty* aggregated
+  vector makes the aggregate itself Unknown, no range computed (M4.5
+  promotes this from a D-19 judgment call to a stated law).
 """
 
 from __future__ import annotations
@@ -28,6 +33,7 @@ from __future__ import annotations
 import pytest
 
 import designspace as ds
+from designspace.config import flatten
 from designspace.errors import ResolutionError
 from designspace.eval import Unknown, compute_activity, evaluate_arith, evaluate_bool
 
@@ -108,6 +114,87 @@ class TestInactiveLiftVsActiveEmpty:
         (ce,) = result.constraint_evals
         assert ce.applicable is True
         assert ce.satisfied is True
+
+
+class TestNonCountAggregatesPlainPropagateUnknown:
+    """Three-valued semantics rule 2: "Every *other* aggregate (`sum`,
+    `min`, `max`, `count_of`, `is_sorted`, `distinct`) containing any
+    Unknown element is itself Unknown — plain propagation, no range
+    computed." Promoted from a D-19 judgment call (M4) to a stated law
+    (M4.5) once the spec was made explicit on this point."""
+
+    def _space(self):
+        return ds.space(
+            ds.param("rows")
+            .space(
+                ds.param("active").bool(),
+                ds.param("cells").real(0.0, 1.0).when(ds.param("active")),
+            )
+            .repeat(3)
+        )
+
+    def test_sum_is_unknown_when_any_element_is_interior_unknown(self):
+        space = self._space()
+        config = {
+            "rows": [
+                {"active": True, "cells": 0.5},
+                {"active": False},
+                {"active": True, "cells": 0.25},
+            ]
+        }
+        flat = flatten(config, space)
+        activity = compute_activity(space, flat)
+        result = evaluate_arith(ds.param("rows").field("cells").sum(), flat, activity, space)
+        assert isinstance(result, Unknown)
+
+    def test_sum_is_the_plain_total_when_no_interior_unknowns(self):
+        space = self._space()
+        config = {
+            "rows": [
+                {"active": True, "cells": 0.5},
+                {"active": True, "cells": 0.1},
+                {"active": True, "cells": 0.25},
+            ]
+        }
+        flat = flatten(config, space)
+        activity = compute_activity(space, flat)
+        result = evaluate_arith(ds.param("rows").field("cells").sum(), flat, activity, space)
+        assert result == pytest.approx(0.85)
+
+
+class TestRow6FieldProjection:
+    """`.field(name)` requires a struct lift whose element declares `name`
+    (API_v3.md, "Expressions" — "Instance paths are legal..." paragraph);
+    projecting an undeclared field, or `.field()` on a non-struct lift, is
+    a resolution error (row 6), not a silent Unknown. M4.5 faithfulness
+    correction: M4 (D-25) treated both as a silent cascade instead."""
+
+    def test_field_on_scalar_lift_raises(self):
+        with pytest.raises(ResolutionError, match="'xs'"):
+            ds.space(ds.param("xs").real(0.0, 1.0).repeat(3)).constrain(
+                ds.param("xs").field("y").sum() > 0
+            )
+
+    def test_field_on_non_lift_raises(self):
+        with pytest.raises(ResolutionError, match="'x'"):
+            ds.space(ds.param("x").real(0.0, 1.0)).constrain(
+                ds.param("x").field("y").sum() > 0
+            )
+
+    def test_undeclared_field_name_raises(self):
+        item = ds.space(ds.param("width").real(0.0, 1.0))
+        with pytest.raises(ResolutionError, match="'items'"):
+            ds.space(ds.param("items").space(item).repeat(3)).constrain(
+                ds.param("items").field("nonexistent").sum() > 0
+            )
+
+    def test_declared_field_name_resolves(self):
+        item = ds.space(ds.param("width").real(0.0, 1.0))
+        space = ds.space(ds.param("items").space(item).repeat(3)).constrain(
+            ds.param("items").field("width").sum() > 0
+        )
+        result = space.validate({"items": [{"width": 0.1}, {"width": 0.2}, {"width": 0.3}]})
+        assert result.valid
 
 
 class TestPerInstanceConstraintInstantiation:

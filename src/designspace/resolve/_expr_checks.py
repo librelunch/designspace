@@ -31,6 +31,7 @@ from designspace.expr import (
     Field,
     IsSorted,
     Length,
+    Literal,
     Max,
     Min,
     PositionOf,
@@ -159,6 +160,33 @@ def _require_lift_domain(
     return domain
 
 
+def _check_field_declared(
+    node: Field, defs_by_path: Mapping[str, Any], *, context: str
+) -> None:
+    """Row 6: `.field(name)` requires a struct lift whose element declares
+    `name`. `node.operand` is checked only when it is itself a direct lift
+    reference — a chained `.field().field()` would need to trace through an
+    intermediate (non-lift) struct field, which nested-lift depth already
+    rejects elsewhere (resolve/_pipeline.py's `_validate_lift`), so no valid
+    space can reach that case today.
+    """
+    base = node.operand
+    if not isinstance(base, ParamExpr):
+        return
+    domain = _referenced_domain(base, defs_by_path, context=context)
+    if not isinstance(domain, ListDomain) or domain.element_kind != "space":
+        raise ResolutionError(
+            f"{context}: field({node.name!r}) on {base.path!r}, which is not a "
+            "struct lift (a repeat() of a .space() element)"
+        )
+    field_path = f"{base.path}[].{node.name}"
+    if field_path not in defs_by_path:
+        raise ResolutionError(
+            f"{context}: field({node.name!r}) on {base.path!r} is not a declared "
+            "element field"
+        )
+
+
 def check_refs_declared(
     expr: Expr,
     defs_by_path: Mapping[str, Any],
@@ -227,6 +255,22 @@ def check_expr_types(
                         f"{context}: compares ordinals {left.path!r} and "
                         f"{right.path!r}, which declare different value sequences"
                     )
+            for param_side, literal_side in ((left, right), (right, left)):
+                if not (isinstance(param_side, ParamExpr) and isinstance(literal_side, Literal)):
+                    continue
+                entry = _resolve_entry(param_side.path, defs_by_path)
+                if entry.type_kind != "ordinal" or not isinstance(entry.domain, OrdinalDomain):
+                    continue
+                if not any(
+                    type(v) is type(literal_side.value) and v == literal_side.value
+                    for v in entry.domain.values
+                ):
+                    raise ResolutionError(
+                        f"{context}: compares ordinal {param_side.path!r} against "
+                        f"{literal_side.value!r}, which is not a declared value"
+                    )
+        elif isinstance(node, Field):
+            _check_field_declared(node, defs_by_path, context=context)
         elif isinstance(node, Contains):
             _require_subset_domain(node.operand, defs_by_path, context=context, what="contains()")
         elif isinstance(node, Size):

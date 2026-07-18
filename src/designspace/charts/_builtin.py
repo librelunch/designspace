@@ -123,3 +123,14 @@ def check_power_domain(path: str, p: float, lo: float, hi: float) -> None:
         raise ResolutionError(
             f"param {path!r}: Power(p={p!r}) requires lo > 0 for negative p, got lo={lo!r}"
         )
+    # The signed-root closed form only recovers [lo, hi] exactly when p is a
+    # positive odd integer (monotone bijection on all of R) or lo >= 0. Any
+    # other domain reaching into negative territory — straddling zero
+    # (including the degenerate lo**p == hi**p) or lying entirely below it —
+    # is monotone-but-unrecoverable by the formula (API_v3.md, "Charts").
+    is_positive_odd_integer = p > 0 and float(p).is_integer() and int(p) % 2 == 1
+    if lo < 0 and not is_positive_odd_integer:
+        raise ResolutionError(
+            f"param {path!r}: Power(p={p!r}) domain [{lo!r}, {hi!r}] straddles or lies "
+            "below zero, which requires lo >= 0 unless p is a positive odd integer"
+        )

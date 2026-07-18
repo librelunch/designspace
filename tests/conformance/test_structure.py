@@ -11,7 +11,8 @@ combinatorial; "Paths and Scoping"; "Config Utilities").
 - Error rows introduced by M3: row 3 (subset/permutation duplicate
   items), row 5 (variant name chars; duplicate variant within one
   choice), row 17 (subset/choice weight validity), row 18 (sum_over/
-  position_of/contains domain checks).
+  position_of/contains domain checks; M4.5 adds the ordinal
+  non-member-literal comparison check to the same row).
 """
 
 from __future__ import annotations
@@ -352,3 +353,15 @@ class TestRow18CombinatorialExpressionChecks:
     def test_size_on_non_subset_raises(self):
         with pytest.raises(ResolutionError, match="'x'"):
             ds.space(ds.param("x").real(0.0, 1.0)).constrain(ds.param("x").size() > 0)
+
+    def test_ordinal_compare_against_non_member_literal_raises(self):
+        with pytest.raises(ResolutionError, match="'size'"):
+            ds.space(ds.param("size").ordinal("s", "m", "l")).constrain(
+                ds.param("size") > "xl"
+            )
+
+    def test_ordinal_compare_against_declared_literal_is_legal(self):
+        space = ds.space(ds.param("size").ordinal("s", "m", "l")).constrain(
+            ds.param("size") > "s"
+        )
+        assert space.n_params == 1

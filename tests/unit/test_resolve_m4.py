@@ -1,9 +1,9 @@
 """M4 gate: builder + resolve mechanics for `.repeat()` and vector
 aggregates not already covered by tests/conformance/test_lifts.py.
 
-Includes the D-19 judgment call (interior-Unknown handling inside a
-non-empty aggregate) — deliberately *not* in tests/conformance/, since it
-is a documented design choice (DECISIONS.md D-19), not a spec law.
+The D-19 aggregate plain-propagation law (interior-Unknown handling inside
+a non-empty aggregate) now lives in tests/conformance/test_lifts.py — it
+was a judgment call at M4 but is normative spec text as of M4.5.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import pytest
 import designspace as ds
 from designspace.config import flatten
 from designspace.errors import ResolutionError, SamplingError
-from designspace.eval import Unknown, compute_activity, evaluate_arith
+from designspace.eval import compute_activity, evaluate_arith
 from designspace.ir import ListDomain
 
 
@@ -200,81 +200,6 @@ class TestVectorAggregateMethods:
     def test_sum_on_non_lift_raises(self):
         with pytest.raises(ResolutionError):
             ds.space(ds.param("x").real(0.0, 1.0)).constrain(ds.param("x").sum() > 0)
-
-
-class TestD19InteriorUnknownInNonEmptyAggregate:
-    """DECISIONS.md D-19: a judgment call, not a spec law — any interior
-    Unknown element in a *non-empty* aggregated vector makes the
-    aggregate itself Unknown (plain propagation), tested here so a future
-    change to this behavior is deliberate, not accidental."""
-
-    def _space(self):
-        return ds.space(
-            ds.param("rows")
-            .space(
-                ds.param("active").bool(),
-                ds.param("cells").real(0.0, 1.0).when(ds.param("active")),
-            )
-            .repeat(3)
-        )
-
-    def test_sum_is_unknown_when_any_element_is_interior_unknown(self):
-        space = self._space()
-        config = {
-            "rows": [
-                {"active": True, "cells": 0.5},
-                {"active": False},
-                {"active": True, "cells": 0.25},
-            ]
-        }
-        flat = flatten(config, space)
-        activity = compute_activity(space, flat)
-        result = evaluate_arith(ds.param("rows").field("cells").sum(), flat, activity, space)
-        assert isinstance(result, Unknown)
-
-    def test_sum_is_the_plain_total_when_no_interior_unknowns(self):
-        space = self._space()
-        config = {
-            "rows": [
-                {"active": True, "cells": 0.5},
-                {"active": True, "cells": 0.1},
-                {"active": True, "cells": 0.25},
-            ]
-        }
-        flat = flatten(config, space)
-        activity = compute_activity(space, flat)
-        result = evaluate_arith(ds.param("rows").field("cells").sum(), flat, activity, space)
-        assert result == pytest.approx(0.85)
-
-
-class TestD25FieldOnNonStructLiftOrMismatchedName:
-    """DECISIONS.md D-25: `.field(name)` where the base isn't a struct
-    lift, or `name` doesn't match a declared element field, is not a
-    resolution-time error — it cascades to Unknown (the projected leaf
-    is never written into config), same as an out-of-range instance
-    index or an inactive lift. Deliberate, not a spec law: tested here,
-    not in tests/conformance/."""
-
-    def test_field_on_scalar_lift_resolves_without_error(self):
-        space = ds.space(ds.param("xs").real(0.0, 1.0).repeat(3)).constrain(
-            ds.param("xs").field("y").sum() > 0
-        )
-        result = space.validate({"xs": [0.1, 0.2, 0.3]})
-        assert result.valid  # inapplicable, never fails validation
-        (ce,) = result.constraint_evals
-        assert ce.applicable is False
-        assert ce.satisfied is None
-
-    def test_mismatched_field_name_on_a_real_struct_lift_resolves_without_error(self):
-        item = ds.space(ds.param("width").real(0.0, 1.0))
-        space = ds.space(ds.param("items").space(item).repeat(3)).constrain(
-            ds.param("items").field("nonexistent").sum() > 0
-        )
-        result = space.validate({"items": [{"width": 0.1}, {"width": 0.2}, {"width": 0.3}]})
-        assert result.valid
-        (ce,) = result.constraint_evals
-        assert ce.applicable is False
-        assert ce.satisfied is None
 
 
 class TestValidateParamOnInstancePaths:

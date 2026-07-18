@@ -5,9 +5,14 @@
 - Floor-integer exact uniformity (chi-square, fixed seed).
 - Quantized cell measure (uniform prior => equiprobable grid points).
 - Grid canonicalization invariance under bit-different representations.
+- Power monotonicity domain (row 9, M4.5 faithfulness correction): a valid
+  `Power` chart is a monotone bijection onto `[lo, hi]`; every domain the
+  spec's "Requires" column rejects raises `ResolutionError`.
 """
 
 from __future__ import annotations
+
+from itertools import pairwise
 
 import numpy as np
 import pytest
@@ -116,6 +121,46 @@ class TestPowerKnownAnswer:
 
         with pytest.raises(ResolutionError):
             _chart("real", RealDomain(0.0, 4.0), Power(-1))
+
+
+class TestPowerMonotoneBijectionLaw:
+    """Row 9 (M4.5 faithfulness correction): every valid `Power` chart is a
+    strictly monotone bijection onto `[lo, hi]`; every domain the spec's
+    "Requires" column rejects raises `ResolutionError` (API_v3.md,
+    "Charts" > "Built-in prior families")."""
+
+    @pytest.mark.parametrize(
+        ("lo", "hi", "p"),
+        [
+            (1.0, 4.0, 2),
+            (2.0, 8.0, 3),
+            (0.0, 10.0, 1),
+            (-4.0, -2.0, 3),  # odd p: fully general, even over a negative domain
+            (-2.0, 5.0, 3),  # odd p: fully general, even straddling zero
+        ],
+    )
+    def test_valid_domain_is_a_monotone_bijection(self, lo, hi, p):
+        c = _chart("real", RealDomain(lo, hi), Power(p))
+        assert c.from_unit(0.0) == pytest.approx(lo)
+        assert c.from_unit(1.0) == pytest.approx(hi)
+        us = [i / 20 for i in range(21)]
+        values = [c.from_unit(u) for u in us]
+        assert all(a < b for a, b in pairwise(values))
+
+    @pytest.mark.parametrize(
+        ("lo", "hi", "p"),
+        [
+            (-2.0, 3.0, 2),  # straddles zero, domain-incomplete
+            (-1.0, 1.0, 2),  # straddles zero, degenerate lo**p == hi**p
+            (-4.0, -2.0, 2),  # all-negative, even p: monotone yet unrecoverable
+            (-3.0, -1.0, 4),  # all-negative, even p (another exponent)
+        ],
+    )
+    def test_row_9_violation_raises(self, lo, hi, p):
+        from designspace.errors import ResolutionError
+
+        with pytest.raises(ResolutionError, match="'x'"):
+            _chart("real", RealDomain(lo, hi), Power(p))
 
 
 class TestFloorIntegerUniformity:

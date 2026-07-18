@@ -37,6 +37,31 @@ class TestRow9ChartFamilyDomain:
         with pytest.raises(ResolutionError, match="'x'"):
             ds.space(ds.param("x").real(0.0, 4.0).prior(ds.Power(-1)))
 
+    def test_power_straddles_zero_raises(self):
+        # domain-incomplete: the signed-root formula would map onto [2, 3],
+        # not [-2, 3] (API_v3.md, "Charts" > "Built-in prior families").
+        with pytest.raises(ResolutionError, match="'x'"):
+            ds.space(ds.param("x").real(-2.0, 3.0).prior(ds.Power(2)))
+
+    def test_power_degenerate_symmetric_domain_raises(self):
+        # lo**p == hi**p: Power(2) over [-a, a].
+        with pytest.raises(ResolutionError, match="'x'"):
+            ds.space(ds.param("x").real(-1.0, 1.0).prior(ds.Power(2)))
+
+    def test_power_all_negative_even_p_raises(self):
+        # monotone (t**2 decreases over [-4, -2]) yet unrecoverable by the
+        # signed-root formula, which would return positive values.
+        with pytest.raises(ResolutionError, match="'x'"):
+            ds.space(ds.param("x").real(-4.0, -2.0).prior(ds.Power(2)))
+
+    def test_power_odd_p_over_negative_domain_is_legal(self):
+        space = ds.space(ds.param("x").real(-4.0, -2.0).prior(ds.Power(3)))
+        assert space.params["x"].chart is not None
+
+    def test_power_odd_p_straddling_zero_is_legal(self):
+        space = ds.space(ds.param("x").real(-2.0, 5.0).prior(ds.Power(3)))
+        assert space.params["x"].chart is not None
+
 
 class TestRow19ExternalPriorSupport:
     class _UnboundedNoCdf:
