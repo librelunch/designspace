@@ -78,6 +78,62 @@ def resolve_space(exprs: tuple[ParamExpr, ...]) -> Space:
     return _emit(defs, charts)  # step 8
 
 
+def check_fully_resolved(space: Space) -> None:
+    """Re-run the deferred row-6/7/14 condition checks over the fully-merged
+    space (DECISIONS.md D-26, superseding D-12).
+
+    A `.when()` condition may reference a param bound in an *enclosing* scope
+    (API_v3.md's sole scoping rule — resolve the first segment by walking up).
+    Such an up-reference cannot be resolved while its payload is resolved
+    standalone, so per-scope resolution *tolerates* it (skipping it in
+    `check_refs_declared`/`check_expr_types`/cycle detection). Here — at every
+    terminal entry point (sample/validate/…), once every enclosing scope has
+    contributed its params — the checks re-run strictly over the merged graph:
+
+    - row 6: an up-reference that binds nowhere is a genuine typo and raises;
+    - row 14: a comparison/arithmetic over a now-visible up-referenced param
+      is type-checked (it was skipped standalone);
+    - row 7: a *cross-scope* cycle (only formable through an up-reference plus
+      a matching down-reference) is caught here — per-scope cycle detection
+      never sees both edges.
+
+    A space with only local references reaches this function already fully
+    checked; every clause below is then a confirming no-op.
+    """
+    defs_by_path = dict(space.params)
+    for cond in space.conditions:
+        context = f"param {cond.target!r}"
+        check_refs_declared(cond.expr, defs_by_path, context=context)
+        check_expr_types(cond.expr, defs_by_path, context=context)
+    _check_merged_cycles(space)
+
+
+def _check_merged_cycles(space: Space) -> None:
+    deps: dict[str, frozenset[str]] = {c.target: c.params for c in space.conditions}
+    for target, target_deps in deps.items():
+        if target in target_deps:
+            raise ResolutionError(f"param {target!r}: condition references itself")
+
+    visiting: set[str] = set()
+    done: set[str] = set()
+
+    def visit(path: str) -> None:
+        if path in done:
+            return
+        if path in visiting:
+            raise ResolutionError(
+                f"cycle detected in condition dependencies involving {path!r}"
+            )
+        visiting.add(path)
+        for dep in deps.get(path, frozenset()):
+            visit(dep)
+        visiting.discard(path)
+        done.add(path)
+
+    for target in deps:
+        visit(target)
+
+
 def _desugar(defs: tuple[ParamExpr, ...]) -> tuple[ParamExpr, ...]:
     return tuple(
         replace(d, condition=desugar_bool(d.condition)) if d.condition is not None else d
@@ -227,8 +283,12 @@ def _resolve_condition_refs(
         if d.condition is None:
             continue
         context = f"param {d.path!r}"
-        check_refs_declared(d.condition, defs_by_path, context=context)
-        check_expr_types(d.condition, defs_by_path, context=context)
+        # Condition up-references to an enclosing scope's params (API_v3.md's
+        # sole scoping rule) are tolerated here and re-checked at finalization
+        # over the merged space, once every enclosing scope has contributed
+        # its params (DECISIONS.md D-26, superseding D-12's eager rejection).
+        check_refs_declared(d.condition, defs_by_path, context=context, tolerate_undeclared=True)
+        check_expr_types(d.condition, defs_by_path, context=context, tolerate_undeclared=True)
 
 
 # -- step 5: cycle detection ---------------------------------------------------
@@ -267,7 +327,11 @@ def _check_condition_cycles(defs: tuple[ParamExpr, ...]) -> None:
             raise ResolutionError(f"cycle detected in condition dependencies involving {path!r}")
         visiting.add(path)
         for dep in deps[path]:
-            visit(dep)
+            # A non-local dep is an up-reference into an enclosing scope
+            # (D-26): it has no node here, so skip it — a cross-scope cycle
+            # through it is caught at finalization over the merged graph.
+            if dep in deps:
+                visit(dep)
         visiting.discard(path)
         done.add(path)
 

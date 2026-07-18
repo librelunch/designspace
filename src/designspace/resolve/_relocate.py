@@ -5,16 +5,17 @@ IR of its enclosing scope (API_v3.md, "Paths and Scoping" — relocatability;
 
 A child Space resolves standalone and eagerly: `ParamExpr.space()`/
 `.choice()` (build/_paramexpr.py) call `resolve_space` immediately on the
-payload's exprs, so every reference inside it was already checked (row 6)
-against *its own* scope alone (see DECISIONS.md for why an escaping
-`.when()` reference from inside an inline payload is therefore
-unsupported). Relocation only ever (1) reprefixes the child's own paths —
-a pure rename, since every leaf reference is guaranteed to already be a
-hit in the rename map — and (2) folds in the enclosing activation
-condition (the struct's own `.when()`, or the choice discriminator's
-`== variant` equality) so deactivation cascades down through nesting via
-the same Kleene rule 3 the flat M2 evaluator already implements. No new
-evaluator machinery is needed.
+payload's exprs. A leaf reference that binds in the child's own scope is
+already checked there (row 6/14); a reference that binds *nowhere locally*
+is tolerated as a possible enclosing-scope up-reference (D-26) and
+re-checked at finalization. Relocation therefore (1) reprefixes the
+child's own paths — a rename in which a local leaf is a hit and an
+up-reference is deliberately *not* (it stays bare, to bind against the
+enclosing scope) — and (2) folds in the enclosing activation condition
+(the struct's own `.when()`, or the choice discriminator's `== variant`
+equality) so deactivation cascades down through nesting via the same
+Kleene rule 3 the flat M2 evaluator already implements. No new evaluator
+machinery is needed.
 """
 
 from __future__ import annotations
@@ -58,9 +59,11 @@ from designspace.ir import Condition, Constraint, ListDomain, ParamDef
 
 def rewrite_expr(node: Expr, rename: Mapping[str, str]) -> Expr:
     """Rebuild `node` with every `ParamExpr` leaf's path substituted per
-    `rename`. Every leaf here is guaranteed to be a hit (see module
-    docstring) — an unmatched path would mean the child's own eager
-    resolution let an undeclared reference through, which row 6 forbids.
+    `rename`. A local leaf is a hit; an unmatched path is left unchanged —
+    for a child leaf that is really an enclosing-scope up-reference (D-26),
+    staying bare is exactly what binds it against the outer scope once this
+    level's rename doesn't claim it. A genuine typo is unmatched at every
+    level and caught by finalization (`check_fully_resolved`).
     """
     if isinstance(node, ParamExpr):
         new_path = rename.get(node.path, node.path)

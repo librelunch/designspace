@@ -48,6 +48,7 @@ from designspace.ir import (
     SubsetDomain,
     ValidationResult,
 )
+from designspace.resolve._pipeline import check_fully_resolved
 from designspace.resolve._relocate import element_paramdef
 
 
@@ -223,6 +224,7 @@ def _validate_lift_instances(
 
 
 def evaluate_constraints(space: Space, config: dict[str, Any]) -> list[ConstraintEval]:
+    check_fully_resolved(space)
     flat = flatten(config, space)
     activity = compute_activity(space, flat)
     evals = [evaluate_constraint(c, flat, activity, space) for c in space.constraints]
@@ -231,6 +233,7 @@ def evaluate_constraints(space: Space, config: dict[str, Any]) -> list[Constrain
 
 
 def validate(space: Space, config: dict[str, Any]) -> ValidationResult:
+    check_fully_resolved(space)
     flat, param_errors_list = flatten_with_errors(config, space)
     shape_error_paths = {pe.param for pe in param_errors_list}
     activity = compute_activity(space, flat)
@@ -296,6 +299,7 @@ def _lookup_param_shape(space: Space, path: str) -> ParamDef:
 def validate_param(
     space: Space, path: str, value: Any, context: dict[str, Any] | None = None
 ) -> ValidationResult:
+    check_fully_resolved(space)
     pd = _lookup_param_shape(space, path)
     reason = _domain_error_reason(pd, value)
     param_errors = [ParamError(param=path, reason=reason, value=value)] if reason else []

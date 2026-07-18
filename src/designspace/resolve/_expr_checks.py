@@ -78,8 +78,10 @@ def _resolve_entry(path: str, defs_by_path: Mapping[str, Any]) -> Any:
     *element's* type_kind/domain, not the enclosing list's; only possible
     once `ListDomain` is actually built (the constraint-on-resolved-Space
     path), so a `.when()` condition's instance reference to a not-yet-
-    lifted element falls back to the outer entry unchanged (best effort —
-    already beyond D-12's supported boundary).
+    lifted element falls back to the outer entry unchanged (best effort).
+    Callers that tolerate up-references (D-26) never reach here for a
+    non-local path — they skip it before resolving — so this only ever
+    sees a path already known to be declared somewhere in `defs_by_path`.
     """
     if path in defs_by_path:
         return defs_by_path[path]
@@ -157,14 +159,39 @@ def _require_lift_domain(
     return domain
 
 
-def check_refs_declared(expr: Expr, defs_by_path: Mapping[str, Any], *, context: str) -> None:
+def check_refs_declared(
+    expr: Expr,
+    defs_by_path: Mapping[str, Any],
+    *,
+    context: str,
+    tolerate_undeclared: bool = False,
+) -> None:
     for path in expr.params:
         if not _is_declared(path, defs_by_path):
+            if tolerate_undeclared:
+                # An up-reference to a param bound in an enclosing scope
+                # (API_v3.md's sole scoping rule): unresolvable while this
+                # payload resolves standalone, re-checked at finalization once
+                # every enclosing scope has contributed its params (D-26).
+                continue
             raise ResolutionError(f"{context}: references undeclared param {path!r}")
 
 
-def check_expr_types(expr: Expr, defs_by_path: Mapping[str, Any], *, context: str) -> None:
+def check_expr_types(
+    expr: Expr,
+    defs_by_path: Mapping[str, Any],
+    *,
+    context: str,
+    tolerate_undeclared: bool = False,
+) -> None:
     for node in iter_nodes(expr):
+        if tolerate_undeclared and any(
+            not _is_declared(p, defs_by_path) for p in node.params
+        ):
+            # A node touching an enclosing-scope up-reference cannot be typed
+            # standalone (its referenced def is not in this scope); deferred to
+            # finalization over the merged space (D-26).
+            continue
         if isinstance(node, ArithOp):
             for path in node.params:
                 kind = _resolve_entry(path, defs_by_path).type_kind

@@ -130,3 +130,58 @@ class TestNoChartForStructuralKinds:
         )
         for path in ("s", "p", "c", "st"):
             assert space.params[path].chart is None
+
+
+class TestUpReferenceDeferredChecks:
+    """D-26: condition up-references are tolerated per-scope and re-checked at
+    finalization over the merged space, so the deferred error-table rows still
+    fire — just at the terminal op, not at construction."""
+
+    def test_up_reference_into_struct_binds(self):
+        # A struct payload (not only choice) may carry an up-reference too.
+        space = ds.space(
+            ds.param("enabled").bool(),
+            ds.param("group").space(
+                ds.param("width").integer(1, 8).when(ds.param("enabled")),  # up
+            ),
+        )
+        condition = space.params["group.width"].condition
+        assert condition is not None
+        assert "enabled" in condition.params
+        assert space.validate({"enabled": True, "group": {"width": 4}}).valid
+        assert space.validate({"enabled": False, "group": {}}).valid
+        assert not space.validate({"enabled": False, "group": {"width": 4}}).valid
+
+    def test_cross_scope_cycle_caught_at_finalization(self):
+        # An up-reference (gamma -> global_flag) plus a matching down-reference
+        # (global_flag -> algo.svm.gamma) forms a cycle that neither scope's
+        # own resolution can see; construction succeeds, finalization raises.
+        space = ds.space(
+            ds.param("global_flag").bool().when(ds.param("algo.svm.gamma") > 0),  # down
+            ds.param("algo").choice(
+                svm=ds.space(
+                    ds.param("gamma").real(0.0, 10.0).when(ds.param("global_flag")),  # up
+                ),
+            ),
+        )
+        with pytest.raises(ResolutionError, match="cycle"):
+            space.sample_one(seed=0)
+
+    def test_up_reference_type_error_caught_at_finalization(self):
+        # Ordering a categorical up-reference (row 14) is invisible standalone
+        # (the categorical is not in the payload's scope) — caught at finalize.
+        space = ds.space(
+            ds.param("mode").categorical("a", "b", "c"),
+            ds.param("algo").choice(
+                svm=ds.space(
+                    ds.param("gamma").real(0.0, 10.0).when(ds.param("mode") > "a"),  # up
+                ),
+            ),
+        )
+        with pytest.raises(ResolutionError, match="categorical"):
+            space.sample_one(seed=0)
+
+    def test_genuine_typo_still_raises_at_finalization(self):
+        space = ds.space(ds.param("x").bool().when(ds.param("nope")))
+        with pytest.raises(ResolutionError, match="nope"):
+            space.sample_one(seed=0)

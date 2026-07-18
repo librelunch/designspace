@@ -382,6 +382,15 @@ Spec delta: The corpus table could mark forward-referenced fixture content
 
 ## D-12 (M3) — Eager resolution retained; escaping `.when()` references from an inline choice/struct payload are unsupported
 
+**SUPERSEDED by D-26.** This entry's conclusion (option (b): eager
+single-pass resolution, up-references unsupported) was reversed. Its central
+claim — that the permanent M1 row-6 test made deferral "a hard constraint,
+not a judgment call" — conflated the error-table row-6 *law* (satisfiable
+under deferred resolution) with the *architecture* choice "resolve eagerly at
+`ds.space()` construction" (not spec-mandated). Up-references now resolve as
+the spec's sole scoping rule intends; see D-26. The rest of D-12 is retained
+for the historical record.
+
 Question:   API_v3.md's scoping-rule example ("Paths and Scoping") shows a
             `.when()` condition *inside* a choice variant's inline
             `ds.space(...)` payload referencing a param declared in the
@@ -986,3 +995,85 @@ Choice:     (b) — the cascade is not a *silent wrongness* in the sense
             and breaks no config that was ever valid, so nothing is lost
             by deferring it.
 Spec delta: None.
+
+## D-26 (M1/M3 rework) — Condition up-references resolve as the spec intends; row-6/7/14 checks deferred to a finalization pass
+
+Question:   D-12 rejected an escaping `.when()` up-reference from inside an
+            inline choice/struct payload (the spec's worked `# up` example,
+            API_v3.md "Paths and Scoping" — `.when(ds.param("global_flag"))`
+            inside an `svm=ds.space(...)` variant), calling it "not a
+            judgment call, it is a hard constraint" forced by the permanent
+            M1 row-6 test. Re-examination against the spec's *sole* scoping
+            rule ("resolve the first segment by walking **up** to the
+            innermost scope where it binds") and the Resolution section —
+            which lists resolution's *steps* but never fixes its *timing*
+            relative to construction — shows the framing was inverted. The
+            error-table row-6 *law* ("reference to a nonexistent param → R")
+            is satisfiable under deferred resolution; only the *architecture*
+            choice "resolve eagerly at `ds.space()` construction," which the
+            row-6 *unit* test happened to encode, foreclosed up-references.
+            That architecture is not spec-mandated. The gating sub-question:
+            is moving the row-6 error's *trigger* from construction to a
+            terminal-op finalization a **weakening** of the row-6 law, which
+            CLAUDE.md forbids?
+Options:    (a) Keep D-12's eager rejection — up-references stay unbuildable
+            and the spec's own `# up` example cannot be expressed.
+            (b) Defer the condition reference/type/cycle checks: per-scope
+            resolution *tolerates* a non-local `.when()` ref, and a
+            finalization pass over the fully-merged space re-checks it.
+Choice:     (b), and the deferral is **not** a weakening of row 6. The error
+            still fires from pure space *structure* (no config or sample
+            needed), still as a `ResolutionError` (phase R), still
+            config-independent — only the moment it surfaces moves from the
+            `ds.space()` call to the first terminal operation (sample/
+            validate/evaluate_constraints/…). Deferral is *forced*, not
+            chosen: the free `ds.space()` runs identical code for a top-level
+            space and for a choice-variant payload, and during a payload's
+            construction the enclosing `ds.space` is not yet on the call
+            stack (Python argument-evaluation order), so nothing can
+            distinguish "top-level typo" from "to-be-embedded up-reference."
+            Both must be tolerated at construction; the genuine typo is
+            caught at finalization.
+
+            Mechanism (all reuse, one new pass):
+            - Per-scope resolution tolerates non-local *condition* refs —
+              `check_refs_declared`/`check_expr_types` skip them,
+              `_check_condition_cycles` skips a dep that has no local node
+              (resolve/_expr_checks.py, resolve/_pipeline.py).
+            - Relocation already leaves an unmatched leaf path *unprefixed*
+              (`rewrite_expr`'s `rename.get(path, path)`), so bottom-up
+              embedding binds each up-reference at exactly the enclosing
+              scope that declares it, folding in the discriminator/struct
+              activation condition as usual — no relocation change needed.
+            - `check_fully_resolved` (resolve/_pipeline.py), called at every
+              terminal entry point, re-runs row 6 (refs now present) and row
+              14 (types, over now-visible up-referenced params) over the
+              merged conditions, and row 7 over the merged dependency graph —
+              catching a **cross-scope cycle** (formable only via an up plus
+              a matching down reference), which no single scope's cycle check
+              can see. A space with only local references reaches this pass
+              already fully checked, so every clause is a confirming no-op
+              (verified: all 9 corpus fixtures and every conformance law pass
+              unchanged).
+
+            Scope: narrowed to `.when()` conditions — the spec example and
+            D-12's actual subject. Constraint (`.forbid()`/`.constrain()`)
+            refs stay strict (raise eagerly), since cross-scope constraints
+            already have the spec's down-reference-at-the-common-ancestor
+            route. Nested struct/choice bracket-depth limits (D-24) are
+            untouched.
+
+            The row-6 assertion lived in a *unit* test
+            (tests/unit/test_build_resolve.py), not a permanent conformance
+            test, and was updated to trigger the (unchanged) error at a
+            terminal op. `tests/conformance/test_structure.py::
+            TestRelocatability` and all other conformance laws are unchanged
+            and green; a new `TestUpReferenceFromEnclosingScope` pins the
+            spec's `# up` example (up- and down-references coexisting).
+            This supersedes D-12's Choice and its Spec-delta (whose wish —
+            "a construction that defers child resolution" — is now met).
+Spec delta: API_v3.md could state that resolution *timing* is unspecified
+            relative to construction, and that reference/type/cycle errors
+            surface no later than the first terminal operation — so a payload
+            carrying an enclosing-scope reference resolves once embedded,
+            exactly as the sole scoping rule's up-walk requires.

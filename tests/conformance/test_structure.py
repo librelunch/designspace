@@ -113,6 +113,71 @@ class TestRelocatability:
         ).valid
 
 
+class TestUpReferenceFromEnclosingScope:
+    """API_v3.md's sole scoping rule — "resolve the first segment by walking
+    up to the innermost scope where it binds" — and its worked example (a
+    `.when(ds.param("global_flag"))  # up` inside a choice-variant payload).
+    D-26 makes this resolve as the spec intends (D-12 previously rejected it).
+    """
+
+    @staticmethod
+    def _spec_example():
+        # The spec's exact example: an up-reference (`# up`) and a down-
+        # reference (`# down`, the forbid) in one space, coexisting.
+        return ds.space(
+            ds.param("global_flag").bool(),
+            ds.param("algo").choice(
+                svm=ds.space(
+                    ds.param("C").real(1e-3, 1e3),
+                    ds.param("gamma").real(1e-5, 10).when(ds.param("global_flag")),  # up
+                ),
+            ),
+        ).forbid(
+            ds.param("algo.svm.C") > 100,  # down from root
+        )
+
+    def test_up_reference_binds_to_enclosing_param(self):
+        space = self._spec_example()
+        # The nested leaf's activity condition depends on the enclosing-scope
+        # param plus its own discriminator — not a rewrite of either.
+        condition = space.params["algo.svm.gamma"].condition
+        assert condition is not None
+        assert "global_flag" in condition.params
+
+    def test_up_reference_governs_activation(self):
+        space = self._spec_example()
+        # global_flag True + svm selected -> gamma active (present required).
+        assert space.validate(
+            {"global_flag": True, "algo": {"svm": {"C": 50, "gamma": 1.0}}}
+        ).valid
+        # global_flag False -> gamma inactive (present is an error).
+        assert space.validate({"global_flag": False, "algo": {"svm": {"C": 50}}}).valid
+        assert not space.validate(
+            {"global_flag": False, "algo": {"svm": {"C": 50, "gamma": 1.0}}}
+        ).valid
+
+    def test_up_and_down_references_coexist(self):
+        space = self._spec_example()
+        # Down-reference forbid still bites while the up-reference governs gamma.
+        assert not space.validate(
+            {"global_flag": True, "algo": {"svm": {"C": 500, "gamma": 1.0}}}
+        ).valid
+
+    def test_sampling_respects_up_reference(self):
+        space = self._spec_example()
+        saw_active = saw_inactive = False
+        for seed in range(300):
+            cfg = space.sample_one(seed=seed)
+            algo = cfg.get("algo")
+            if not (isinstance(algo, dict) and "svm" in algo):
+                continue
+            gamma_present = "gamma" in algo["svm"]
+            assert gamma_present == cfg["global_flag"]
+            saw_active |= gamma_present
+            saw_inactive |= not gamma_present
+        assert saw_active and saw_inactive, "expected both gamma-active and -inactive draws"
+
+
 class TestFlattenUnflattenRoundTrip:
     def _space(self):
         return ds.space(

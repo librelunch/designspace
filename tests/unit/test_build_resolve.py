@@ -108,8 +108,16 @@ class TestRow5NameCharacters:
 
 class TestRow6UndeclaredReference:
     def test_when_references_undeclared_param(self):
+        # D-26 (superseding D-12): a `.when()` reference that resolves nowhere
+        # locally is *tolerated* at construction — it may be an up-reference to
+        # an enclosing scope that binds once this space is embedded. The row-6
+        # error still fires (same class, same phase R, structure-only, no config
+        # needed), only at the terminal-op finalization over the merged space.
+        space = ds.space(ds.param("x").bool().when(ds.param("y")))
         with pytest.raises(ResolutionError, match="'y'"):
-            ds.space(ds.param("x").bool().when(ds.param("y")))
+            space.sample_one(seed=0)
+        with pytest.raises(ResolutionError, match="'y'"):
+            space.validate({"x": True})
 
 
 class TestRow7Cycles:

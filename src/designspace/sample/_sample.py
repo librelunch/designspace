@@ -46,6 +46,7 @@ from designspace.ir import (
     SubsetDomain,
     Weights,
 )
+from designspace.resolve._pipeline import check_fully_resolved
 from designspace.resolve._relocate import element_paramdef, instantiate_element
 
 _MAX_RETRIES = 10_000
@@ -230,7 +231,11 @@ def _violations(
 
 
 def sample_one(space: Space, seed: Seed = None, reject_soft: bool = False) -> dict[str, Any]:
-    rng = _rng_from_seed(seed)
+    check_fully_resolved(space)
+    return _draw_one(space, _rng_from_seed(seed), reject_soft)
+
+
+def _draw_one(space: Space, rng: np.random.Generator, reject_soft: bool) -> dict[str, Any]:
     constraints = (
         list(space.constraints) if reject_soft else [c for c in space.constraints if c.hard]
     )
@@ -258,5 +263,6 @@ def sample_one(space: Space, seed: Seed = None, reject_soft: bool = False) -> di
 def sample_dicts(
     space: Space, n: int, seed: Seed = None, reject_soft: bool = False
 ) -> list[dict[str, Any]]:
+    check_fully_resolved(space)  # once, not per draw
     rng = _rng_from_seed(seed)
-    return [sample_one(space, seed=rng, reject_soft=reject_soft) for _ in range(n)]
+    return [_draw_one(space, rng, reject_soft) for _ in range(n)]
