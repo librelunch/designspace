@@ -428,19 +428,21 @@ Sampling always produces explicit values and **ignores defaults** — measure bi
 
 `.default()` semantics were unified in v3 around a cascade:
 
-- A **choice default names a variant** (a string). A struct param or activated variant payload fills **field-wise** from its members' own defaults.
-- **Element defaults** (pre-lift) are count-independent and legal under dynamic counts. **List defaults** (post-lift) are legal only for static counts, must match the length, and are mutually exclusive with element defaults on the same param.
+- A **choice default names a variant** (a string). A struct param or activated variant payload fills **field-wise** from its members' own defaults; a struct carries no own default value. If a config already supplies a choice's variant, partial input wins — that variant's payload is filled from its own members' defaults.
+- **Element defaults** (pre-lift) are count-independent and legal under dynamic counts. **List defaults** (post-lift) are legal only for static counts, must match the length, and are mutually exclusive with element defaults on the same param. A **default declared on a param inside a lifted struct/choice** (a `[]`-template field) fills into each materialized instance the same way.
 
 ```python
 .apply_defaults(config) -> dict
 .has_complete_defaults -> bool
 ```
 
-`apply_defaults` is a **partial-evaluation operator**: idempotent, monotone (never overwrites, never removes), activity-respecting. It walks `topological_order`, filling only params whose activity resolves to *active* given the config as it fills (so defaults trigger downstream defaults); params with *unknown* activity are left untouched. Partial input wins field-wise (merge, not replace).
+`apply_defaults` is a **partial-evaluation operator**: idempotent, monotone (never overwrites, never removes), activity-respecting. It walks `topological_order`, recomputing activity as it fills, and fills only params whose activity resolves to *active* given the config so far (so a filled default triggers downstream defaults in one pass); params of *inactive* or *unknown* activity are left untouched. Partial input wins field-wise: the fill merges into the leaf representation and never replaces a supplied value or subtree.
 
-Postcondition: the result is complete iff every param active under the filled config has a default or was supplied — `apply_defaults` does not guarantee completeness; check `is_complete`.
+**Counts and lifts.** A param used as a repeat count is filled from its own default like any other, and since `topological_order` places a count param before its list, that default determines the list length before materialization. A count is **determined** when it is a static integer, evaluates to a definite integer over the config, or is Unknown *solely because a referenced param is inactive* — in which case it is **0** and the lift is the complete value `[]`. `apply_defaults` emits **only default values**: it materializes a lift (its count and filled instance leaves) iff the count is determined and either the count is 0 or at least one instance leaf receives a default; otherwise the lift is left implicit. `is_complete`/`missing_params` re-derive the count from the config, so completeness is exact regardless.
 
-Defaults validate against their (static) domain at resolution — **never a silent clamp** (cross-reference: the prior tail-clipping ban). `apply_defaults` is constraint-blind: its output may violate forbids — bound-origin couplings included — which `validate` reports; this matches user forbids, which were never checked at fill time.
+Postcondition: the result is complete iff every param active under the filled config has a default or was supplied — `apply_defaults` does not guarantee completeness; check `is_complete`. `has_complete_defaults` is `is_complete(apply_defaults({}))`.
+
+Defaults validate against their (static) domain at resolution — **never a silent clamp** (cross-reference: the prior tail-clipping ban). This check spans every kind: a choice default must name a declared variant, a subset/permutation default must be a valid subset/ordering, and a struct param admits no own default (error row 21). `apply_defaults` is constraint-blind: its output may violate forbids — bound-origin couplings included — which `validate` reports; this matches user forbids, which were never checked at fill time.
 
 **Defaults vs. anchors.** Defaults are per-param fill values for completion; anchors are named whole configs for reference. When a space has complete defaults, derive rather than duplicate: `.anchor(configs={"shipped": space.apply_defaults({})})`. Defaults do not auto-create an anchor. Anchor roles (incumbent, baseline) are a `.meta()` convention, not API.
 
@@ -472,9 +474,15 @@ Relations: `is_feasible(c) == validate(c).valid`, both defined by param errors p
 .next_assignable(config) -> list[str]        # instance paths: active, unset, dependency-ready
 ```
 
-`topological_order` gives an assignment order where every condition and bound-origin constraint references only already-assigned params; follow it and any interruption point is a well-defined partial config. `next_assignable` is the derived driver-loop sugar.
+`topological_order` gives an assignment order where every condition and bound-origin constraint references only already-assigned params; follow it and any interruption point is a well-defined partial config. It lists definition paths, omitting lift descendant templates. `next_assignable` is the derived driver-loop sugar.
 
-`remaining_domain` returns a per-kind descriptor: interval (grid-intersected if quantized) for real, integer range, value subset for categorical/ordinal/choice, and for `.subset()` a three-way partition (items forced-in / forced-out / free). **Guarantee level:** declared bounds ∩ constraints reducible with exactly one unset operand — bound-origin couplings included, so bound tightening falls out of the same rule. Full propagation across multi-param constraints is CSP solving — consumer territory. `None` if inactive.
+**Three-valued activity.** `param_activity` classifies each param `active` (its condition is `True`, or it has none), `inactive` (`False`), or `unknown` — Kleene-Unknown **and** at least one param the condition references is itself `active`-unset or `unknown` (a still-resolvable dependency). A condition left Unknown *solely* by inactive operands is `inactive`, by the same cascading deactivation a full config applies. So `unknown` means "undetermined but resolvable," a param is `unknown` only if a param it gates on is `active`-unset or `unknown`, and collapsing `unknown` to `inactive` reproduces the full-config activity. (`is_active(p)` inside a condition follows the same three values — determined for a determined `p`, `Unknown` for an `unknown` one.)
+
+**Status, completeness, order.** `evaluate_partial` reports each param's `param_status` — `set` (active and present), `active_unset` (active and absent), `inactive`, or `unknown` — with `evaluable_constraints` (a `ConstraintEval` for every constraint of determined value, including those settled inapplicable by inactivity alone), `pending_constraints` (still Kleene-Unknown on an `active_unset`/`unknown` operand), and `n_remaining` (the number of `active_unset` params — a lower bound while any lift count is still undetermined). `is_complete(config)` holds iff no param is `active_unset` or `unknown`; `missing_params` lists the `active_unset` instance paths in `topological_order`. A lift contributes instance statuses only when its count is **determined** (per the Defaults count rule; an inactive count-dependency yields the complete `[]`); an **undetermined** count (a pending count-dependency) contributes none — the count param's own status carries incompleteness. A list container is `set`/`unknown`/`inactive`, never `active_unset`.
+
+`next_assignable` lists the `active_unset` params every one of whose referenced params (condition, bound-origin bound, repeat count) is `set` or `inactive`. **This coincides with completeness: `next_assignable(config) == []` iff `is_complete(config)`** — following `topological_order`, the first param that is not `set`/`inactive` is always `active_unset` with all references settled, so a driver loop assigning `next_assignable` halts exactly at completeness. You assign a lift's count param and its instance leaves, never the container.
+
+`remaining_domain` returns a per-kind descriptor — `RealRemaining`/`IntegerRemaining` (interval, grid-intersected if quantized), `ValueRemaining` (still-legal values for bool/categorical/ordinal/choice), `SubsetRemaining` (items forced-in / forced-out / free), `PermutationRemaining` (declared items, unreduced) — or `None` if the param is inactive. It starts from the declared domain and intersects the narrowing of every **hard** constraint (forbid or bound-origin; soft `.constrain()` excluded) that, after substituting all other operands from the config, leaves the param as the sole unset **bare** operand of a comparison — the feasible side by origin (a bound stores the feasible predicate; a forbid stores its negation). **Guarantee level:** declared bounds ∩ constraints reducible with exactly one unset bare operand — bound-origin couplings included, so bound tightening falls out of the same rule. A param buried in arithmetic, two unset operands, or an unsupported operator is not reduced; full propagation across multi-param constraints is CSP solving — consumer territory. The descriptor is **sound, not complete**: it never excludes a still-feasible value, though it may admit values an unreduced coupling would forbid. `remaining_domain` on a struct/list container path is a misuse `TypeError`.
 
 ---
 
@@ -788,9 +796,50 @@ class ParamError:
 @dataclass
 class PartialEval:
     param_status: dict[str, str]  # "set" | "active_unset" | "inactive" | "unknown"
-    evaluable_constraints: list[ConstraintEval]
-    pending_constraints: list[Constraint]
-    n_remaining: int
+    evaluable_constraints: list[ConstraintEval]  # determined value; inactive-only
+                                                 #   Unknown ⇒ applicable=False
+    pending_constraints: list[Constraint]        # Kleene-Unknown on an active_unset/
+                                                 #   unknown operand
+    n_remaining: int                             # count of active_unset params (a lower
+                                                 #   bound while a lift count is unknown)
+
+# remaining_domain's per-kind descriptor — a closed union. Sound, not complete:
+# never excludes a still-feasible value (may admit values an unreduced
+# multi-operand coupling would forbid). See "Space — Partial Configs".
+@dataclass
+class RealRemaining:
+    lo: float
+    hi: float
+    lo_inclusive: bool            # hi_inclusive is False for a periodic real ([lo, hi))
+    hi_inclusive: bool
+    grid: QuantizedSpec | None    # when quantized, the legal set is grid ∩ [lo, hi]
+
+@dataclass
+class IntegerRemaining:
+    lo: int
+    hi: int
+    grid: QuantizedSpec | None
+
+@dataclass
+class ValueRemaining:             # bool, categorical, ordinal, choice
+    values: tuple[Any, ...]       # still-legal values (choice: still-legal variant names)
+
+@dataclass
+class SubsetRemaining:
+    forced_in: tuple[Any, ...]
+    forced_out: tuple[Any, ...]
+    free: tuple[Any, ...]
+    min_size: int
+    max_size: int
+
+@dataclass
+class PermutationRemaining:       # no per-item reduction under the guarantee; echoes items
+    items: tuple[Any, ...]
+
+RemainingDomain = (
+    RealRemaining | IntegerRemaining | ValueRemaining
+    | SubsetRemaining | PermutationRemaining
+)
 
 @dataclass
 class ParamDiff:
@@ -860,7 +909,7 @@ Tagged **R** (resolution-time) or **V** (validation/fill/sample-time).
 | 18 | `sum_over` keys outside the item universe; `position_of` non-member; `.contains()` on permutation; ordinal comparison against a literal that is not a declared value | R |
 | 19 | External prior support exceeding (envelope) bounds without `cdf` | R |
 | 20 | Bound expression with no computable interval hull (workaround: write the desugared form by hand) | R |
-| 21 | Default outside domain; list default under dynamic count; list default length mismatch; element and list default together | R |
+| 21 | Default outside domain (scalar, choice variant, subset, or permutation); `.default()` on a struct param (no own value — completion is field-wise); list default under dynamic count; list default length mismatch; element and list default together | R |
 | 22 | Anchor invalid against the space; anchor conflicting with a frozen/sliced value | R |
 | 23 | Empty-string tag; non-JSON-serializable meta value; non-JSON-serializable `describe()` output | R |
 | 24 | `is_sorted` on a lift nested deeper than one level | R |
@@ -932,7 +981,8 @@ The spec's executable laws double as the acceptance suite:
 - **Charts:** known-answer vectors for the four families (including subnormal-range log); floor-integer uniformity; quantized cell measure (uniform ⇒ equiprobable grid); grid canonicalization invariance under bit-different representations.
 - **Kleene:** the truth table; `count` range rule; non-`count` aggregates plain-propagate Unknown (no range tracking); empty-aggregate values; inactive-lift-projection ≠ active-empty-list.
 - **Margins:** sign convention per form; Boolean composition preserves the satisfaction invariant.
-- **Defaults:** `apply_defaults` idempotent, monotone, activity-respecting.
+- **Defaults:** `apply_defaults` idempotent, monotone, activity-respecting; completeness postcondition (`is_complete(apply_defaults(c))` iff every active param is defaulted-or-supplied); element/list default exclusivity and static-count list defaults; field-wise choice/struct fill; the defaulted-count-param cascade under fill-only output.
+- **Partial Configs:** three-valued activity collapses to binary activity under `unknown → inactive`; the driver-loop coincidence `next_assignable(c) == [] ⟺ is_complete(c)`; `remaining_domain` soundness (never excludes a still-feasible value; every descriptor value validates against the declared domain); the one-unset-operand reducer positive (bound and single-forbid narrowing across kinds) and negative (a two-unset-operand implication is not propagated); the `PartialEval` evaluable/pending partition.
 - **Identity:** sugar-equivalence pairs fingerprint-equal (`log_scale`/prior, `implies`, variadic repeat/chain, expression bounds vs. their `.forbid(x > y)` forbidden-state manual expansion — *and* fingerprint-**distinct** from the feasibility-opposite `.forbid(x <= y)`, so fingerprint-equality tracks feasibility despite `origin`'s exclusion); permuted declarations differ; scope monotonicity (meta/tags/anchors/declared-constraint changes are `sampling`-equal, `full`-distinct); round-trip law; mark-sentinel distinctness; type-tag distinctness (`1` vs `1.0` vs `True`); `−0.0 ≡ 0.0`; known-answer digest vectors.
 - **Structure:** `unflatten(flatten(c)) == c`; `transform`/`inverse_transform` round-trip when both leaf directions exist; per-element constraint instantiation counts; `Array`-vs-`List` dtype per static/dynamic count level; leaf-flattening aggregate values on nested lifts.
 - **Sampling:** tighten-not-reject on bound-origin constraints is distributionally identical to rejection (truncation ≡ conditioning).

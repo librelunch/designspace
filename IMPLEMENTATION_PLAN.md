@@ -228,9 +228,14 @@ name early; the views subclass `ParamExpr` directly until then (D-27).
 **Gate:** desugared space structurally identical to hand-written expansion; bound-origin margins; tighten-vs-reject distributional equivalence (fixed-seed KS test). Corpus: `firmware_buffers`.
 
 ### M6 — Defaults and partial-config API
-**Spec:** Defaults (entire section); Space — Partial Configs.
-**Build:** `defaults/` cascade along topological order; `partial/` with per-kind `RemainingDomain` descriptors and the one-unset-operand reducer (shared with M5's constraint machinery); `next_assignable`.
-**Gate:** idempotence + monotonicity (hypothesis); activity-respecting fill (the `turbo`/`chassis` case from the spec's history); completeness postcondition; element/list default exclusivity; reducer guarantee tested positively *and* negatively (a two-unset-operand implication is documented as not propagated). Corpus: `pump_configurator` as a scripted driver loop.
+**Spec:** Defaults (entire section); Space — Partial Configs. M6 first folds the nailed-down normative text into API_v3.md (the `RemainingDomain` type; three-valued activity; the one-unset-operand reducer; the `apply_defaults` cascade; `PartialEval`; `is_complete`/`next_assignable` + the coincidence law), then implements it.
+**Build:**
+- `ir/_results.py` — `PartialEval` + the `RemainingDomain` family (`RealRemaining`/`IntegerRemaining`/`ValueRemaining`/`SubsetRemaining`/`PermutationRemaining`); exported from `ir` and top-level.
+- `eval/` — factor the topological activity walk (+ `_expand_lift_activity`) into one shared, classifier-parameterized helper; `compute_activity` (binary) and new `compute_activity_partial` (three-valued; pending-dependency rule; three-valued `IsActive`) are thin adapters.
+- `defaults/` — `apply_defaults` cascade modeled on `sample/_sample.py::_draw_config` (fill-from-default replaces draw): topological walk, incremental activity, choice=variant / struct=field-wise / element-broadcast / `list_default` / lifted-descendant defaults; defaulted-count-param cascade; **fill-only output**; `has_complete_defaults`. Complete row-21 default validation for choice/subset/permutation and reject struct-level defaults (no new error row).
+- `partial/` — `evaluate_partial`, `remaining_domain` (per-kind descriptor + the one-unset-operand reducer: bare-target, hard-only, origin polarity via `is_violated`, reusing `bound_origin_targets`), `param_activity`, `is_complete`, `missing_params`, `next_assignable`, public `topological_order`.
+- `build/_space.py` — wire the nine methods (thin delegators; each calls `check_fully_resolved`).
+**Gate:** idempotence + monotonicity (hypothesis); activity-respecting fill (the `turbo`/`chassis` case from the spec's history); completeness postcondition; element/list default exclusivity; the reducer guarantee tested positively *and* negatively (a two-unset-operand implication is documented as not propagated); three-valued activity **collapses to binary**; the driver-loop **coincidence** `next_assignable == [] ⟺ is_complete`; `remaining_domain` soundness. No new error-table rows (row 21 completed in code). Corpus: `pump_configurator` as a scripted driver loop.
 
 ### M7 — Identity and serialization  🔒 freeze; ship v0.1
 **Spec:** Identity and Serialization (entire section); Config Utilities (`config_hash`, `config_diff`).
