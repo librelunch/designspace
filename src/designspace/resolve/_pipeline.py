@@ -715,46 +715,65 @@ def _validate_list_defaults_deep(space: Space) -> None:
     (struct/choice lift descendants are relocated there under a
     `"[]"`-bracketed prefix and don't exist any earlier in the pipeline).
 
-    Scope: only the *outermost* list level's own `list_default` is deep-
-    checked — a list default set at an *intermediate* nesting level
-    (`.repeat(8).default([...]).repeat(8)`, API_v3.md's "per-level list
-    modifiers between lifts") keeps its existing shape-only check; that
-    combination is rare enough not to warrant the extra plumbing (there is
-    no single natural instance path to hang the check on — the values are
-    shared across every outer instance).
+    Recurses through `ListDomain.element_domain` so every level of a chained
+    lift (`.repeat(a).default([...]).repeat(b)`, API_v3.md's "per-level list
+    modifiers between lifts") gets its own `list_default` deep-checked, not
+    just the outermost. A level below the outermost has no single real
+    instance path to hang the check on (the same literal default applies
+    identically to every outer instance — confirmed: `apply_defaults` already
+    fills it correctly per outer row), so a synthetic placeholder outer index
+    (`[0]`) is used at each descent; any index works since every row is
+    identical. D-24 forbids struct/choice elements nested under more than one
+    `.repeat()`, so a level below the outermost is always scalar/subset/
+    permutation — no descendant-template prefix to synthesize, only the
+    index. Each level builds its own independent `flat` dict, so multiple
+    simultaneous `list_default`s at different levels never collide.
     """
-    from designspace.config._flatten import _flatten_list_element
-    from designspace.eval import compute_activity
-    from designspace.validate._validate import _validate_lift_instances
-
     for path, pd in space.params.items():
         if "[]" in path or pd.type_kind != "list":
             continue
         domain = pd.domain
         assert isinstance(domain, ListDomain)
-        if domain.list_default is None:
-            continue
+        _validate_list_default_level(space, path, path, domain, depth=0)
+
+
+def _validate_list_default_level(
+    space: Space, param_path: str, concrete_prefix: str, domain: ListDomain, depth: int
+) -> None:
+    from designspace.config._flatten import _flatten_list_element
+    from designspace.eval import compute_activity
+    from designspace.validate._validate import _validate_lift_instances
+
+    if domain.list_default is not None:
         assert isinstance(domain.count, int)
-        flat: dict[str, Any] = {path: len(domain.list_default)}
+        flat: dict[str, Any] = {concrete_prefix: len(domain.list_default)}
         shape_errors: list[ParamError] = []
         for i, item in enumerate(domain.list_default):
             _flatten_list_element(
                 item,
                 domain,
                 space,
-                template_prefix=f"{path}[].",
-                concrete_prefix=f"{path}[{i}].",
+                template_prefix=f"{concrete_prefix}[].",
+                concrete_prefix=f"{concrete_prefix}[{i}].",
                 out=flat,
                 errors=shape_errors,
             )
         activity = compute_activity(space, flat)
-        errors = shape_errors + _validate_lift_instances(space, path, domain, flat, activity)
+        errors = shape_errors + _validate_lift_instances(
+            space, concrete_prefix, domain, flat, activity
+        )
         if errors:
             detail = "; ".join(f"{e.param!r}: {e.reason}={e.value!r}" for e in errors)
+            level = "list default" if depth == 0 else f"nested list default (depth {depth})"
             raise ResolutionError(
-                f"param {path!r}: list default {domain.list_default!r} is outside "
+                f"param {param_path!r}: {level} {domain.list_default!r} is outside "
                 f"its domain ({detail}) (row 21)"
             )
+    if domain.element_kind == "list":
+        assert isinstance(domain.element_domain, ListDomain)
+        _validate_list_default_level(
+            space, param_path, f"{concrete_prefix}[0]", domain.element_domain, depth + 1
+        )
 
 
 def _validate_tags_meta(d: ParamExpr) -> None:

@@ -219,3 +219,102 @@ class TestListDefaultItemValidation:
         )
         filled = space.apply_defaults({})
         assert space.validate(filled).valid
+
+
+class TestIntermediateListDefaultItemValidation:
+    """The deferred gap (IMPLEMENTATION_PLAN.md M6, `4fda87b`): a
+    `list_default` set at an *intermediate* nesting level of a chained lift
+    (`.repeat(a).default([...]).repeat(b)`) was still only shape/length-
+    checked, not deep-item-validated, because `list_default[i]` at that
+    depth doesn't correspond 1:1 to a real instance path — the same literal
+    default applies identically to every outer instance. Chained lifts only
+    ever wrap scalar/subset/permutation elements (D-24 rejects struct/choice
+    nested under more than one `.repeat()`), so no descendant-template
+    plumbing is needed — only recursion through `ListDomain.element_domain`
+    under a synthesized placeholder outer index."""
+
+    def test_documented_repro_rejected(self):
+        with pytest.raises(ResolutionError, match=r"'x'.*list default.*outside its domain"):
+            ds.space(
+                ds.param("x").integer(0, 10).repeat(3).default([5, 999, 2]).repeat(2),
+            )
+
+    def test_valid_intermediate_default_accepted_and_output_validates(self):
+        """The actual invariant being restored: the completeness
+        postcondition `validate(apply_defaults({})).valid` must hold."""
+        space = ds.space(
+            ds.param("x").integer(0, 10).repeat(3).default([5, 7, 2]).repeat(2),
+        )
+        filled = space.apply_defaults({})
+        assert filled == {"x": [[5, 7, 2], [5, 7, 2]]}
+        assert space.validate(filled).valid
+
+    def test_multi_level_simultaneous_defaults_inner_invalid_rejected(self):
+        """Independent `list_default`s at both the inner and outer level —
+        each level must be checked against its own `flat` dict, with no
+        collision between the synthetic outer-index prefixes."""
+        with pytest.raises(ResolutionError, match=r"'x'.*list default.*outside its domain"):
+            ds.space(
+                ds.param("x")
+                .integer(0, 10)
+                .repeat(2)
+                .default([1, 999])  # inner: 999 out of bounds
+                .repeat(2)
+                .default([[1, 2], [3, 4]]),  # outer: shape-valid
+            )
+
+    def test_three_level_chain_default_at_middle_level_rejected(self):
+        """Exercises the recursion tail through `element_kind == 'list'`
+        past the outermost level (outermost C wraps middle B, which carries
+        the invalid `list_default`, which wraps innermost A)."""
+        with pytest.raises(ResolutionError, match=r"'x'.*list default.*outside its domain"):
+            ds.space(
+                ds.param("x")
+                .integer(0, 10)
+                .repeat(2)  # A: innermost, no default
+                .repeat(2)
+                .default([[1, 2], [300, 4]])  # B: middle, invalid nested item 300
+                .repeat(2),  # C: outermost, no default
+            )
+
+    def test_off_grid_quantized_intermediate_item_rejected(self):
+        with pytest.raises(ResolutionError, match=r"'x'.*list default.*outside its domain"):
+            ds.space(
+                ds.param("x")
+                .integer(0, 100)
+                .quantized(step=10)
+                .repeat(2)
+                .default([20, 25])  # inner: 25 off-grid
+                .repeat(2),
+            )
+
+    def test_struct_nested_chained_lift_invalid_default_rejected(self):
+        """A chained lift *inside* a lifted struct's `.space(...)` — the
+        struct's sub-`resolve_space` call runs this same check on its own
+        contents, so the fix propagates here automatically without any
+        extra plumbing."""
+        with pytest.raises(ResolutionError, match=r"'sizes'.*list default.*outside its domain"):
+            ds.space(
+                ds.param("g")
+                .space(
+                    ds.param("sizes").integer(0, 10).repeat(2).default([5, 999]).repeat(2),
+                )
+                .repeat(2),
+            )
+
+    def test_struct_nested_chained_lift_valid_default_accepted(self):
+        space = ds.space(
+            ds.param("g")
+            .space(
+                ds.param("sizes").integer(0, 10).repeat(2).default([5, 7]).repeat(2),
+            )
+            .repeat(2),
+        )
+        filled = space.apply_defaults({})
+        assert filled == {
+            "g": [
+                {"sizes": [[5, 7], [5, 7]]},
+                {"sizes": [[5, 7], [5, 7]]},
+            ]
+        }
+        assert space.validate(filled).valid
