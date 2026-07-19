@@ -33,7 +33,7 @@ from designspace.build._names import check_name
 from designspace.build._paramexpr import ParamExpr, _ElementSnapshot
 from designspace.build._space import Space
 from designspace.build._views import ChoiceParamExpr, ListParamExpr, StructParamExpr
-from designspace.charts import build_chart
+from designspace.charts import build_chart, build_grid_shape, grid_membership
 from designspace.errors import ResolutionError
 from designspace.expr import ArithExpr, Compare, Literal
 from designspace.ir import (
@@ -48,6 +48,7 @@ from designspace.ir import (
     OrdinalDomain,
     ParamDef,
     PermutationDomain,
+    QuantizedSpec,
     RealDomain,
     StructDomain,
     SubsetDomain,
@@ -543,6 +544,15 @@ def _default_is_valid_permutation(value: Any, domain: PermutationDomain) -> bool
     return True
 
 
+def _on_grid(lo: float, hi: float, quantized: QuantizedSpec, value: float) -> bool:
+    """Grid membership for a real/integer default (row 21: a quantized
+    scalar's *domain* is the grid, not the raw `[lo, hi]` interval — the
+    same recovery `validate()` uses for a submitted value, so a filled
+    default is never off-grid the moment `apply_defaults` emits it)."""
+    shape = build_grid_shape(lo, hi, quantized.step, quantized.factor, quantized.include_hi)
+    return grid_membership(shape, value) is not None
+
+
 def _validate_default(d: ParamExpr) -> None:
     if d.default_value is None:
         return
@@ -562,11 +572,21 @@ def _validate_default(d: ParamExpr) -> None:
         # Bounds are already confirmed non-ArithExpr by _check_bounds, which
         # _validate_domain runs before this for the same param.
         assert isinstance(lo, int | float) and isinstance(hi, int | float)
-        ok = isinstance(value, int | float) and not isinstance(value, bool) and lo <= value <= hi
+        is_numeric = isinstance(value, int | float) and not isinstance(value, bool)
+        # Periodic reals are half-open ([lo, hi), hi itself invalid) — the
+        # same rule validate() applies to a submitted value (row 21: a
+        # default is a domain member like any other).
+        in_bounds = is_numeric and (lo <= value < hi if d.periodic else lo <= value <= hi)
+        ok = in_bounds
+        if ok and d.quantized_spec is not None:
+            ok = _on_grid(lo, hi, d.quantized_spec, float(value))
     elif isinstance(domain, IntegerDomain):
         int_lo, int_hi = domain.lo, domain.hi
         assert isinstance(int_lo, int) and isinstance(int_hi, int)
-        ok = isinstance(value, int) and not isinstance(value, bool) and int_lo <= value <= int_hi
+        is_numeric = isinstance(value, int) and not isinstance(value, bool)
+        ok = is_numeric and int_lo <= value <= int_hi
+        if ok and d.quantized_spec is not None:
+            ok = _on_grid(float(int_lo), float(int_hi), d.quantized_spec, float(value))
     elif isinstance(domain, CategoricalDomain | OrdinalDomain):
         ok = any(type(value) is type(v) and value == v for v in domain.values)
     elif isinstance(domain, BoolDomain):
