@@ -237,6 +237,33 @@ name early; the views subclass `ParamExpr` directly until then (D-27).
 - `build/_space.py` — wire the nine methods (thin delegators; each calls `check_fully_resolved`).
 **Gate:** idempotence + monotonicity (hypothesis); activity-respecting fill (the `turbo`/`chassis` case from the spec's history); completeness postcondition; element/list default exclusivity; the reducer guarantee tested positively *and* negatively (a two-unset-operand implication is documented as not propagated); three-valued activity **collapses to binary**; the driver-loop **coincidence** `next_assignable == [] ⟺ is_complete`; `remaining_domain` soundness. No new error-table rows (row 21 completed in code). Corpus: `pump_configurator` as a scripted driver loop.
 
+**Deferred / tracked (found during a post-ship bug fix, revisit when a fixture
+forces it):**
+- A `list_default` set at an **intermediate** nesting level of a chained lift
+  (`.repeat(a).default([...]).repeat(b)` — API_v3.md's "per-level list modifiers
+  between lifts") is still only shape/length-checked (`_validate_list_default_shape`),
+  not deep-item-validated. `_validate_list_defaults_deep` (`resolve/_pipeline.py`,
+  added in the same fix that closed the scalar/struct/choice list-default gap)
+  only walks the *outermost* list level's own `list_default`, where
+  `list_default[i]` corresponds 1:1 to a real instance path `path[i]`. At an
+  inner level the correspondence isn't 1:1 with anything real — the same
+  literal default applies identically to every outer instance (confirmed:
+  `apply_defaults` already fills it correctly per outer row), so there is no
+  real instance path to flatten it under; validating it requires synthesizing
+  a placeholder outer index (any index works, since every row is identical)
+  and recursing per nesting depth, and the chain can carry an independent
+  `list_default` at *each* level simultaneously. Concretely reproducible today:
+  `ds.param("x").integer(0, 10).repeat(3).default([5, 999, 2]).repeat(2)`
+  resolves without error even though `999` is out of bounds;
+  `space.validate(space.apply_defaults({}))` then fails on the library's own
+  output. Fix: generalize `_validate_list_defaults_deep` to recurse through
+  `ListDomain.element_domain`, synthesizing a nested placeholder-index prefix
+  (`path[0]`, `path[0][0]`, …) at each level that carries its own
+  `list_default`, before delegating to the same flatten-then-`_validate_lift_instances`
+  check. Not done now: the combination doesn't appear in any spec worked
+  example or corpus fixture, and the multi-level-simultaneous-defaults case
+  needs care to avoid colliding synthetic prefixes.
+
 ### M7 — Identity and serialization  🔒 freeze; ship v0.1
 **Spec:** Identity and Serialization (entire section); Config Utilities (`config_hash`, `config_diff`).
 **Build order within milestone:** canonical config encoding → `config_hash` → `config_diff` (variant-switch decomposition, positional repeat alignment) → `to_json`/`from_json` + version + non-serializable set + drop manifest → `fingerprint` (type tags, RFC 8785 — implement JCS in-repo or vendored, do not add a dependency without a DECISIONS entry — scopes, mark sentinel) **last**.
