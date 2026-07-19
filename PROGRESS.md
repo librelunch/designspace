@@ -1,6 +1,6 @@
 # Progress
 
-Current milestone: **M6 — Defaults and partial-config API** (not started)
+Current milestone: **M7 — Identity and serialization** (not started)
 
 | Milestone | Completed | Tests | DECISIONS entries |
 |---|---|---|---|
@@ -12,19 +12,12 @@ Current milestone: **M6 — Defaults and partial-config API** (not started)
 | M4.5 — Faithfulness corrections | 2026-07-18 | 475 | _none_ |
 | M4.6 — Build-layer view types | 2026-07-18 | 509 | D-27, D-28 |
 | M5 — Expression bounds | 2026-07-19 | 550 | D-29 |
+| M6 — Defaults and partial-config API | 2026-07-19 | 599 | D-30 |
 
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
 
-The "DECISIONS entries" column above is a **historical** record. As of M4.5 those
-entries (D-1 … D-26) were resolved into API_v3.md (as normative spec text) or into
-the plan (M4.5's build/deferred lists), and `DECISIONS.md` was reset to an empty
-ledger for future use. The original entries remain in this repo's git history.
-
-**Faithfulness fold — 2026-07-19** (no milestone reorder; M6 remains current). D-27,
-D-28, and D-29 were reviewed against the spec and folded into API_v3.md. Two were
-documentation-only (Builder view types wording; the spec-silent bounds points).
-The third — D-29(4), the bound-origin polarity vs. fingerprint-preimage collision —
-was resolved via Route A: the M5 runtime is unchanged, and a bound-origin preimage
-canonicalization + its conformance law are now a **required M7 build step and gate**
-(IMPLEMENTATION_PLAN.md M7). D-29 is retained in DECISIONS.md with its M7 tail
-updated; no source code changed in this fold.
+The "DECISIONS entries" column above is a **historical** record. As of M5 those
+entries (D-1 … D-29) were resolved into API_v3.md (as normative spec text) or into
+the plan, and `DECISIONS.md` was reset to an empty ledger for future use before M6
+began. The original entries remain in this repo's git history. D-30 (M6) is a live
+entry, not yet folded.

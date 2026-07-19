@@ -14,11 +14,15 @@ from designspace.eval._constraint_eval import (
 from designspace.eval._kleene import (
     UNKNOWN,
     Kleene,
+    PartialActivity,
     Unknown,
+    classify_condition,
     compute_activity,
+    compute_activity_partial,
     evaluate_arith,
     evaluate_bool,
     local_topological_order,
+    status_activity_view,
     topological_order,
 )
 from designspace.eval._margins import margin
@@ -26,8 +30,11 @@ from designspace.eval._margins import margin
 __all__ = [
     "UNKNOWN",
     "Kleene",
+    "PartialActivity",
     "Unknown",
+    "classify_condition",
     "compute_activity",
+    "compute_activity_partial",
     "evaluate_arith",
     "evaluate_bool",
     "evaluate_constraint",
@@ -35,5 +42,6 @@ __all__ = [
     "is_violated",
     "local_topological_order",
     "margin",
+    "status_activity_view",
     "topological_order",
 ]

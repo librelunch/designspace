@@ -17,7 +17,15 @@ from typing import Any
 import numpy as np
 
 from designspace.expr import BoolExpr
-from designspace.ir import Condition, Constraint, ConstraintEval, ParamDef, ValidationResult
+from designspace.ir import (
+    Condition,
+    Constraint,
+    ConstraintEval,
+    ParamDef,
+    PartialEval,
+    RemainingDomain,
+    ValidationResult,
+)
 
 Seed = int | np.random.Generator | None
 
@@ -88,3 +96,51 @@ class Space:
         from designspace.sample import sample_dicts as _sample_dicts
 
         return _sample_dicts(self, n, seed=seed, reject_soft=reject_soft)
+
+    def apply_defaults(self, config: dict[str, Any]) -> dict[str, Any]:
+        from designspace.defaults import apply_defaults as _apply_defaults
+
+        return _apply_defaults(self, config)
+
+    @property
+    def has_complete_defaults(self) -> bool:
+        from designspace.defaults import apply_defaults as _apply_defaults
+        from designspace.partial import is_complete as _is_complete
+
+        return _is_complete(self, _apply_defaults(self, {}))
+
+    def evaluate_partial(self, config: dict[str, Any]) -> PartialEval:
+        from designspace.partial import evaluate_partial as _evaluate_partial
+
+        return _evaluate_partial(self, config)
+
+    def remaining_domain(self, path: str, config: dict[str, Any]) -> RemainingDomain | None:
+        from designspace.partial import remaining_domain as _remaining_domain
+
+        return _remaining_domain(self, path, config)
+
+    def param_activity(self, config: dict[str, Any]) -> dict[str, str]:
+        from designspace.partial import param_activity as _param_activity
+
+        return _param_activity(self, config)
+
+    def is_complete(self, config: dict[str, Any]) -> bool:
+        from designspace.partial import is_complete as _is_complete
+
+        return _is_complete(self, config)
+
+    def missing_params(self, config: dict[str, Any]) -> list[str]:
+        from designspace.partial import missing_params as _missing_params
+
+        return _missing_params(self, config)
+
+    @property
+    def topological_order(self) -> list[str]:
+        from designspace.partial import topological_order as _topological_order
+
+        return _topological_order(self)
+
+    def next_assignable(self, config: dict[str, Any]) -> list[str]:
+        from designspace.partial import next_assignable as _next_assignable
+
+        return _next_assignable(self, config)

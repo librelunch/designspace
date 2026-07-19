@@ -24,7 +24,18 @@ from designspace.build import (
 from designspace.config import destructure, flatten, payload, unflatten, variant
 from designspace.errors import DesignSpaceError, ResolutionError, SamplingError
 from designspace.expr import ArithExpr, BoolExpr, all_, any_, count
-from designspace.ir import Log, Logit, Power
+from designspace.ir import (
+    IntegerRemaining,
+    Log,
+    Logit,
+    PartialEval,
+    PermutationRemaining,
+    Power,
+    RealRemaining,
+    RemainingDomain,
+    SubsetRemaining,
+    ValueRemaining,
+)
 
 __version__ = "0.0.0"
 
@@ -37,19 +48,26 @@ __all__ = [
     "DesignSpaceError",
     "FreshParamExpr",
     "IntegerParamExpr",
+    "IntegerRemaining",
     "ListParamExpr",
     "Log",
     "Logit",
     "OrdinalParamExpr",
     "ParamExpr",
+    "PartialEval",
     "PermutationParamExpr",
+    "PermutationRemaining",
     "Power",
     "RealParamExpr",
+    "RealRemaining",
+    "RemainingDomain",
     "ResolutionError",
     "SamplingError",
     "Space",
     "StructParamExpr",
     "SubsetParamExpr",
+    "SubsetRemaining",
+    "ValueRemaining",
     "__version__",
     "all_",
     "any_",

@@ -37,3 +37,36 @@ def test_zone_struct_always_present():
     for cfg in space.sample_dicts(50, seed=2):
         assert "zone" in cfg
         assert set(cfg["zone"].keys()) == {"area_m2", "shade_cloth"}
+
+
+def test_defaults_cascade():
+    """M6: `.default()` was accepted and resolution-validated since M1
+    (see this fixture's own module docstring); `apply_defaults` itself is
+    M6's cascade over it."""
+    space = build_space()
+
+    # Neither choice names its own default variant, and struct/variant
+    # fields without a `.default()` (burner_power_kw, target_humidity_pct,
+    # zone's own fields) are left unfilled -- only target_temp_c's default
+    # is emitted.
+    assert space.apply_defaults({}) == {"target_temp_c": 21.0}
+    assert not space.has_complete_defaults
+
+    # Partial input wins: supplying "gas" fills its payload field-wise
+    # (pilot_light's own default), without requiring burner_power_kw.
+    assert space.apply_defaults({"heating": "gas"}) == {
+        "heating": {"gas": {"pilot_light": True}},
+        "target_temp_c": 21.0,
+    }
+
+    # A complete config is a fixed point (idempotence) and is reported
+    # complete once every active param is supplied or defaulted.
+    full = {
+        "heating": "electric",
+        "target_temp_c": 5.0,
+        "humidity_control": "off",
+        "zone": {"area_m2": 1.0, "shade_cloth": True},
+    }
+    assert space.is_complete(full)
+    assert space.apply_defaults(full) == full
+    assert space.next_assignable(full) == []

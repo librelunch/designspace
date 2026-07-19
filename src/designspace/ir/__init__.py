@@ -22,7 +22,18 @@ from designspace.ir._domain import (
 )
 from designspace.ir._param import Condition, Constraint, ParamDef
 from designspace.ir._priors import Log, Logit, Power, Prior, PriorSpec, Weights
-from designspace.ir._results import ConstraintEval, ParamError, ValidationResult
+from designspace.ir._results import (
+    ConstraintEval,
+    IntegerRemaining,
+    ParamError,
+    PartialEval,
+    PermutationRemaining,
+    RealRemaining,
+    RemainingDomain,
+    SubsetRemaining,
+    ValidationResult,
+    ValueRemaining,
+)
 
 __all__ = [
     "BoolDomain",
@@ -34,20 +45,27 @@ __all__ = [
     "ConstraintEval",
     "Domain",
     "IntegerDomain",
+    "IntegerRemaining",
     "ListDomain",
     "Log",
     "Logit",
     "OrdinalDomain",
     "ParamDef",
     "ParamError",
+    "PartialEval",
     "PermutationDomain",
+    "PermutationRemaining",
     "Power",
     "Prior",
     "PriorSpec",
     "QuantizedSpec",
     "RealDomain",
+    "RealRemaining",
+    "RemainingDomain",
     "StructDomain",
     "SubsetDomain",
+    "SubsetRemaining",
     "ValidationResult",
+    "ValueRemaining",
     "Weights",
 ]

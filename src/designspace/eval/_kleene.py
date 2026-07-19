@@ -20,8 +20,9 @@ Internal to the library: not part of the public surface (mirrors how
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from itertools import pairwise
-from typing import Any
+from typing import Any, NamedTuple
 
 from designspace.build._paramexpr import ParamExpr
 from designspace.build._space import Space
@@ -279,13 +280,17 @@ def _is_integer_valued(v: Any) -> bool:
 
 
 def _count_range(
-    node: Count, config: dict[str, Any], activity: dict[str, bool], space: Space
+    node: Count,
+    config: dict[str, Any],
+    activity: dict[str, bool],
+    space: Space,
+    status: Mapping[str, str] | None = None,
 ) -> tuple[int, int]:
     """`(true_count, unknown_count)` — API_v3.md: `ds.count` tracks `[t, t + u]`."""
     t = 0
     u = 0
     for operand in node.operands:
-        v = evaluate_bool(operand, config, activity, space)
+        v = evaluate_bool(operand, config, activity, space, status=status)
         if isinstance(v, Unknown):
             u += 1
         elif v:
@@ -312,25 +317,30 @@ def _count_vs_threshold(op: str, t: int, u: int, threshold: Any) -> Kleene:
 
 
 def evaluate_arith(
-    expr: ArithExpr, config: dict[str, Any], activity: dict[str, bool], space: Space
+    expr: ArithExpr,
+    config: dict[str, Any],
+    activity: dict[str, bool],
+    space: Space,
+    *,
+    status: Mapping[str, str] | None = None,
 ) -> Any | Unknown:
     if isinstance(expr, Literal):
         return expr.value
     if isinstance(expr, ParamExpr):
         return _leaf_value(expr.path, config, activity)
     if isinstance(expr, ArithOp):
-        left = evaluate_arith(expr.left, config, activity, space)
-        right = evaluate_arith(expr.right, config, activity, space)
+        left = evaluate_arith(expr.left, config, activity, space, status=status)
+        right = evaluate_arith(expr.right, config, activity, space, status=status)
         if isinstance(left, Unknown) or isinstance(right, Unknown):
             return UNKNOWN
         return _apply_arith(expr.op, left, right)
     if isinstance(expr, IfInactive):
-        operand_val = evaluate_arith(expr.operand, config, activity, space)
+        operand_val = evaluate_arith(expr.operand, config, activity, space, status=status)
         if isinstance(operand_val, Unknown):
-            return evaluate_arith(expr.fallback, config, activity, space)
+            return evaluate_arith(expr.fallback, config, activity, space, status=status)
         return operand_val
     if isinstance(expr, Count):
-        t, u = _count_range(expr, config, activity, space)
+        t, u = _count_range(expr, config, activity, space, status=status)
         return t if u == 0 else UNKNOWN
     if isinstance(expr, Size):
         value = evaluate_arith(expr.operand, config, activity, space)
@@ -422,8 +432,35 @@ def _kleene_or(a: Kleene, b: Kleene) -> Kleene:
     return False
 
 
+def _evaluate_is_active(
+    expr: IsActive, activity: dict[str, bool], status: Mapping[str, str] | None
+) -> Kleene:
+    """`is_active()` is total under *full* evaluation (rule 1: every param has
+    a determined binary activity) but not under *partial* evaluation — API_v3.md,
+    "Partial Configs": "`is_active(p)` ... determined for a determined `p`,
+    Unknown for an `unknown` one." `status` (the four-valued partial status
+    map) carries that extra distinction; absent it, this falls back to the
+    old total/binary reading unchanged.
+    """
+    if status is None:
+        return all(activity.get(p, True) for p in expr.operand.params)
+    result: Kleene = True
+    for p in expr.operand.params:
+        s = status.get(p, "set")
+        if s == "inactive":
+            return False  # Kleene AND: False dominates regardless of order
+        if s == "unknown":
+            result = UNKNOWN
+    return result
+
+
 def evaluate_bool(
-    expr: BoolExpr, config: dict[str, Any], activity: dict[str, bool], space: Space
+    expr: BoolExpr,
+    config: dict[str, Any],
+    activity: dict[str, bool],
+    space: Space,
+    *,
+    status: Mapping[str, str] | None = None,
 ) -> Kleene:
     if isinstance(expr, BoolLiteral):
         return expr.value
@@ -432,9 +469,9 @@ def evaluate_bool(
         return UNKNOWN if isinstance(v, Unknown) else bool(v)
     if isinstance(expr, Compare):
         if isinstance(expr.left, Count) or isinstance(expr.right, Count):
-            return _evaluate_count_compare(expr, config, activity, space)
-        left = evaluate_arith(expr.left, config, activity, space)
-        right = evaluate_arith(expr.right, config, activity, space)
+            return _evaluate_count_compare(expr, config, activity, space, status=status)
+        left = evaluate_arith(expr.left, config, activity, space, status=status)
+        right = evaluate_arith(expr.right, config, activity, space, status=status)
         if isinstance(left, Unknown) or isinstance(right, Unknown):
             return UNKNOWN
         if expr.op in ("gt", "lt", "ge", "le"):
@@ -448,19 +485,19 @@ def evaluate_bool(
                     return UNKNOWN
         return _apply_compare(expr.op, left, right)
     if isinstance(expr, BoolOp):
-        left_v = evaluate_bool(expr.left, config, activity, space)
-        right_v = evaluate_bool(expr.right, config, activity, space)
+        left_v = evaluate_bool(expr.left, config, activity, space, status=status)
+        right_v = evaluate_bool(expr.right, config, activity, space, status=status)
         return _kleene_and(left_v, right_v) if expr.op == "and" else _kleene_or(left_v, right_v)
     if isinstance(expr, Not):
-        v = evaluate_bool(expr.operand, config, activity, space)
+        v = evaluate_bool(expr.operand, config, activity, space, status=status)
         return UNKNOWN if isinstance(v, Unknown) else (not v)
     if isinstance(expr, IsIn):
-        operand = evaluate_arith(expr.operand, config, activity, space)
+        operand = evaluate_arith(expr.operand, config, activity, space, status=status)
         if isinstance(operand, Unknown):
             return UNKNOWN
         return any(_values_equal(operand, v) for v in expr.values)
     if isinstance(expr, IsActive):
-        return all(activity.get(p, True) for p in expr.operand.params)
+        return _evaluate_is_active(expr, activity, status)
     if isinstance(expr, Contains):
         value = evaluate_arith(expr.operand, config, activity, space)
         return UNKNOWN if isinstance(value, Unknown) else expr.item in value
@@ -503,17 +540,21 @@ def evaluate_bool(
 
 
 def _evaluate_count_compare(
-    expr: Compare, config: dict[str, Any], activity: dict[str, bool], space: Space
+    expr: Compare,
+    config: dict[str, Any],
+    activity: dict[str, bool],
+    space: Space,
+    status: Mapping[str, str] | None = None,
 ) -> Kleene:
     if isinstance(expr.left, Count):
         count_node, other_side, count_is_left = expr.left, expr.right, True
     else:
         assert isinstance(expr.right, Count)
         count_node, other_side, count_is_left = expr.right, expr.left, False
-    other_val = evaluate_arith(other_side, config, activity, space)
+    other_val = evaluate_arith(other_side, config, activity, space, status=status)
     if isinstance(other_val, Unknown):
         return UNKNOWN
-    t, u = _count_range(count_node, config, activity, space)
+    t, u = _count_range(count_node, config, activity, space, status=status)
     op = expr.op
     if not count_is_left:
         op = {"lt": "gt", "gt": "lt", "le": "ge", "ge": "le"}.get(op, op)
@@ -578,6 +619,223 @@ def _expand_lift_activity(
             else:
                 value = evaluate_bool(cond.expr, config, activity, space)
                 activity[local_path] = value is True
+
+
+def status_activity_view(status: Mapping[str, str]) -> dict[str, bool]:
+    """The binary view of a partial four-valued status map, for ordinary
+    leaf/aggregate lookups: every non-`"inactive"` status (`"set"`,
+    `"active_unset"`, `"unknown"`) reads as activity-True — `_leaf_value`
+    already returns `UNKNOWN` for any param absent from `config` regardless
+    of this flag, so `"active_unset"`/`"unknown"` and `"set"` only ever
+    differ by presence, which `_leaf_value` already handles on its own.
+    Only `IsActive` needs the finer four-way distinction (`status` itself,
+    threaded straight through) — see `_evaluate_is_active`.
+    """
+    return {p: s != "inactive" for p, s in status.items()}
+
+
+def classify_condition(
+    condition: Any,  # designspace.ir.Condition | None
+    config: dict[str, Any],
+    status: dict[str, str],
+    space: Space,
+) -> str:
+    """`"active"` / `"inactive"` / `"unknown"` for one param's own condition
+    (API_v3.md, "Partial Configs" — the pending-dependency rule), evaluated
+    against the status already computed for its dependencies (topological
+    order guarantees they precede it). Kleene-Unknown collapses to
+    `"inactive"` when every param the condition references is itself
+    determined (the same cascading deactivation a full config applies), or
+    to `"unknown"` when at least one is `"active_unset"`/`"unknown"` —
+    "undetermined but resolvable."
+    """
+    if condition is None:
+        return "active"
+    value = evaluate_bool(
+        condition.expr, config, status_activity_view(status), space, status=status
+    )
+    if value is True:
+        return "active"
+    if value is False:
+        return "inactive"
+    if any(status.get(d) in ("active_unset", "unknown") for d in condition.params):
+        return "unknown"
+    return "inactive"
+
+
+class PartialActivity(NamedTuple):
+    """`compute_activity_partial`'s result — internal to eval/partial, not
+    part of the public `PartialEval` surface (ir/_results.py).
+
+    `status`: four-valued, keyed by definition *and* instance path (a
+    lift's instances appear only once its count is determined).
+    `order`: every path visited, in dependency order — definition paths
+    first, lift instances expanded inline, since `topological_order` itself
+    omits lift descendant templates and knows nothing of instances;
+    `partial/_partial.py`'s `missing_params`/`next_assignable` walk this to
+    report *instance* paths "in topological order."
+    `deps`: each visited path's own gating references (condition params,
+    already instance-substituted inside a lift, plus — for a top-level
+    list/bound-origin param — its repeat-count/bound-envelope references)
+    — `next_assignable`'s readiness check.
+    """
+
+    status: dict[str, str]
+    order: list[str]
+    deps: dict[str, frozenset[str]]
+
+
+def compute_activity_partial(space: Space, config: dict[str, Any]) -> PartialActivity:
+    """Three/four-valued activity + presence over a *partial* flat config
+    (API_v3.md, "Space — Partial Configs"): `"set"` (active & present),
+    `"active_unset"` (active & absent), `"inactive"`, `"unknown"` (Kleene-
+    Unknown but resolvable). Collapsing `"set"`/`"active_unset"` to `True`
+    and everything else to `False` reproduces `compute_activity` exactly
+    (the spec's collapse law) — both walk the same `topological_order`.
+    """
+    from designspace.resolve._bounds import bound_origin_targets
+
+    status: dict[str, str] = {}
+    order: list[str] = []
+    deps: dict[str, frozenset[str]] = {}
+    conditions_by_target = {c.target: c for c in space.conditions}
+    for path in topological_order(space):
+        if "[]" in path:
+            continue  # a lift's descendant template (D-18) -- never a real leaf
+        pd = space.params[path]
+        condition = conditions_by_target.get(path)
+        deps[path] = condition.params if condition is not None else frozenset()
+        activity_class = classify_condition(condition, config, status, space)
+        if pd.type_kind == "list":
+            assert isinstance(pd.domain, ListDomain)
+            _resolve_list_status(
+                space, path, pd.domain, activity_class, config, status, order, deps
+            )
+        elif pd.type_kind == "space":
+            # A struct has no own value to await (API_v3.md: "a struct
+            # carries no own default value"; its activity never depends on
+            # its own members') -- "active_unset" would be meaningless for
+            # it, so it collapses to "set" the same way a list container's
+            # own shape does once determined.
+            status[path] = "set" if activity_class == "active" else activity_class
+            order.append(path)
+        else:
+            if activity_class == "active":
+                status[path] = "set" if path in config else "active_unset"
+            else:
+                status[path] = activity_class
+            order.append(path)
+
+    bound_targets = bound_origin_targets(space)
+    for path, pd in space.params.items():
+        if "[]" in path or path not in deps:
+            continue
+        if pd.type_kind == "list":
+            deps[path] = deps[path] | _lift_count_deps(pd.domain)
+        deps[path] = deps[path] | _bound_order_deps(bound_targets, path)
+    return PartialActivity(status=status, order=order, deps=deps)
+
+
+def _determine_count_partial(
+    count: int | ArithExpr, config: dict[str, Any], status: dict[str, str], space: Space
+) -> int | None:
+    """The Defaults section's count rule, reused for Partial Configs
+    (API_v3.md: "an undetermined count (a pending count-dependency)
+    contributes none"): a static int is always determined; an `ArithExpr`
+    is determined if it evaluates to a definite integer, or is Unknown
+    *solely* because a referenced param is inactive (-> 0, "the complete
+    value []"); otherwise (some referenced param is itself
+    `active_unset`/`unknown`) it is genuinely pending -> `None`.
+    """
+    if not isinstance(count, ArithExpr):
+        return count
+    value = evaluate_arith(count, config, status_activity_view(status), space, status=status)
+    if not isinstance(value, Unknown):
+        assert isinstance(value, int) and not isinstance(value, bool)
+        return value
+    if any(status.get(d) in ("active_unset", "unknown") for d in count.params):
+        return None
+    return 0
+
+
+def _resolve_list_status(
+    space: Space,
+    path: str,
+    domain: ListDomain,
+    activity_class: str,
+    config: dict[str, Any],
+    status: dict[str, str],
+    order: list[str],
+    deps: dict[str, frozenset[str]],
+) -> None:
+    """A list container is `"set"`/`"unknown"`/`"inactive"`, never
+    `"active_unset"` (API_v3.md, "Partial Configs") — there is no value to
+    await for the container itself, only for its count param (elsewhere in
+    `topological_order`) and its instance leaves (expanded below, once the
+    count is known)."""
+    if activity_class != "active":
+        status[path] = activity_class
+        order.append(path)
+        return
+    n = _determine_count_partial(domain.count, config, status, space)
+    if n is None:
+        status[path] = "unknown"  # count is pending on an unresolved dependency
+        order.append(path)
+        return
+    status[path] = "set"
+    order.append(path)
+    for i in range(n):
+        _expand_instance_status(space, f"{path}[{i}]", domain, config, status, order, deps)
+
+
+def _expand_instance_status(
+    space: Space,
+    inst_path: str,
+    domain: ListDomain,
+    config: dict[str, Any],
+    status: dict[str, str],
+    order: list[str],
+    deps: dict[str, frozenset[str]],
+) -> None:
+    from designspace.resolve._relocate import instantiate_element
+
+    if domain.element_kind == "list":
+        assert isinstance(domain.element_domain, ListDomain)
+        _resolve_list_status(
+            space, inst_path, domain.element_domain, "active", config, status, order, deps
+        )
+        return
+    if domain.element_kind not in ("space", "choice"):
+        status[inst_path] = "set" if inst_path in config else "active_unset"
+        order.append(inst_path)
+        deps[inst_path] = frozenset()
+        return
+    if domain.element_kind == "choice":
+        status[inst_path] = "set" if inst_path in config else "active_unset"
+        order.append(inst_path)
+        deps[inst_path] = frozenset()
+    template_prefix = f"{inst_path[: inst_path.rindex('[')]}[]."
+    inst_params, inst_conditions = instantiate_element(space, template_prefix, f"{inst_path}.")
+    inst_conditions_by_target = {c.target: c for c in inst_conditions}
+    for local_path in local_topological_order(list(inst_params), inst_conditions_by_target):
+        pd = inst_params[local_path]
+        cond = inst_conditions_by_target.get(local_path)
+        deps[local_path] = cond.params if cond is not None else frozenset()
+        activity_class = classify_condition(cond, config, status, space)
+        if pd.type_kind == "list":
+            assert isinstance(pd.domain, ListDomain)
+            _resolve_list_status(
+                space, local_path, pd.domain, activity_class, config, status, order, deps
+            )
+        elif pd.type_kind == "space":
+            status[local_path] = "set" if activity_class == "active" else activity_class
+            order.append(local_path)
+        else:
+            if activity_class == "active":
+                status[local_path] = "set" if local_path in config else "active_unset"
+            else:
+                status[local_path] = activity_class
+            order.append(local_path)
 
 
 def local_topological_order(paths: list[str], conditions_by_target: dict[str, Any]) -> list[str]:

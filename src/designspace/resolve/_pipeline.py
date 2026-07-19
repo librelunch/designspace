@@ -512,11 +512,50 @@ def _validate_quantized(d: ParamExpr) -> None:
         raise ResolutionError(f"param {d.path!r}: quantized(factor=...) must be finite and > 1")
 
 
+def _strict_member(value: Any, values: tuple[Any, ...]) -> bool:
+    return any(type(value) is type(v) and value == v for v in values)
+
+
+def _default_is_valid_subset(value: Any, domain: SubsetDomain) -> bool:
+    if not isinstance(value, list):
+        return False
+    seen: list[Any] = []
+    for v in value:
+        if any(type(existing) is type(v) and existing == v for existing in seen):
+            return False  # duplicate item
+        if not _strict_member(v, domain.items):
+            return False
+        seen.append(v)
+    max_size = domain.max_size if domain.max_size is not None else len(domain.items)
+    return domain.min_size <= len(value) <= max_size
+
+
+def _default_is_valid_permutation(value: Any, domain: PermutationDomain) -> bool:
+    if not isinstance(value, list) or len(value) != len(domain.items):
+        return False
+    seen: list[Any] = []
+    for v in value:
+        if any(type(existing) is type(v) and existing == v for existing in seen):
+            return False
+        if not _strict_member(v, domain.items):
+            return False
+        seen.append(v)
+    return True
+
+
 def _validate_default(d: ParamExpr) -> None:
     if d.default_value is None:
         return
     value = d.default_value
     domain = d.domain
+    if isinstance(domain, StructDomain):
+        # Row 21: "no own value — completion is field-wise" — a struct
+        # param (top-level or a lift's own element) never has a default of
+        # its own, whether written before or after `.repeat()`.
+        raise ResolutionError(
+            f"param {d.path!r}: .default() is not valid on a struct param "
+            "(row 21) — its members default individually, field-wise"
+        )
     ok: bool
     if isinstance(domain, RealDomain):
         lo, hi = domain.lo, domain.hi
@@ -532,7 +571,13 @@ def _validate_default(d: ParamExpr) -> None:
         ok = any(type(value) is type(v) and value == v for v in domain.values)
     elif isinstance(domain, BoolDomain):
         ok = isinstance(value, bool)
-    else:  # pragma: no cover - unreachable for M1 scalar kinds
+    elif isinstance(domain, ChoiceDomain):
+        ok = isinstance(value, str) and value in domain.variants
+    elif isinstance(domain, SubsetDomain):
+        ok = _default_is_valid_subset(value, domain)
+    elif isinstance(domain, PermutationDomain):
+        ok = _default_is_valid_permutation(value, domain)
+    else:  # pragma: no cover - unreachable: every Domain variant handled above
         ok = True
     if not ok:
         raise ResolutionError(f"param {d.path!r}: default {value!r} is outside its domain")
