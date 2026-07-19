@@ -10,7 +10,10 @@ defaults rejected regardless of `.repeat()` position; a quantized real/
 integer's *domain* is its grid, not the raw `[lo, hi]` interval, and a
 periodic real's is the half-open `[lo, hi)` — a default outside either was
 previously accepted silently at resolution and only surfaced later as a
-`validate()` failure on `apply_defaults`'s own output).
+`validate()` failure on `apply_defaults`'s own output); and a *list*
+default's per-item domain validity (previously not checked at all — an
+out-of-bounds, off-grid, or malformed struct/choice item in a
+`.repeat(n).default([...])` resolved silently).
 """
 
 from __future__ import annotations
@@ -142,3 +145,77 @@ class TestPeriodicDefaultValidation:
     def test_default_within_half_open_range_accepted(self):
         space = ds.space(ds.param("theta").real(0.0, 360.0, periodic=True).default(90.0))
         assert space.params["theta"].default == 90.0
+
+
+class TestListDefaultItemValidation:
+    """A `.repeat(n).default([...])` list default is a literal phenotype
+    value per index — previously only its *length* was checked (row 21's
+    "list default length must match"); no item was ever validated against
+    the element's own domain, so an out-of-bounds/off-grid/malformed item
+    resolved silently and only surfaced later as a `validate()` failure on
+    `apply_defaults`'s own output (the same shape of bug as the scalar
+    default gap above, one level up through `.repeat()`)."""
+
+    def test_out_of_bounds_item_rejected(self):
+        with pytest.raises(ResolutionError, match=r"'x'.*list default.*outside its domain"):
+            ds.space(ds.param("x").integer(10, 100).repeat(2).default([20, 200]))
+
+    def test_off_grid_item_rejected(self):
+        with pytest.raises(ResolutionError, match=r"'x'.*list default.*outside its domain"):
+            ds.space(
+                ds.param("x").integer(10, 100).quantized(step=10).repeat(2).default([20, 25])
+            )
+
+    def test_valid_scalar_list_default_accepted(self):
+        space = ds.space(
+            ds.param("dropout").real(0.0, 0.6).repeat(4).default([0.1, 0.2, 0.3, 0.4]),
+        )
+        assert space.apply_defaults({}) == {"dropout": [0.1, 0.2, 0.3, 0.4]}
+
+    def test_struct_list_default_with_invalid_field_rejected(self):
+        with pytest.raises(ResolutionError, match=r"'layers'.*list default.*outside its domain"):
+            ds.space(
+                ds.param("layers")
+                .space(ds.param("width").integer(16, 1024))
+                .repeat(2)
+                .default([{"width": 128}, {"width": 9999}]),
+            )
+
+    def test_valid_struct_list_default_accepted(self):
+        space = ds.space(
+            ds.param("layers")
+            .space(ds.param("width").integer(16, 1024))
+            .repeat(2)
+            .default([{"width": 128}, {"width": 256}]),
+        )
+        assert space.apply_defaults({}) == {"layers": [{"width": 128}, {"width": 256}]}
+
+    def test_lifted_choice_list_default_with_undeclared_variant_rejected(self):
+        with pytest.raises(ResolutionError, match=r"'pipeline'.*list default.*outside its domain"):
+            ds.space(
+                ds.param("pipeline")
+                .choice("shuffle", pmx=ds.space(ds.param("swap_p").real(0.0, 1.0)))
+                .repeat(2)
+                .default(["shuffle", "nonexistent"]),
+            )
+
+    def test_valid_lifted_choice_list_default_accepted(self):
+        space = ds.space(
+            ds.param("pipeline")
+            .choice("shuffle", pmx=ds.space(ds.param("swap_p").real(0.0, 1.0)))
+            .repeat(2)
+            .default(["shuffle", {"pmx": {"swap_p": 0.2}}]),
+        )
+        assert space.apply_defaults({}) == {
+            "pipeline": ["shuffle", {"pmx": {"swap_p": 0.2}}]
+        }
+
+    def test_apply_defaults_output_now_validates(self):
+        space = ds.space(
+            ds.param("layers")
+            .space(ds.param("width").integer(16, 1024))
+            .repeat(2)
+            .default([{"width": 128}, {"width": 256}]),
+        )
+        filled = space.apply_defaults({})
+        assert space.validate(filled).valid

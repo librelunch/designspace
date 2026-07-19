@@ -47,6 +47,7 @@ from designspace.ir import (
     ListDomain,
     OrdinalDomain,
     ParamDef,
+    ParamError,
     PermutationDomain,
     QuantizedSpec,
     RealDomain,
@@ -84,6 +85,7 @@ def resolve_space(exprs: tuple[ParamExpr, ...]) -> Space:
     space = _emit(defs, charts)  # step 8
     if bound_constraints:
         space = replace(space, constraints=space.constraints + tuple(bound_constraints))
+    _validate_list_defaults_deep(space)  # row 21, continued — needs space.params
     return space
 
 
@@ -700,6 +702,59 @@ def _validate_list_default_shape(path: str, snap: _ElementSnapshot) -> None:
             f"param {path!r}: list default length must match the static repeat "
             f"count ({snap.count}) (row 21)"
         )
+
+
+def _validate_list_defaults_deep(space: Space) -> None:
+    """Row 21, continued: a post-`.repeat()` list default (`.repeat(n)
+    .default([...])`) is a literal phenotype value per index — each item
+    must itself be a domain member, recursively for struct/choice elements
+    (a struct/choice list default is `[{"width": 128}, ...]`-shaped, not a
+    flat scalar). `_validate_list_default_shape` (step 7) only checks
+    length/static-count; this reuses `validate()`'s own per-instance domain
+    checks, so it must run here, *after* `_emit` has built `space.params`
+    (struct/choice lift descendants are relocated there under a
+    `"[]"`-bracketed prefix and don't exist any earlier in the pipeline).
+
+    Scope: only the *outermost* list level's own `list_default` is deep-
+    checked — a list default set at an *intermediate* nesting level
+    (`.repeat(8).default([...]).repeat(8)`, API_v3.md's "per-level list
+    modifiers between lifts") keeps its existing shape-only check; that
+    combination is rare enough not to warrant the extra plumbing (there is
+    no single natural instance path to hang the check on — the values are
+    shared across every outer instance).
+    """
+    from designspace.config._flatten import _flatten_list_element
+    from designspace.eval import compute_activity
+    from designspace.validate._validate import _validate_lift_instances
+
+    for path, pd in space.params.items():
+        if "[]" in path or pd.type_kind != "list":
+            continue
+        domain = pd.domain
+        assert isinstance(domain, ListDomain)
+        if domain.list_default is None:
+            continue
+        assert isinstance(domain.count, int)
+        flat: dict[str, Any] = {path: len(domain.list_default)}
+        shape_errors: list[ParamError] = []
+        for i, item in enumerate(domain.list_default):
+            _flatten_list_element(
+                item,
+                domain,
+                space,
+                template_prefix=f"{path}[].",
+                concrete_prefix=f"{path}[{i}].",
+                out=flat,
+                errors=shape_errors,
+            )
+        activity = compute_activity(space, flat)
+        errors = shape_errors + _validate_lift_instances(space, path, domain, flat, activity)
+        if errors:
+            detail = "; ".join(f"{e.param!r}: {e.reason}={e.value!r}" for e in errors)
+            raise ResolutionError(
+                f"param {path!r}: list default {domain.list_default!r} is outside "
+                f"its domain ({detail}) (row 21)"
+            )
 
 
 def _validate_tags_meta(d: ParamExpr) -> None:
