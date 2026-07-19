@@ -21,6 +21,29 @@ Faithfulness corrections** in IMPLEMENTATION_PLAN.md. The full original entries
 remain in this repo's git history (see the commit that reset this file). Add new
 entries below as future milestones surface fresh ambiguities.
 
+**D-27, D-28, D-29 folded into the spec on 2026-07-19** (faithfulness review). Three
+findings resulted:
+- *D-27 / D-28 (Builder view types).* The §Parameter Types "Builder view types"
+  paragraph was self-contradictory (line 90 makes the base a `VectorExpr` owning the
+  aggregates; the old line 92 narrowed the aggregates/combinatorial queries onto the
+  views) and its parenthetical grouped `.contains()`/`.size()`/`.sum_over()` under
+  permutation and `.position_of()` under subset, contradicting row 18. Reworded: only
+  type methods and the domain-level `.log_scale()`/`.quantized()` are narrowed; query
+  and aggregate methods stay on the base (reference-position), type-correct by rows
+  6/18/24 at runtime. Documentation-only; the code was already correct.
+- *D-29 (1)(2)(3)(5) (bounds: hull direction, op set, eager scope, tighten gating).*
+  Spec-silent points; the least-surprising readings were folded as normative
+  clarifications (§Expression bounds are sugar, §All charts are static, §Resolution
+  timing). Documentation-only.
+- *D-29 (4) (bound-origin polarity).* Faithful to the bound text but latently
+  breaks the fingerprint feasibility guarantee, because `is_violated` keys off
+  `origin` and `origin` is preimage-excluded. Resolved via **Route A** (keep the M5
+  runtime; canonicalize the preimage to forbidden-state form) — the runtime/wording
+  half is folded into the spec now; the `fingerprint()` canonicalization + its
+  conformance law are a **planned M7 build step and gate item** (see
+  IMPLEMENTATION_PLAN.md M7). D-29 is retained below with its M7 tail updated to point
+  at that gate item.
+
 ---
 
 ## D-27 (M4.6) — Builder return types: per-type view subclasses
@@ -503,18 +526,29 @@ Choice:     (1)(a). A hi-bound's envelope must be the *widest* value the
             nothing about correctness depends on the family list being
             complete, only on it being *sound* (never tightening somewhere
             truncation ≠ conditioning).
-Spec delta: None yet. Four of five points are resolvable within the existing
-            text once (4)'s tension is noticed — API_v3.md's sugar-description
-            and margin sentences are both literally true simultaneously, they
-            just require `is_violated`'s hard/polarity coupling (a resolve/
-            eval-layer mechanism, not spec text) to key off `origin` instead
-            of `hard` for this one provenance. Candidate for a future
-            clarifying footnote at "Expression bounds are sugar": the implicit
-            constraint's polarity is *not* `.forbid()`'s "argument names the
-            forbidden state" convention. **Open, tracked for M7** (per (4)'s
-            choice text above): whether/how the sugar-equivalence
-            fingerprint-equality law (`fingerprint()`, "Identity and
-            Serialization") accounts for a bound-origin constraint's expr
-            shape (`x <= y`) differing from its feasibility-equivalent
-            `.forbid()` form (`x > y`) — M5 does not resolve this, only
-            surfaces it; do not assume it is settled when M7 begins.
+Spec delta: **FOLDED 2026-07-19.** Points (1)(2)(3)(5) and the runtime/polarity
+            half of (4) are now normative in API_v3.md: hull direction and the
+            "dependency need not be a literal" non-restriction (§Expression
+            bounds are sugar intro); the minimal op set and `.forbid()`-recovery
+            (new *Computable op set* bullet); eager scope (new *Scope* bullet +
+            §Resolution timing); tighten-not-reject family gating (§All charts
+            are static); and the polarity note — the bound constraint stores the
+            *desired* `x <= y` (not `.forbid()`'s forbidden-state convention),
+            its feasibility-equivalent hand form is `.forbid(x > y)` (new
+            *Provenance and polarity* bullet + IR `Constraint` comments).
+
+            **RESOLVED via Route A, implementation tracked for M7** (was "Open,
+            tracked for M7"): the sugar-equivalence fingerprint law is preserved
+            by canonicalizing a bound-origin constraint to its **forbidden-state
+            (negated) form** in the fingerprint preimage, so a `x <= y` bound is
+            fingerprint-equal to `.forbid(x > y)` (feasibility-equal) and
+            fingerprint-distinct from `.forbid(x <= y)` (feasibility-opposite).
+            This keeps feasibility polarity in the preimage while `origin` stays
+            excluded, upholding "no preimage-excluded field is feasibility-load-
+            bearing" and "equal fingerprints ⟹ identical valid-config sets". Now
+            a **required M7 build step + gate law** (IMPLEMENTATION_PLAN.md M7);
+            the M5 runtime is unchanged. Route B (store forbidden `x > y`, amend
+            the margin to `x − y`) was considered and rejected — it inverts the
+            spec's advertised positive-slack margin. Normative wording is in
+            API_v3.md §Identity (Normalization pipeline step 1; Scopes note;
+            Conformance Laws — Identity).

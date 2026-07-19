@@ -19,3 +19,12 @@ The "DECISIONS entries" column above is a **historical** record. As of M4.5 thos
 entries (D-1 … D-26) were resolved into API_v3.md (as normative spec text) or into
 the plan (M4.5's build/deferred lists), and `DECISIONS.md` was reset to an empty
 ledger for future use. The original entries remain in this repo's git history.
+
+**Faithfulness fold — 2026-07-19** (no milestone reorder; M6 remains current). D-27,
+D-28, and D-29 were reviewed against the spec and folded into API_v3.md. Two were
+documentation-only (Builder view types wording; the spec-silent bounds points).
+The third — D-29(4), the bound-origin polarity vs. fingerprint-preimage collision —
+was resolved via Route A: the M5 runtime is unchanged, and a bound-origin preimage
+canonicalization + its conformance law are now a **required M7 build step and gate**
+(IMPLEMENTATION_PLAN.md M7). D-29 is retained in DECISIONS.md with its M7 tail
+updated; no source code changed in this fold.
