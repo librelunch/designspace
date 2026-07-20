@@ -1,6 +1,6 @@
 # Progress
 
-Current milestone: **M7 — Identity and serialization** (not started)
+Current milestone: **M8 — Structural operations and metaprogramming** (not started)
 
 | Milestone | Completed | Tests | DECISIONS entries |
 |---|---|---|---|
@@ -13,11 +13,12 @@ Current milestone: **M7 — Identity and serialization** (not started)
 | M4.6 — Build-layer view types | 2026-07-18 | 509 | D-27, D-28 |
 | M5 — Expression bounds | 2026-07-19 | 550 | D-29 |
 | M6 — Defaults and partial-config API | 2026-07-19 | 622 | D-30 |
+| M7 — Identity and serialization (internal v0.1) | 2026-07-20 | 781 | D-31, D-32, D-33, D-34, D-35, D-36, D-37 |
 
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
 
 The "DECISIONS entries" column above is a **historical** record. As of M5 those
 entries (D-1 … D-29) were resolved into API_v3.md (as normative spec text) or into
 the plan, and `DECISIONS.md` was reset to an empty ledger for future use before M6
-began. The original entries remain in this repo's git history. D-30 (M6) is a live
-entry, not yet folded.
+began. The original entries remain in this repo's git history. D-30 (M6) through
+D-37 (M7) are live entries, not yet folded.

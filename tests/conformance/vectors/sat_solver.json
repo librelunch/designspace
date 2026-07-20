@@ -1,0 +1,181 @@
+{
+  "fingerprint_full": "1:full:1b39590ad96014e76e2333c837fc856d5da321168969d226b25aa7c6510e04b2",
+  "fingerprint_sampling": "1:sampling:67c8353df6715b431ae26ff6d88e69e8e93d0ac3e49f4169f2104a080cddfc2d",
+  "to_json": {
+    "conditions": [
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "solver"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "str",
+                "v": "cdcl"
+              }
+            }
+          ],
+          "kind": "eq"
+        },
+        "target": "solver.cdcl.restart_strategy"
+      }
+    ],
+    "constraints": [
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "verbosity"
+                },
+                {
+                  "kind": "literal",
+                  "value": {
+                    "$t": "str",
+                    "v": "debug"
+                  }
+                }
+              ],
+              "kind": "ge"
+            },
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "timeout_s"
+                },
+                {
+                  "kind": "literal",
+                  "value": {
+                    "$t": "int",
+                    "v": 60
+                  }
+                }
+              ],
+              "kind": "lt"
+            }
+          ],
+          "kind": "and"
+        },
+        "hard": true,
+        "origin": "user"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "verbosity"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "str",
+                "v": "silent"
+              }
+            }
+          ],
+          "kind": "gt"
+        },
+        "hard": false,
+        "origin": "user",
+        "tags": [
+          "observability"
+        ]
+      }
+    ],
+    "params": [
+      {
+        "domain": {
+          "has_payload": [
+            "cdcl"
+          ],
+          "kind": "choice",
+          "variants": [
+            "dpll",
+            "cdcl"
+          ]
+        },
+        "kind": "choice",
+        "path": "solver",
+        "periodic": false
+      },
+      {
+        "condition": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "solver"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "str",
+                "v": "cdcl"
+              }
+            }
+          ],
+          "kind": "eq"
+        },
+        "domain": {
+          "kind": "categorical",
+          "values": [
+            {
+              "$t": "str",
+              "v": "luby"
+            },
+            {
+              "$t": "str",
+              "v": "geometric"
+            }
+          ]
+        },
+        "kind": "categorical",
+        "path": "solver.cdcl.restart_strategy",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "kind": "ordinal",
+          "values": [
+            {
+              "$t": "str",
+              "v": "silent"
+            },
+            {
+              "$t": "str",
+              "v": "normal"
+            },
+            {
+              "$t": "str",
+              "v": "verbose"
+            },
+            {
+              "$t": "str",
+              "v": "debug"
+            }
+          ]
+        },
+        "kind": "ordinal",
+        "path": "verbosity",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 3600,
+          "kind": "integer",
+          "lo": 1
+        },
+        "kind": "integer",
+        "path": "timeout_s",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}

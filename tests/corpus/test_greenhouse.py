@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from greenhouse import build_space
 
+from designspace.build._space import Space
+
 
 def test_resolves():
     space = build_space()
@@ -70,3 +72,12 @@ def test_defaults_cascade():
     assert space.is_complete(full)
     assert space.apply_defaults(full) == full
     assert space.next_assignable(full) == []
+
+
+def test_round_trips():
+    space = build_space()
+    restored = Space.from_json(space.to_json())
+    assert restored.fingerprint() == space.fingerprint()
+    assert restored.fingerprint("sampling") == space.fingerprint("sampling")
+    for cfg in restored.sample_dicts(50, seed=3):
+        assert restored.validate(cfg).valid

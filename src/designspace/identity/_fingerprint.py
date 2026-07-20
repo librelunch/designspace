@@ -1,0 +1,66 @@
+"""`.fingerprint()` (API_v3.md, "fingerprint()"): a stable identifier of the
+resolved space — post-resolution IR, never builder expressions.
+
+Output: `"{version}:{scope}:{64 hex chars}"`. The format version and the
+scope string are both part of the hashed preimage (not just the human-
+readable prefix) — the scope table lists "Format version" as a preimage row
+in both scopes, and folding `scope` in too is free, extra-safe hygiene (it
+already disambiguates `full` vs `sampling` digests that would otherwise only
+differ by coincidence of content).
+
+Only `"raise"`/`"mark"` are offered for `on_unserializable` here — unlike
+`to_json`, whose "drop" mode returns a document plus a manifest the caller
+can inspect, `fingerprint` returns nothing but a hash: a silently-dropped
+site would vanish from the digest with no visible trace, which is strictly
+worse than "mark"'s explicit, distinguishing sentinel. The spec's own
+"Callables" paragraph under `fingerprint()` only ever mentions raise/mark.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Literal
+
+from designspace.build._space import Space
+from designspace.identity._ir_codec import (
+    EncodeContext,
+    encode_condition,
+    encode_constraint,
+    encode_param,
+)
+from designspace.identity._jcs import canonical_digest
+from designspace.resolve._pipeline import check_fully_resolved
+from designspace.serialize._version import FORMAT_VERSION
+
+FingerprintScope = Literal["full", "sampling"]
+FingerprintUnserializable = Literal["raise", "mark"]
+
+_VALID_SCOPES = ("full", "sampling")
+_VALID_MODES = ("raise", "mark")
+
+
+def fingerprint(
+    space: Space,
+    scope: FingerprintScope = "full",
+    on_unserializable: FingerprintUnserializable = "raise",
+) -> str:
+    if scope not in _VALID_SCOPES:
+        raise TypeError(f"fingerprint(): scope must be 'full' or 'sampling', got {scope!r}")
+    if on_unserializable not in _VALID_MODES:
+        raise TypeError(
+            f"fingerprint(): on_unserializable must be 'raise' or 'mark', got {on_unserializable!r}"
+        )
+    check_fully_resolved(space)
+    ctx = EncodeContext(mode=on_unserializable)
+    tree: dict[str, Any] = {
+        "version": FORMAT_VERSION,
+        "scope": scope,
+        "params": [encode_param(pd, scope, ctx) for pd in space.params.values()],
+        "conditions": [encode_condition(c) for c in space.conditions],
+        "constraints": [
+            encoded
+            for c in space.constraints
+            if (encoded := encode_constraint(c, scope)) is not None
+        ],
+    }
+    digest = canonical_digest(tree)
+    return f"{FORMAT_VERSION}:{scope}:{digest}"

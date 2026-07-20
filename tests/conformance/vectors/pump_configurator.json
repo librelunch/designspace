@@ -1,0 +1,202 @@
+{
+  "fingerprint_full": "1:full:917e6483b5f000af0b0ecdae76a1a35493195b81aa7c68ec81914cff30ce08ea",
+  "fingerprint_sampling": "1:sampling:44c93ceefa348186f5ffa37be4bad45aebfe02f014213b1163e81300e13e9c08",
+  "to_json": {
+    "conditions": [],
+    "constraints": [
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "impeller_diameter_mm"
+            },
+            {
+              "kind": "ref",
+              "path": "flow_rate_lpm"
+            }
+          ],
+          "kind": "le"
+        },
+        "hard": true,
+        "origin": "bound"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "max_pressure_bar"
+            },
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "num_stages"
+                },
+                {
+                  "kind": "literal",
+                  "value": {
+                    "$t": "float",
+                    "v": 10.0
+                  }
+                }
+              ],
+              "kind": "mul"
+            }
+          ],
+          "kind": "le"
+        },
+        "hard": true,
+        "origin": "bound"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "seal_type"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "str",
+                "v": "packing"
+              }
+            }
+          ],
+          "kind": "eq"
+        },
+        "hard": true,
+        "origin": "user"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "seal_type"
+                },
+                {
+                  "kind": "literal",
+                  "value": {
+                    "$t": "str",
+                    "v": "magnetic"
+                  }
+                }
+              ],
+              "kind": "eq"
+            },
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "certifications"
+                }
+              ],
+              "item": {
+                "$t": "str",
+                "v": "ATEX"
+              },
+              "kind": "contains"
+            }
+          ],
+          "kind": "and"
+        },
+        "hard": true,
+        "origin": "user"
+      }
+    ],
+    "params": [
+      {
+        "domain": {
+          "hi": 500.0,
+          "kind": "real",
+          "lo": 100.0
+        },
+        "kind": "real",
+        "path": "flow_rate_lpm",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 500.0,
+          "kind": "real",
+          "lo": 20.0
+        },
+        "kind": "real",
+        "path": "impeller_diameter_mm",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 5,
+          "kind": "integer",
+          "lo": 1
+        },
+        "kind": "integer",
+        "path": "num_stages",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 50.0,
+          "kind": "real",
+          "lo": 1.0
+        },
+        "kind": "real",
+        "path": "max_pressure_bar",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "kind": "categorical",
+          "values": [
+            {
+              "$t": "str",
+              "v": "mechanical"
+            },
+            {
+              "$t": "str",
+              "v": "packing"
+            },
+            {
+              "$t": "str",
+              "v": "magnetic"
+            }
+          ]
+        },
+        "kind": "categorical",
+        "path": "seal_type",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "items": [
+            {
+              "$t": "str",
+              "v": "CE"
+            },
+            {
+              "$t": "str",
+              "v": "UL"
+            },
+            {
+              "$t": "str",
+              "v": "ATEX"
+            }
+          ],
+          "kind": "subset",
+          "max_size": 3,
+          "min_size": 0
+        },
+        "kind": "subset",
+        "path": "certifications",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}

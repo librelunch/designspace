@@ -1,0 +1,174 @@
+{
+  "fingerprint_full": "1:full:5003476bf9b7cad0a7026a68796e4b952a5aef030ae597b09e5199f1ed3cdf7e",
+  "fingerprint_sampling": "1:sampling:82f0835f4d09dee3722162aa7e556c5397c1ddcc798e66e1836e2bf64ddf475c",
+  "to_json": {
+    "conditions": [],
+    "constraints": [
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "buf_a"
+            },
+            {
+              "kind": "ref",
+              "path": "total_ram"
+            }
+          ],
+          "kind": "le"
+        },
+        "hard": true,
+        "origin": "bound"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "buf_b"
+            },
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "total_ram"
+                },
+                {
+                  "kind": "ref",
+                  "path": "buf_a"
+                }
+              ],
+              "kind": "sub"
+            }
+          ],
+          "kind": "le"
+        },
+        "hard": true,
+        "origin": "bound"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "buf_c"
+            },
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "buf_b"
+                },
+                {
+                  "kind": "literal",
+                  "value": {
+                    "$t": "int",
+                    "v": 1
+                  }
+                }
+              ],
+              "kind": "sub"
+            }
+          ],
+          "kind": "le"
+        },
+        "hard": true,
+        "origin": "bound"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "kind": "ref",
+                          "path": "total_ram"
+                        },
+                        {
+                          "kind": "ref",
+                          "path": "buf_a"
+                        }
+                      ],
+                      "kind": "sub"
+                    },
+                    {
+                      "kind": "ref",
+                      "path": "buf_b"
+                    }
+                  ],
+                  "kind": "sub"
+                },
+                {
+                  "kind": "ref",
+                  "path": "buf_c"
+                }
+              ],
+              "kind": "sub"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "int",
+                "v": 1
+              }
+            }
+          ],
+          "kind": "ge"
+        },
+        "hard": false,
+        "origin": "user",
+        "tags": [
+          "headroom"
+        ]
+      }
+    ],
+    "params": [
+      {
+        "domain": {
+          "hi": 65536,
+          "kind": "integer",
+          "lo": 4096
+        },
+        "kind": "integer",
+        "path": "total_ram",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 65536,
+          "kind": "integer",
+          "lo": 1
+        },
+        "kind": "integer",
+        "path": "buf_a",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 65535,
+          "kind": "integer",
+          "lo": 1
+        },
+        "kind": "integer",
+        "path": "buf_b",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 65534,
+          "kind": "integer",
+          "lo": 0
+        },
+        "kind": "integer",
+        "path": "buf_c",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}

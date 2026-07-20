@@ -1,0 +1,222 @@
+{
+  "fingerprint_full": "1:full:bb5c7c144daa5a86ca64315202f98ac0960860bbb841dd9942bfef228ea3923f",
+  "fingerprint_sampling": "1:sampling:3dad7b68ee8dca20de88315bdd38083c262704b6bb6ec4ef93f3f62250fe3c6d",
+  "to_json": {
+    "conditions": [],
+    "constraints": [
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "reagents"
+                }
+              ],
+              "item": {
+                "$t": "str",
+                "v": "oxidizer"
+              },
+              "kind": "contains"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "kind": "ref",
+                      "path": "reagents"
+                    }
+                  ],
+                  "item": {
+                    "$t": "str",
+                    "v": "acid"
+                  },
+                  "kind": "contains"
+                }
+              ],
+              "kind": "not"
+            }
+          ],
+          "kind": "and"
+        },
+        "hard": true,
+        "origin": "user"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "reagents"
+                }
+              ],
+              "item": {
+                "$t": "str",
+                "v": "catalyst"
+              },
+              "kind": "contains"
+            },
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "temperature_c"
+                },
+                {
+                  "kind": "literal",
+                  "value": {
+                    "$t": "float",
+                    "v": 50.0
+                  }
+                }
+              ],
+              "kind": "le"
+            }
+          ],
+          "kind": "and"
+        },
+        "hard": true,
+        "origin": "user"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "reagents"
+                }
+              ],
+              "kind": "sum_over",
+              "mapping": [
+                [
+                  {
+                    "$t": "str",
+                    "v": "acid"
+                  },
+                  {
+                    "$t": "float",
+                    "v": 2.0
+                  }
+                ],
+                [
+                  {
+                    "$t": "str",
+                    "v": "base"
+                  },
+                  {
+                    "$t": "float",
+                    "v": 1.5
+                  }
+                ],
+                [
+                  {
+                    "$t": "str",
+                    "v": "catalyst"
+                  },
+                  {
+                    "$t": "float",
+                    "v": 10.0
+                  }
+                ],
+                [
+                  {
+                    "$t": "str",
+                    "v": "oxidizer"
+                  },
+                  {
+                    "$t": "float",
+                    "v": 3.0
+                  }
+                ],
+                [
+                  {
+                    "$t": "str",
+                    "v": "solvent"
+                  },
+                  {
+                    "$t": "float",
+                    "v": 0.5
+                  }
+                ]
+              ]
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "float",
+                "v": 15.0
+              }
+            }
+          ],
+          "kind": "le"
+        },
+        "hard": false,
+        "origin": "user",
+        "tags": [
+          "budget"
+        ]
+      }
+    ],
+    "params": [
+      {
+        "domain": {
+          "items": [
+            {
+              "$t": "str",
+              "v": "acid"
+            },
+            {
+              "$t": "str",
+              "v": "base"
+            },
+            {
+              "$t": "str",
+              "v": "catalyst"
+            },
+            {
+              "$t": "str",
+              "v": "solvent"
+            },
+            {
+              "$t": "str",
+              "v": "oxidizer"
+            }
+          ],
+          "kind": "subset",
+          "max_size": 4,
+          "min_size": 1
+        },
+        "kind": "subset",
+        "path": "reagents",
+        "periodic": false,
+        "prior": {
+          "kind": "weights",
+          "values": [
+            0.8,
+            0.8,
+            0.3,
+            0.9,
+            0.4
+          ]
+        }
+      },
+      {
+        "domain": {
+          "hi": 200.0,
+          "kind": "real",
+          "lo": 0.0
+        },
+        "kind": "real",
+        "path": "temperature_c",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}

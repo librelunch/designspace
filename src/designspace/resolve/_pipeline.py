@@ -23,13 +23,12 @@ re-validation.
 
 from __future__ import annotations
 
-import json
 import math
 from dataclasses import replace
 from types import MappingProxyType
 from typing import Any
 
-from designspace.build._names import check_name
+from designspace.build._names import check_meta_json_serializable, check_name
 from designspace.build._paramexpr import ParamExpr, _ElementSnapshot
 from designspace.build._space import Space
 from designspace.build._views import ChoiceParamExpr, ListParamExpr, StructParamExpr
@@ -779,13 +778,7 @@ def _validate_list_default_level(
 def _validate_tags_meta(d: ParamExpr) -> None:
     if "" in d.tags:
         raise ResolutionError(f"param {d.path!r}: empty-string tags are not allowed")
-    for key, value in d.meta_map.items():
-        try:
-            json.dumps(value)
-        except TypeError as exc:
-            raise ResolutionError(
-                f"param {d.path!r}: meta[{key!r}] is not JSON-serializable"
-            ) from exc
+    check_meta_json_serializable(dict(d.meta_map), what=f"param {d.path!r}")
 
 
 # -- step 8: emit IR -----------------------------------------------------------

@@ -1,0 +1,156 @@
+{
+  "fingerprint_full": "1:full:1f8acb95c6f638ffe37c152aa7be8e05e7a006596fb8bfdf5010547b2747bc41",
+  "fingerprint_sampling": "1:sampling:1709a6746132c33b22699f73b1a19e9c3e6ea694c97f98adacd9cdbb7e5e7a28",
+  "to_json": {
+    "conditions": [],
+    "constraints": [
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "kind": "ref",
+                      "path": "stops"
+                    }
+                  ],
+                  "kind": "field",
+                  "name": "dwell_min"
+                }
+              ],
+              "kind": "sum"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "int",
+                "v": 90
+              }
+            }
+          ],
+          "kind": "le"
+        },
+        "hard": false,
+        "origin": "user"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "stops[0].location"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "int",
+                "v": 0
+              }
+            }
+          ],
+          "kind": "ne"
+        },
+        "hard": true,
+        "origin": "user"
+      }
+    ],
+    "params": [
+      {
+        "domain": {
+          "hi": 5,
+          "kind": "integer",
+          "lo": 1
+        },
+        "kind": "integer",
+        "path": "n_stops",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "count": {
+            "expr": {
+              "kind": "ref",
+              "path": "n_stops"
+            },
+            "kind": "dynamic"
+          },
+          "element_constraints": [
+            {
+              "expr": {
+                "children": [
+                  {
+                    "children": [
+                      {
+                        "kind": "ref",
+                        "path": "stops[].location"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": {
+                          "$t": "int",
+                          "v": 0
+                        }
+                      }
+                    ],
+                    "kind": "eq"
+                  },
+                  {
+                    "children": [
+                      {
+                        "kind": "ref",
+                        "path": "stops[].dwell_min"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": {
+                          "$t": "int",
+                          "v": 10
+                        }
+                      }
+                    ],
+                    "kind": "gt"
+                  }
+                ],
+                "kind": "and"
+              },
+              "hard": true,
+              "origin": "user"
+            }
+          ],
+          "element_domain": {
+            "kind": "space"
+          },
+          "element_kind": "space",
+          "element_periodic": false,
+          "kind": "list"
+        },
+        "kind": "list",
+        "path": "stops",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 9,
+          "kind": "integer",
+          "lo": 0
+        },
+        "kind": "integer",
+        "path": "stops[].location",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 30,
+          "kind": "integer",
+          "lo": 5
+        },
+        "kind": "integer",
+        "path": "stops[].dwell_min",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}

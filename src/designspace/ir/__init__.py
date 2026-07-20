@@ -25,6 +25,7 @@ from designspace.ir._priors import Log, Logit, Power, Prior, PriorSpec, Weights
 from designspace.ir._results import (
     ConstraintEval,
     IntegerRemaining,
+    ParamDiff,
     ParamError,
     PartialEval,
     PermutationRemaining,
@@ -51,6 +52,7 @@ __all__ = [
     "Logit",
     "OrdinalDomain",
     "ParamDef",
+    "ParamDiff",
     "ParamError",
     "PartialEval",
     "PermutationDomain",

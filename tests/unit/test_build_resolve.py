@@ -296,6 +296,18 @@ class TestRow23TagsMeta:
         with pytest.raises(ResolutionError, match="'x'"):
             ds.space(ds.param("x").bool().meta(fn=lambda: 1))
 
+    def test_list_meta_value_is_accepted(self):
+        # DECISIONS.md D-36 (corrected): row 23 gates "JSON-serializable"
+        # (a list passes that bar) — recurses through the same codec as
+        # `default`/`list_default` (see tests/conformance/test_identity.py
+        # for the round-trip law).
+        space = ds.space(ds.param("x").bool().meta(k=[1, 2]))
+        assert dict(space.params["x"].meta) == {"k": [1, 2]}
+
+    def test_dict_meta_value_is_accepted(self):
+        space = ds.space(ds.param("x").bool().meta(k={"nested": 1}))
+        assert dict(space.params["x"].meta) == {"k": {"nested": 1}}
+
     def test_tags_accumulate(self):
         space = ds.space(ds.param("x").bool().tag("a").tag("b"))
         assert space.params["x"].tags == frozenset({"a", "b"})

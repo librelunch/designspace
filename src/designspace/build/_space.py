@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -26,6 +26,10 @@ from designspace.ir import (
     RemainingDomain,
     ValidationResult,
 )
+
+if TYPE_CHECKING:
+    from designspace.identity._fingerprint import FingerprintScope, FingerprintUnserializable
+    from designspace.identity._ir_codec import OnUnserializable
 
 Seed = int | np.random.Generator | None
 
@@ -144,3 +148,25 @@ class Space:
         from designspace.partial import next_assignable as _next_assignable
 
         return _next_assignable(self, config)
+
+    def to_json(self, on_unserializable: OnUnserializable = "raise") -> dict[str, Any]:
+        from designspace.serialize import to_json as _to_json
+
+        return _to_json(self, on_unserializable=on_unserializable)
+
+    @classmethod
+    def from_json(
+        cls, data: dict[str, Any], custom_types: dict[str, Any] | None = None
+    ) -> Space:
+        from designspace.serialize import from_json as _from_json
+
+        return _from_json(data, custom_types=custom_types)
+
+    def fingerprint(
+        self,
+        scope: FingerprintScope = "full",
+        on_unserializable: FingerprintUnserializable = "raise",
+    ) -> str:
+        from designspace.identity import fingerprint as _fingerprint
+
+        return _fingerprint(self, scope=scope, on_unserializable=on_unserializable)

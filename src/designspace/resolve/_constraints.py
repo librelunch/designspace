@@ -11,13 +11,13 @@ desugars `implies` (D-1) the same way step 3 does.
 
 from __future__ import annotations
 
-import json
 import warnings
 from collections.abc import Mapping
 from dataclasses import replace
 from types import MappingProxyType
 from typing import Any
 
+from designspace.build._names import check_meta_json_serializable
 from designspace.build._paramexpr import ParamExpr
 from designspace.build._space import Space
 from designspace.errors import ResolutionError
@@ -65,11 +65,7 @@ def add_constraints(
 def _check_tags_meta(call: str, tags: tuple[str, ...], meta: dict[str, Any] | None) -> None:
     if "" in tags:
         raise ResolutionError(f"{call}: empty-string tags are not allowed")
-    for key, value in (meta or {}).items():
-        try:
-            json.dumps(value)
-        except TypeError as exc:
-            raise ResolutionError(f"{call}: meta[{key!r}] is not JSON-serializable") from exc
+    check_meta_json_serializable(meta or {}, what=call)
 
 
 def _references_unquantized_real(node: Any, defs_by_path: Mapping[str, ParamDef]) -> bool:

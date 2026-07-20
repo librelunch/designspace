@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from firmware_buffers import TOTAL_HI, TOTAL_LO, build_space
 
+from designspace.build._space import Space
+
 
 def test_resolves():
     space = build_space()
@@ -56,3 +58,12 @@ def test_overrun_is_infeasible():
     cfg = {"total_ram": 8192, "buf_a": 9000, "buf_b": 1000, "buf_c": 0}
     result = space.validate(cfg)
     assert not result.valid
+
+
+def test_round_trips():
+    space = build_space()
+    restored = Space.from_json(space.to_json())
+    assert restored.fingerprint() == space.fingerprint()
+    assert restored.fingerprint("sampling") == space.fingerprint("sampling")
+    for cfg in restored.sample_dicts(50, seed=2):
+        assert restored.validate(cfg).valid

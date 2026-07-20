@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from flow_chemistry import build_space
 
+from designspace.build._space import Space
+
 
 def test_resolves():
     space = build_space()
@@ -52,3 +54,12 @@ def test_subset_size_bounds_respected():
     space = build_space()
     for cfg in space.sample_dicts(200, seed=4):
         assert 1 <= len(cfg["reagents"]) <= 4
+
+
+def test_round_trips():
+    space = build_space()
+    restored = Space.from_json(space.to_json())
+    assert restored.fingerprint() == space.fingerprint()
+    assert restored.fingerprint("sampling") == space.fingerprint("sampling")
+    for cfg in restored.sample_dicts(50, seed=5):
+        assert restored.validate(cfg).valid

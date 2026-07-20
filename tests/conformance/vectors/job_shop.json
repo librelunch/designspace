@@ -1,0 +1,77 @@
+{
+  "fingerprint_full": "1:full:fc84df5c3e630d89ea77b9944551bc985faf8cec0597f3f087077aab3ec74a8a",
+  "fingerprint_sampling": "1:sampling:aad928974edbae6dcea6415974127d30abe76ba458efd57c0e8a29af23f9780b",
+  "to_json": {
+    "conditions": [],
+    "constraints": [
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "schedule"
+                }
+              ],
+              "item": {
+                "$t": "str",
+                "v": "job_a"
+              },
+              "kind": "position_of"
+            },
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "schedule"
+                }
+              ],
+              "item": {
+                "$t": "str",
+                "v": "job_e"
+              },
+              "kind": "position_of"
+            }
+          ],
+          "kind": "gt"
+        },
+        "hard": true,
+        "origin": "user"
+      }
+    ],
+    "params": [
+      {
+        "domain": {
+          "items": [
+            {
+              "$t": "str",
+              "v": "job_a"
+            },
+            {
+              "$t": "str",
+              "v": "job_b"
+            },
+            {
+              "$t": "str",
+              "v": "job_c"
+            },
+            {
+              "$t": "str",
+              "v": "job_d"
+            },
+            {
+              "$t": "str",
+              "v": "job_e"
+            }
+          ],
+          "kind": "permutation"
+        },
+        "kind": "permutation",
+        "path": "schedule",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}

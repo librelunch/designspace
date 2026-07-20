@@ -1,0 +1,187 @@
+{
+  "fingerprint_full": "1:full:8215b26985d543066355fd819865f643ce9eaae6b3ff7480905b3fbb5d6614ad",
+  "fingerprint_sampling": "1:sampling:6f33438dd2ab3257e4d2ed01dddc3322ec6c68f090bf3099e07769fadef2d346",
+  "to_json": {
+    "conditions": [
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "optimizer"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "str",
+                "v": "sgd"
+              }
+            }
+          ],
+          "kind": "eq"
+        },
+        "target": "nesterov"
+      }
+    ],
+    "constraints": [
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "lr"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "float",
+                "v": 0.5
+              }
+            }
+          ],
+          "kind": "gt"
+        },
+        "hard": true,
+        "origin": "user"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "momentum"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "float",
+                "v": 0.95
+              }
+            }
+          ],
+          "kind": "lt"
+        },
+        "hard": false,
+        "origin": "user",
+        "tags": [
+          "stability"
+        ]
+      }
+    ],
+    "params": [
+      {
+        "domain": {
+          "hi": 1.0,
+          "kind": "real",
+          "lo": 1e-05
+        },
+        "kind": "real",
+        "path": "lr",
+        "periodic": false,
+        "prior": {
+          "kind": "log"
+        }
+      },
+      {
+        "domain": {
+          "hi": 0.99,
+          "kind": "real",
+          "lo": 0.0
+        },
+        "kind": "real",
+        "path": "momentum",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 0.01,
+          "kind": "real",
+          "lo": 1e-06
+        },
+        "kind": "real",
+        "path": "weight_decay",
+        "periodic": false,
+        "prior": {
+          "kind": "log"
+        },
+        "quantized": {
+          "factor": 2.0,
+          "include_hi": false,
+          "step": null
+        }
+      },
+      {
+        "domain": {
+          "hi": 8,
+          "kind": "integer",
+          "lo": 1
+        },
+        "kind": "integer",
+        "path": "n_layers",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 512,
+          "kind": "integer",
+          "lo": 16
+        },
+        "kind": "integer",
+        "path": "batch_size",
+        "periodic": false,
+        "quantized": {
+          "factor": null,
+          "include_hi": false,
+          "step": 16
+        }
+      },
+      {
+        "domain": {
+          "kind": "categorical",
+          "values": [
+            {
+              "$t": "str",
+              "v": "sgd"
+            },
+            {
+              "$t": "str",
+              "v": "adam"
+            },
+            {
+              "$t": "str",
+              "v": "rmsprop"
+            }
+          ]
+        },
+        "kind": "categorical",
+        "path": "optimizer",
+        "periodic": false
+      },
+      {
+        "condition": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "optimizer"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "str",
+                "v": "sgd"
+              }
+            }
+          ],
+          "kind": "eq"
+        },
+        "domain": {
+          "kind": "bool"
+        },
+        "kind": "bool",
+        "path": "nesterov",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}

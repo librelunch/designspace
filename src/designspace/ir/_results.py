@@ -1,8 +1,8 @@
 """Result dataclasses for validation and constraint evaluation (API_v3.md, "IR").
 
 M2 needs (`ConstraintEval`, `ValidationResult`, `ParamError`); M6 adds
-`PartialEval` and the `RemainingDomain` descriptor family. `ParamDiff` (M7),
-`SubspaceInfo`/`Capabilities` (M8) join when their milestones do.
+`PartialEval` and the `RemainingDomain` descriptor family; M7 adds
+`ParamDiff`. `SubspaceInfo`/`Capabilities` (M8) join when their milestone does.
 """
 
 from __future__ import annotations
@@ -102,3 +102,12 @@ class PermutationRemaining:
 RemainingDomain = (
     RealRemaining | IntegerRemaining | ValueRemaining | SubsetRemaining | PermutationRemaining
 )
+
+
+@dataclass(frozen=True)
+class ParamDiff:
+    """`ds.config_diff(a, b, space)` entry (API_v3.md, "Config Utilities")."""
+
+    param: str
+    old: Any | None
+    new: Any | None

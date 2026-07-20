@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from sat_solver import build_space
 
+from designspace.build._space import Space
+
 
 def test_resolves():
     space = build_space()
@@ -34,3 +36,12 @@ def test_cdcl_payload_only_present_for_cdcl():
             continue
         assert set(solver.keys()) == {"cdcl"}
         assert set(solver["cdcl"].keys()) == {"restart_strategy"}
+
+
+def test_round_trips():
+    space = build_space()
+    restored = Space.from_json(space.to_json())
+    assert restored.fingerprint() == space.fingerprint()
+    assert restored.fingerprint("sampling") == space.fingerprint("sampling")
+    for cfg in restored.sample_dicts(50, seed=3):
+        assert restored.validate(cfg).valid

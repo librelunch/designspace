@@ -1,11 +1,12 @@
-"""Corpus: `flat_hpo` end-to-end (resolve -> sample 200 -> validate all).
-
-Round-trip joins once serialization exists (M7).
+"""Corpus: `flat_hpo` end-to-end (resolve -> sample 200 -> validate all ->
+round-trip).
 """
 
 from __future__ import annotations
 
 from flat_hpo import build_space
+
+from designspace.build._space import Space
 
 
 def test_resolves():
@@ -44,3 +45,12 @@ def test_quantized_params_are_on_grid():
     space = build_space()
     for cfg in space.sample_dicts(100, seed=3):
         assert cfg["batch_size"] % 16 == 0
+
+
+def test_round_trips():
+    space = build_space()
+    restored = Space.from_json(space.to_json())
+    assert restored.fingerprint() == space.fingerprint()
+    assert restored.fingerprint("sampling") == space.fingerprint("sampling")
+    for cfg in restored.sample_dicts(50, seed=4):
+        assert restored.validate(cfg).valid

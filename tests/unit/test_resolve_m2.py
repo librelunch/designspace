@@ -115,6 +115,47 @@ class TestRow23ForbidConstrainTagsMeta:
         with pytest.raises(ResolutionError, match="constrain"):
             space.constrain(ds.param("x") > 0.5, meta={"k": object()})
 
+    def test_list_meta_value_is_accepted(self):
+        # DECISIONS.md D-36 (corrected): row 23 gates "JSON-serializable"
+        # (a list passes that bar), not "scalar" — a nested list/dict meta
+        # value recurses through the same codec as `default`/`list_default`
+        # (see tests/conformance/test_identity.py for the round-trip law).
+        space = ds.space(ds.param("x").real(0.0, 1.0)).constrain(
+            ds.param("x") > 0.5, meta={"k": [1, 2]}
+        )
+        assert dict(space.constraints[0].meta) == {"k": [1, 2]}
+
+    def test_dict_meta_value_is_accepted(self):
+        space = ds.space(ds.param("x").real(0.0, 1.0)).forbid(
+            ds.param("x") > 0.5, meta={"k": {"nested": 1}}
+        )
+        assert dict(space.constraints[0].meta) == {"k": {"nested": 1}}
+
+    def test_tuple_meta_value_raises(self):
+        # A tuple round-trips unfaithfully (comes back as a list), unlike
+        # json.dumps's lenient array coercion — rejected at construction,
+        # not left to crash later at fingerprint()/to_json() (DECISIONS.md
+        # D-36).
+        space = ds.space(ds.param("x").real(0.0, 1.0))
+        with pytest.raises(ResolutionError, match="constrain"):
+            space.constrain(ds.param("x") > 0.5, meta={"k": (1, 2)})
+
+    def test_non_string_dict_key_in_meta_raises(self):
+        space = ds.space(ds.param("x").real(0.0, 1.0))
+        with pytest.raises(ResolutionError, match="forbid"):
+            space.forbid(ds.param("x") > 0.5, meta={"k": {1: "a"}})
+
+    def test_dollar_prefixed_meta_key_raises(self):
+        # A "$"-prefixed key collides with the identity tag micro-format
+        # ({"$t": ..., "v": ...}) when nested inside a meta value — rejected
+        # at construction rather than crashing from_json with a bare
+        # KeyError later (DECISIONS.md D-36).
+        space = ds.space(ds.param("x").real(0.0, 1.0))
+        with pytest.raises(ResolutionError, match="constrain"):
+            space.constrain(ds.param("x") > 0.5, meta={"cfg": {"$t": "oops"}})
+        with pytest.raises(ResolutionError, match="forbid"):
+            space.forbid(ds.param("x") > 0.5, meta={"$opaque": True})
+
 
 class TestForbidConstrainStructural:
     def test_each_condition_is_its_own_constraint(self):

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pump_configurator import build_space
 
+from designspace.build._space import Space
 from designspace.ir import (
     IntegerRemaining,
     PermutationRemaining,
@@ -115,3 +116,12 @@ def test_bound_origin_and_forbid_reduce_together():
     rd = space.remaining_domain("impeller_diameter_mm", {"flow_rate_lpm": 150.0})
     assert rd is not None
     assert (rd.lo, rd.hi) == (20.0, 150.0)
+
+
+def test_round_trips():
+    space = build_space()
+    restored = Space.from_json(space.to_json())
+    assert restored.fingerprint() == space.fingerprint()
+    assert restored.fingerprint("sampling") == space.fingerprint("sampling")
+    for cfg in restored.sample_dicts(50, seed=1):
+        assert restored.validate(cfg).valid

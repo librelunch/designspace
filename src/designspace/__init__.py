@@ -21,13 +21,15 @@ from designspace.build import (
     param,
     space,
 )
-from designspace.config import destructure, flatten, payload, unflatten, variant
-from designspace.errors import DesignSpaceError, ResolutionError, SamplingError
+from designspace.config import config_diff, destructure, flatten, payload, unflatten, variant
+from designspace.errors import DesignSpaceError, ResolutionError, SamplingError, SerializationError
 from designspace.expr import ArithExpr, BoolExpr, all_, any_, count
+from designspace.identity import config_hash
 from designspace.ir import (
     IntegerRemaining,
     Log,
     Logit,
+    ParamDiff,
     PartialEval,
     PermutationRemaining,
     Power,
@@ -53,6 +55,7 @@ __all__ = [
     "Log",
     "Logit",
     "OrdinalParamExpr",
+    "ParamDiff",
     "ParamExpr",
     "PartialEval",
     "PermutationParamExpr",
@@ -63,6 +66,7 @@ __all__ = [
     "RemainingDomain",
     "ResolutionError",
     "SamplingError",
+    "SerializationError",
     "Space",
     "StructParamExpr",
     "SubsetParamExpr",
@@ -71,6 +75,8 @@ __all__ = [
     "__version__",
     "all_",
     "any_",
+    "config_diff",
+    "config_hash",
     "count",
     "destructure",
     "flatten",

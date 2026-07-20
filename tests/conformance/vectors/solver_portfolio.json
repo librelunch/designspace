@@ -1,0 +1,184 @@
+{
+  "fingerprint_full": "1:full:fd38f883be233121b3a1bfc6fa641c292d330eb12c6a3e69232251927bcc92c8",
+  "fingerprint_sampling": "1:sampling:f766057f5965d99836af8f8460ac5d3d9d1e369b2b22c094599568080393fd1a",
+  "to_json": {
+    "conditions": [
+      {
+        "expr": {
+          "kind": "ref",
+          "path": "use_ensemble"
+        },
+        "target": "workers"
+      }
+    ],
+    "constraints": [
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "use_cplex"
+                },
+                {
+                  "kind": "ref",
+                  "path": "use_gurobi"
+                },
+                {
+                  "kind": "ref",
+                  "path": "use_glpk"
+                },
+                {
+                  "kind": "ref",
+                  "path": "use_heuristic"
+                }
+              ],
+              "kind": "count"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "int",
+                "v": 1
+              }
+            }
+          ],
+          "kind": "lt"
+        },
+        "hard": true,
+        "origin": "user"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "kind": "ref",
+                          "path": "workers"
+                        }
+                      ],
+                      "kind": "field",
+                      "name": "timeout_s"
+                    }
+                  ],
+                  "kind": "sum"
+                },
+                {
+                  "kind": "literal",
+                  "value": {
+                    "$t": "int",
+                    "v": 0
+                  }
+                }
+              ],
+              "kind": "if_inactive"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "int",
+                "v": 7200
+              }
+            }
+          ],
+          "kind": "gt"
+        },
+        "hard": true,
+        "origin": "user"
+      }
+    ],
+    "params": [
+      {
+        "domain": {
+          "kind": "bool"
+        },
+        "kind": "bool",
+        "path": "use_cplex",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "kind": "bool"
+        },
+        "kind": "bool",
+        "path": "use_gurobi",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "kind": "bool"
+        },
+        "kind": "bool",
+        "path": "use_glpk",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "kind": "bool"
+        },
+        "kind": "bool",
+        "path": "use_heuristic",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "kind": "bool"
+        },
+        "kind": "bool",
+        "path": "use_ensemble",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 8,
+          "kind": "integer",
+          "lo": 0
+        },
+        "kind": "integer",
+        "path": "n_workers",
+        "periodic": false
+      },
+      {
+        "condition": {
+          "kind": "ref",
+          "path": "use_ensemble"
+        },
+        "domain": {
+          "count": {
+            "expr": {
+              "kind": "ref",
+              "path": "n_workers"
+            },
+            "kind": "dynamic"
+          },
+          "element_domain": {
+            "kind": "space"
+          },
+          "element_kind": "space",
+          "element_periodic": false,
+          "kind": "list"
+        },
+        "kind": "list",
+        "path": "workers",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 3600,
+          "kind": "integer",
+          "lo": 1
+        },
+        "kind": "integer",
+        "path": "workers[].timeout_s",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from job_shop import JOBS, build_space
 
+from designspace.build._space import Space
+
 
 def test_resolves():
     space = build_space()
@@ -30,3 +32,12 @@ def test_job_a_never_after_job_e():
     for cfg in space.sample_dicts(200, seed=2):
         order = cfg["schedule"]
         assert order.index("job_a") <= order.index("job_e")
+
+
+def test_round_trips():
+    space = build_space()
+    restored = Space.from_json(space.to_json())
+    assert restored.fingerprint() == space.fingerprint()
+    assert restored.fingerprint("sampling") == space.fingerprint("sampling")
+    for cfg in restored.sample_dicts(50, seed=3):
+        assert restored.validate(cfg).valid

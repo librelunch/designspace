@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from solver_portfolio import SOLVERS, TOTAL_TIMEOUT_BUDGET_S, build_space
 
+from designspace.build._space import Space
+
 
 def test_resolves():
     space = build_space()
@@ -74,3 +76,12 @@ def test_over_budget_active_pool_is_infeasible():
     result = space.validate(cfg)
     assert not result.valid
     assert sum(w["timeout_s"] for w in workers) > TOTAL_TIMEOUT_BUDGET_S
+
+
+def test_round_trips():
+    space = build_space()
+    restored = Space.from_json(space.to_json())
+    assert restored.fingerprint() == space.fingerprint()
+    assert restored.fingerprint("sampling") == space.fingerprint("sampling")
+    for cfg in restored.sample_dicts(50, seed=4):
+        assert restored.validate(cfg).valid

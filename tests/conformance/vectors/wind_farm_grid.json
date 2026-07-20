@@ -1,0 +1,238 @@
+{
+  "fingerprint_full": "1:full:58ea51650ec622f6ec09bbd97711f49c1f2dc9ee0f743572da6f3e90805690d9",
+  "fingerprint_sampling": "1:sampling:c7657d90c7d89bf0fc66e2ba184d9733ba76df9d8e46d9674fae19c92781cfe8",
+  "to_json": {
+    "conditions": [],
+    "constraints": [
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "turbines"
+                }
+              ],
+              "item": {
+                "$t": "str",
+                "v": "site_0"
+              },
+              "kind": "contains"
+            },
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "turbines"
+                }
+              ],
+              "item": {
+                "$t": "str",
+                "v": "site_1"
+              },
+              "kind": "contains"
+            }
+          ],
+          "kind": "and"
+        },
+        "hard": true,
+        "origin": "user",
+        "tags": [
+          "spacing"
+        ]
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "turbines"
+                }
+              ],
+              "item": {
+                "$t": "str",
+                "v": "site_1"
+              },
+              "kind": "contains"
+            },
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "turbines"
+                }
+              ],
+              "item": {
+                "$t": "str",
+                "v": "site_2"
+              },
+              "kind": "contains"
+            }
+          ],
+          "kind": "and"
+        },
+        "hard": true,
+        "origin": "user",
+        "tags": [
+          "spacing"
+        ]
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "turbines"
+                }
+              ],
+              "item": {
+                "$t": "str",
+                "v": "site_2"
+              },
+              "kind": "contains"
+            },
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "turbines"
+                }
+              ],
+              "item": {
+                "$t": "str",
+                "v": "site_3"
+              },
+              "kind": "contains"
+            }
+          ],
+          "kind": "and"
+        },
+        "hard": true,
+        "origin": "user",
+        "tags": [
+          "spacing"
+        ]
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "turbines"
+                }
+              ],
+              "item": {
+                "$t": "str",
+                "v": "site_3"
+              },
+              "kind": "contains"
+            },
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "turbines"
+                }
+              ],
+              "item": {
+                "$t": "str",
+                "v": "site_4"
+              },
+              "kind": "contains"
+            }
+          ],
+          "kind": "and"
+        },
+        "hard": true,
+        "origin": "user",
+        "tags": [
+          "spacing"
+        ]
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "turbines"
+                }
+              ],
+              "item": {
+                "$t": "str",
+                "v": "site_4"
+              },
+              "kind": "contains"
+            },
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "turbines"
+                }
+              ],
+              "item": {
+                "$t": "str",
+                "v": "site_5"
+              },
+              "kind": "contains"
+            }
+          ],
+          "kind": "and"
+        },
+        "hard": true,
+        "origin": "user",
+        "tags": [
+          "spacing"
+        ]
+      }
+    ],
+    "params": [
+      {
+        "domain": {
+          "items": [
+            {
+              "$t": "str",
+              "v": "site_0"
+            },
+            {
+              "$t": "str",
+              "v": "site_1"
+            },
+            {
+              "$t": "str",
+              "v": "site_2"
+            },
+            {
+              "$t": "str",
+              "v": "site_3"
+            },
+            {
+              "$t": "str",
+              "v": "site_4"
+            },
+            {
+              "$t": "str",
+              "v": "site_5"
+            }
+          ],
+          "kind": "subset",
+          "max_size": 4,
+          "min_size": 1
+        },
+        "kind": "subset",
+        "path": "turbines",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}
