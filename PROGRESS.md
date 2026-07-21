@@ -13,7 +13,7 @@ Current milestone: **M8 — Structural operations and metaprogramming** (not sta
 | M4.6 — Build-layer view types | 2026-07-18 | 509 | D-27, D-28 |
 | M5 — Expression bounds | 2026-07-19 | 550 | D-29 |
 | M6 — Defaults and partial-config API | 2026-07-19 | 622 | D-30 |
-| M7 — Identity and serialization (internal v0.1) | 2026-07-20 | 781 | D-31, D-32, D-33, D-34, D-35, D-36, D-37 |
+| M7 — Identity and serialization (internal format-freeze checkpoint) | 2026-07-20 | 781 | D-31, D-32, D-33, D-34, D-35, D-36, D-37 |
 
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
 

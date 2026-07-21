@@ -998,7 +998,7 @@ The spec's executable laws double as the acceptance suite:
 
 ## Staging
 
-Specified but non-blocking for v0.1: `capability_report()` (sugar over introspection), `ds.from_callable` / `Annotated` domain literals (`ds.real(...)`, `ds.integer(...)`, …) as an optional module, `to_dataclass() -> type` / `to_python_source() -> str` / `to_pydantic_model()` as extras. `to_json_schema` stays core (dependency-free; cheap under nested choice).
+Specified but shippable as **optional extras** — not part of the core surface, and not required for the initial release: `capability_report()` (sugar over introspection), `ds.from_callable` / `Annotated` domain literals (`ds.real(...)`, `ds.integer(...)`, …) as an optional module, `to_dataclass() -> type` / `to_python_source() -> str` / `to_pydantic_model()` as extras. `to_json_schema` stays core (dependency-free; cheap under nested choice).
 
 ---
 
