@@ -21,4 +21,15 @@ The "DECISIONS entries" column above is a **historical** record. As of M5 those
 entries (D-1 … D-29) were resolved into API.md (as normative spec text) or into
 the plan, and `DECISIONS.md` was reset to an empty ledger for future use before M6
 began. The original entries remain in this repo's git history. D-30 (M6) through
-D-37 (M7) are live entries, not yet folded.
+D-37 (M7) were folded into API.md on 2026-07-21 and `DECISIONS.md` reset again to
+the empty ledger; those entries likewise remain in git history. Folded the same day
+without new ledger entries (user-approved directly): four API changes — keeping
+`to_json`/`from_json` (no rename), instance-path `variant`/`payload` on lifted
+choices, the empty/non-existent-path `remaining_domain` `TypeError`, and the new
+`space.require` (positive complement of `space.forbid`; spec only, implementation
+deferred to a future milestone). When `require` is implemented, the existing
+`origin == "bound"` special-cases in `identity/_ir_codec.py`,
+`eval/_constraint_eval.py`, `partial/_partial.py`, and `resolve/_bounds.py` must be
+generalized to `bound`-or-`require`, or the spec's promised `require(e) ≡ forbid(~e)`
+fingerprint/feasibility/margin equivalences (and `remaining_domain` participation)
+will silently break.

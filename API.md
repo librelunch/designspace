@@ -172,7 +172,7 @@ Modifiers are chainable and immutable — each returns a new expression. They be
 |---|---|
 | `.when(condition)` | Multiple calls ANDed. Presence semantics (see Expressions). |
 | `.tag(*tags)` | Accumulates. Empty string rejected. |
-| `.meta(mapping=None, **kwargs)` | Merges; last-write-wins per key. Values must be JSON-serializable. |
+| `.meta(mapping=None, **kwargs)` | Merges; last-write-wins per key. Values may be any JSON-serializable value — scalars, lists, or nested dicts (matching error row 23); each scalar leaf is type-tagged recursively in the fingerprint, the same codec as `default`. Constraint-level `meta=` (on `.forbid`/`.require`/`.constrain`) follows the identical rule. |
 | `.default(value)` | **List default** when applied after a lift: legal only for static counts; length must match; mutually exclusive with element defaults on the same param. |
 
 **The lift.** `.repeat(count)` closes the element definition: everything left of it defines the element; everything right applies to the list.
@@ -320,12 +320,15 @@ Chainable on `Space`, each returning a new `Space`:
 
 | Method | Purpose |
 |---|---|
-| `.forbid(*conditions, tags=(), meta=None)` | Defines **feasibility** — violating configs are invalid and rejected by the reference sampler |
+| `.forbid(*conditions, tags=(), meta=None)` | Defines **feasibility** — violating configs are invalid and rejected by the reference sampler. The argument names the **forbidden** state |
+| `.require(*conditions, tags=(), meta=None)` | Defines **feasibility** via the **required (feasible)** state — feasible iff the predicate is satisfied; the polarity-inverse of `.forbid`. Sugar-equivalent to `.forbid(~condition)` in feasibility, margin, and fingerprint |
 | `.constrain(*conditions, tags=(), meta=None)` | Declares an evaluated, annotated predicate — never affects feasibility or the reference measure |
 | `.anchor(configs: dict[str, dict])` | Named reference configs, validated at resolution |
 | `.meta(mapping=None, **kwargs)` | Space-level metadata (objectives, cost models, anchor-role conventions) |
 
-Feasibility is defined by param validity plus forbids **only**. `validate().valid`, `is_feasible()`, and `infeasibility_reasons()` never consider `.constrain()` declarations; those appear in `constraint_evals` with margins so nothing is hidden. Core stores `tags` and `meta` on constraints and never interprets them — penalty shapes, weights, priorities, and relaxation orders are consumer policy attached via `meta`. A directional preference with no threshold ("minimize capex") is not a constraint — no predicate, no margin — and belongs in space-level `.meta()` as an objective declaration.
+Feasibility is defined by param validity plus forbids **and requires** only (a `require` is a forbid of the negated condition — see below). `validate().valid`, `is_feasible()`, and `infeasibility_reasons()` never consider `.constrain()` declarations; those appear in `constraint_evals` with margins so nothing is hidden. Core stores `tags` and `meta` on constraints and never interprets them — penalty shapes, weights, priorities, and relaxation orders are consumer policy attached via `meta`. A directional preference with no threshold ("minimize capex") is not a constraint — no predicate, no margin — and belongs in space-level `.meta()` as an objective declaration.
+
+**`require` — the positive complement.** `space.require(e)` declares that feasible configs must *satisfy* `e`, sparing the user the mental inversion `.forbid` demands. It carries `origin="require"` and stores the **desired (feasible)** predicate `e` — the same *feasible-iff-satisfied* convention a bound-origin constraint uses — so introspection and `infeasibility_reasons` read in the user's own terms and the reported `margin` is `margin(e)` directly (positive is slack). Three-valued: `require(e)` is **violated iff `e` is definitely False**; an Unknown or True `e` is feasible (Unknown ⇒ inapplicable, `margin = None`), exactly `forbid(~e)`'s Kleene behavior. It is therefore feasibility-, margin-, **and** fingerprint-equal to `.forbid(~e)`: the fingerprint preimage canonicalizes every feasible-predicate constraint (`origin` `bound` or `require`) to its forbidden-state (negated) form, so `origin` stays feasibility-neutral (see *Identity — Normalization pipeline*). The `require` origin is additive to the frozen format; no shipped document or known-answer vector depends on the prior origin set, so it introduces no format-version bump.
 
 ### Margins
 
@@ -412,7 +415,7 @@ The reference sampler *may* recognize a bound-origin constraint whose referenced
 .sample_one(seed=None, reject_soft=False) -> dict
 ```
 
-`seed: int | numpy.random.Generator | None`. The reference sampler is an interpreter of declared measure: walk `topological_order`, decide activity, draw active generative params through their charts (weights for categorical/ordinal/bool/choice; Bernoulli-plus-size-rejection for subsets; uniform shuffle for permutations; `sample(rng)` for customs), reject on **forbids** only. `reject_soft=True` additionally rejects `.constrain()` violations — rejection on a user-declared predicate, off by default. Default max retries 10,000 with an informative error naming the constraints that dominated rejection.
+`seed: int | numpy.random.Generator | None`. The reference sampler is an interpreter of declared measure: walk `topological_order`, decide activity, draw active generative params through their charts (weights for categorical/ordinal/bool/choice; Bernoulli-plus-size-rejection for subsets; uniform shuffle for permutations; `sample(rng)` for customs), reject on **forbids** and **requires** only (a `require` is a forbid of the negated condition). `reject_soft=True` additionally rejects `.constrain()` violations — rejection on a user-declared predicate, off by default. Default max retries 10,000 with an informative error naming the constraints that dominated rejection.
 
 **Rejection hostility.** Dense combinatorial forbids (pairwise `distinct`, conflict sets near packing limits) collapse rejection acceptance. The remedy is constructive: enforce the invariant inside a `.custom()` sampler or reparameterize (see Solver Integration, tiers). The retry-exhaustion error links here.
 
@@ -476,11 +479,11 @@ Relations: `is_feasible(c) == validate(c).valid`, both defined by param errors p
 
 **Three-valued activity.** `param_activity` classifies each param `active` (its condition is `True`, or it has none), `inactive` (`False`), or `unknown` — Kleene-Unknown **and** at least one param the condition references is itself `active`-unset or `unknown` (a still-resolvable dependency). A condition left Unknown *solely* by inactive operands is `inactive`, by the same cascading deactivation a full config applies. So `unknown` means "undetermined but resolvable," a param is `unknown` only if a param it gates on is `active`-unset or `unknown`, and collapsing `unknown` to `inactive` reproduces the full-config activity. (`is_active(p)` inside a condition follows the same three values — determined for a determined `p`, `Unknown` for an `unknown` one.)
 
-**Status, completeness, order.** `evaluate_partial` reports each param's `param_status` — `set` (active and present), `active_unset` (active and absent), `inactive`, or `unknown` — with `evaluable_constraints` (a `ConstraintEval` for every constraint of determined value, including those settled inapplicable by inactivity alone), `pending_constraints` (still Kleene-Unknown on an `active_unset`/`unknown` operand), and `n_remaining` (the number of `active_unset` params — a lower bound while any lift count is still undetermined). `is_complete(config)` holds iff no param is `active_unset` or `unknown`; `missing_params` lists the `active_unset` instance paths in `topological_order`. A lift contributes instance statuses only when its count is **determined** (per the Defaults count rule; an inactive count-dependency yields the complete `[]`); an **undetermined** count (a pending count-dependency) contributes none — the count param's own status carries incompleteness. A list container is `set`/`unknown`/`inactive`, never `active_unset`.
+**Status, completeness, order.** `evaluate_partial` reports each param's `param_status` — `set` (active and present), `active_unset` (active and absent), `inactive`, or `unknown` — with `evaluable_constraints` (a `ConstraintEval` for every constraint of determined value, including those settled inapplicable by inactivity alone), `pending_constraints` (still Kleene-Unknown on an `active_unset`/`unknown` operand), and `n_remaining` (the number of `active_unset` params — a lower bound while any lift count is still undetermined). `is_complete(config)` holds iff no param is `active_unset` or `unknown`; `missing_params` lists the `active_unset` instance paths in `topological_order`. A lift contributes instance statuses only when its count is **determined** (per the Defaults count rule; an inactive count-dependency yields the complete `[]`); an **undetermined** count (a pending count-dependency) contributes none — the count param's own status carries incompleteness. A list container is `set`/`unknown`/`inactive`, never `active_unset` — `set` once its count is determined and its instances present, `unknown` while its count is still pending, `inactive` when its condition is false. A **struct container** likewise collapses `active → set` (it has no own value, so `active_unset` cannot apply).
 
 `next_assignable` lists the `active_unset` params every one of whose referenced params (condition, bound-origin bound, repeat count) is `set` or `inactive`. **This coincides with completeness: `next_assignable(config) == []` iff `is_complete(config)`** — following `topological_order`, the first param that is not `set`/`inactive` is always `active_unset` with all references settled, so a driver loop assigning `next_assignable` halts exactly at completeness. You assign a lift's count param and its instance leaves, never the container.
 
-`remaining_domain` returns a per-kind descriptor — `RealRemaining`/`IntegerRemaining` (interval, grid-intersected if quantized), `ValueRemaining` (still-legal values for bool/categorical/ordinal/choice), `SubsetRemaining` (items forced-in / forced-out / free), `PermutationRemaining` (declared items, unreduced) — or `None` if the param is inactive. It starts from the declared domain and intersects the narrowing of every **hard** constraint (forbid or bound-origin; soft `.constrain()` excluded) that, after substituting all other operands from the config, leaves the param as the sole unset **bare** operand of a comparison — the feasible side by origin (a bound stores the feasible predicate; a forbid stores its negation). **Guarantee level:** declared bounds ∩ constraints reducible with exactly one unset bare operand — bound-origin couplings included, so bound tightening falls out of the same rule. A param buried in arithmetic, two unset operands, or an unsupported operator is not reduced; full propagation across multi-param constraints is CSP solving — consumer territory. The descriptor is **sound, not complete**: it never excludes a still-feasible value, though it may admit values an unreduced coupling would forbid. `remaining_domain` on a struct/list container path is a misuse `TypeError`.
+`remaining_domain` returns a per-kind descriptor — `RealRemaining`/`IntegerRemaining` (interval, grid-intersected if quantized), `ValueRemaining` (still-legal values for bool/categorical/ordinal/choice), `SubsetRemaining` (items forced-in / forced-out / free), `PermutationRemaining` (declared items, unreduced) — or `None` if the param is inactive. It starts from the declared domain and intersects the narrowing of every **hard** constraint (forbid, bound-origin, or require; soft `.constrain()` excluded) that, after substituting all other operands from the config, leaves the param as the sole unset **bare** operand of a comparison — the feasible side by origin (a bound or require stores the feasible predicate; a forbid stores its negation). **Guarantee level:** declared bounds ∩ constraints reducible with exactly one unset bare operand — bound-origin couplings included, so bound tightening falls out of the same rule. A param buried in arithmetic, two unset operands, or an unsupported operator is not reduced; full propagation across multi-param constraints is CSP solving — consumer territory. The descriptor is **sound, not complete**: it never excludes a still-feasible value, though it may admit values an unreduced coupling would forbid. `remaining_domain` on a struct/list container path — or an empty or otherwise non-existent param path — is a misuse `TypeError`: it names no leaf param, and `None` is reserved for an inactive param and must not be overloaded to mean "no such param."
 
 ---
 
@@ -589,7 +592,7 @@ Space.from_json(data, custom_types=None) -> Space        # classmethod
 .to_json_schema() -> dict                                 # oneOf per choice; dependency-free
 ```
 
-The JSON document carries a single integer **format version**; `from_json` raises on unknown versions. The non-serializable set is closed and enumerated: the `.custom(sampler, validator)` shorthand, `code`/`symbolic` `validators`, `symbolic` `sampler`, `Primitive.fn`. (`Encoding` instances never enter the IR.) `on_unserializable="drop"` writes the space without those sites plus a manifest of omissions — the reconstructed space is a *different* space by design.
+The JSON document carries a single integer **format version**; `from_json` raises on unknown versions. The non-serializable set is closed and enumerated: the `.custom(sampler, validator)` shorthand, `code`/`symbolic` `validators`, `symbolic` `sampler`, `Primitive.fn`, and **external `Prior` objects** — any `.ppf`/`.cdf` object supplied to `.prior()`, which carries no structural `describe()` protocol of its own. (`Encoding` instances never enter the IR.) Built-in prior families (`Log`/`Logit`/`Power`, the categorical/ordinal/bool/choice/subset `Weights` payload, and the uniform default) are fully structural and always serialize; only external `Prior` objects are opaque, riding the same raise / `mark` (`{"$opaque": true}`) / `drop`-plus-manifest path as callables. `on_unserializable="drop"` writes the space without those sites plus a manifest of omissions — the reconstructed space is a *different* space by design.
 
 Custom params serialize as `type_key` + the `describe()` output; `from_json` requires a `custom_types` registry entry mapping `type_key → factory` where `factory(describe_dict)` reconstructs the instance.
 
@@ -609,17 +612,17 @@ Equal fingerprints guarantee identical valid-config sets, sampling measure, path
 
 | Component | `full` | `sampling` |
 |---|---|---|
-| Params: definition path, kind, domain, prior, condition | ✓ | ✓ |
-| Conditions, forbids | ✓ | ✓ |
+| Params: definition path, kind, domain, prior, quantized, periodic, condition | ✓ | ✓ |
+| Conditions, forbids, requires | ✓ | ✓ |
 | Declared (`.constrain`) constraints | ✓ | — |
 | Defaults, tags, meta, anchors | ✓ | — |
 | Format version | ✓ | ✓ |
 
-`sampling` identifies feasible set + measure + chart geometry (warm-start/surrogate transfer); `full` is document identity. Derived fields (`Constraint.params`, `dependency_graph`) never enter the preimage. More generally, **no preimage-excluded field may be feasibility- or semantics-load-bearing** — in particular `Constraint.origin`, which is why a bound-origin constraint is canonicalized to its forbidden-state form in the pipeline below (step 1) rather than distinguished by `origin`.
+`sampling` identifies feasible set + measure + chart geometry (warm-start/surrogate transfer); `full` is document identity. Derived fields (`Constraint.params`, `dependency_graph`) never enter the preimage. More generally, **no preimage-excluded field may be feasibility- or semantics-load-bearing** — in particular `Constraint.origin`, which is why a **feasible-predicate constraint** (`origin` `bound` or `require`, both storing the desired predicate and evaluated feasible-iff-satisfied) is canonicalized to its forbidden-state form in the pipeline below (step 1) rather than distinguished by `origin`.
 
-**Normalization pipeline:** (1) resolve and desugar — sugared and explicit spellings of the same space are fingerprint-equal, including variadic `.repeat(*counts)` vs. the chain and expression bounds vs. their manual envelope-plus-constraint expansion; a bound-origin constraint is canonicalized to its **forbidden-state (negated) form** before hashing (so a `x <= y` bound sugar is fingerprint-equal to its feasibility-equivalent `.forbid(x > y)`, and fingerprint-*distinct* from the feasibility-opposite `.forbid(x <= y)`) — this puts the feasibility-relevant polarity in the preimage while `origin` itself stays excluded; (2) declaration order preserved, not sorted — permuted params or variants differ; `.when(a).when(b)` folds in call order; (3) unordered collections sort — tags lexicographically, meta/anchors by key; (4) float canonicalization — `−0.0 → 0.0`; NaN/inf are resolution errors wherever floats occur in the IR; (5) type tags at `Any`-typed positions — categorical/ordinal values, defaults and anchor entries for such params, meta values encode as `{"$t": "int", "v": 1}` with tags `bool|int|float|str|null`, so `categorical(1, 2)` ≠ `categorical(1.0, 2.0)`; (6) expressions encode as ASTs — node kind, children in operand order, paths as grammar strings, literals type-tagged.
+**Normalization pipeline:** (1) resolve and desugar — sugared and explicit spellings of the same space are fingerprint-equal, including variadic `.repeat(*counts)` vs. the chain and expression bounds vs. their manual envelope-plus-constraint expansion; a **feasible-predicate constraint** (a bound-origin sugar or a `require`; `origin` `bound` or `require`) is canonicalized to its **forbidden-state (negated) form** before hashing (so a `x <= y` bound sugar — or `require(x <= y)` — is fingerprint-equal to its feasibility-equivalent `.forbid(x > y)`, and fingerprint-*distinct* from the feasibility-opposite `.forbid(x <= y)`) — this puts the feasibility-relevant polarity in the preimage while `origin` itself stays excluded; (2) declaration order preserved, not sorted — permuted params or variants differ; `.when(a).when(b)` folds in call order; (3) unordered collections sort — tags lexicographically, meta/anchors by key; (4) float canonicalization — `−0.0 → 0.0`; NaN/inf are resolution errors wherever floats occur in the IR; (5) type tags at **every `Any`-typed leaf** — categorical/ordinal values, subset/permutation `items`, `is_in`/`count_of`/`sum_over` literal operands, defaults (`default`, `list_default`, `element_default`) and anchor entries, and meta values — each encodes as `{"$t": "int", "v": 1}` with tags `bool|int|float|str|null`, so `categorical(1, 2)` ≠ `categorical(1.0, 2.0)`; list/dict-shaped values (struct/list defaults, nested meta) are tagged **recursively**, per scalar leaf, the same codec as a flat default; positions that never hold `Any`-typed application data (paths, `op`/`type_kind`/variant-name strings, `hard`/`periodic` booleans, literal repeat counts) stay untagged; (6) expressions encode as ASTs — node kind, children in operand order, paths as grammar strings, literals type-tagged.
 
-The normalized document is serialized per **RFC 8785 (JCS)** and hashed with SHA-256. (JCS serializes `1.0` as `1` — which is precisely why type tags precede canonicalization.)
+The normalized document is serialized per **RFC 8785 (JCS)** (via the `rfc8785` dependency; see Dependencies) and hashed with SHA-256. (JCS serializes `1.0` as `1` — which is precisely why type tags precede canonicalization.)
 
 **Callables:** default raise, listing offending sites by definition path — same set as `to_json`. `on_unserializable="mark"` replaces each callable with the sentinel `{"$opaque": true}` at its site — *mark, not drop*: presence is identity-relevant. Documented limitation: two spaces differing only in a callable's behavior at the same site are fingerprint-equal under `"mark"`; content identity requires the serializable protocol (`type_key` + `describe()`).
 
@@ -634,13 +637,17 @@ Reuses the same canonical config encoding (type tags, float rules, grid canonica
 ```python
 ds.flatten(config, space) -> dict[str, Any]     # path-grammar keys; non-validating
 ds.unflatten(flat, space) -> dict               # inverse
-ds.config_hash(config, space) -> str
-ds.config_diff(a, b, space) -> list[ParamDiff]  # structural, no magnitude
+ds.config_hash(config, space) -> str            # non-validating (built on flatten)
+ds.config_diff(a, b, space) -> list[ParamDiff]  # structural, no magnitude; plain ==; non-validating
 ds.variant(config, param_path) -> str           # active variant name of a choice
 ds.payload(config, param_path) -> dict | None   # variant payload; None for bare variants
 ds.destructure(config, param_path) -> tuple     # (name, payload) — a derived view;
                                                 #   tuples are never valid config values
 ```
+
+`variant`/`payload`/`destructure` accept **instance paths** into a lifted choice — `variant(config, "pipeline[1]")` returns that element's variant name, `payload(config, "pipeline[1]")` its payload — using the path grammar's `[k]` indexing (self-describing, so these utilities still take no `Space`). Addressing a lifted choice by its **bare list path** (`"pipeline"`) is a misuse error naming the indexed form, since a list has no single variant; the scalar return types are preserved.
+
+`config_hash` and `config_diff` are **non-validating**, like the `flatten` they are built on: they walk whatever keys structurally match `space.params` and ignore the rest rather than raising (`config_hash` still grid-canonicalizes near-grid values). A caller wanting a validated key composes with `validate()` first (`if space.validate(c).valid: key = config_hash(c, space)`). `config_diff` compares leaves by **ordinary Python `==`** — so `1` and `1.0` are *not* reported as a change — distinct from `config_hash`/`fingerprint`'s type-tagged equality, since a diff is a structural report, not a hashing law.
 
 `config_diff`: a variant switch decomposes into the discriminator diff (old/new are variant **names**) plus newly-inactive/newly-active payload diffs using the `None` conventions. Repeat length changes align **positionally** — an insertion-at-front reports as a full rewrite; alignment-aware diffing is consumer polish.
 
@@ -750,15 +757,17 @@ class Chart(Protocol):
 
 @dataclass
 class Constraint:
-    expr: BoolExpr                # a bound-origin constraint stores the DESIRED
-                                  #   predicate (x <= y), not the forbidden state
-    hard: bool                    # True = forbid, False = declared
-    origin: str                   # "user" | "bound" — derived provenance; excluded
-                                  #   from fingerprint preimage. NOT feasibility-neutral:
-                                  #   a bound-origin hard constraint is feasible-iff-
-                                  #   satisfied (opposite of a user forbid). The
-                                  #   preimage canonicalizes it to forbidden-state form
-                                  #   so feasibility polarity survives without `origin`
+    expr: BoolExpr                # a bound- or require-origin constraint stores the
+                                  #   DESIRED (feasible) predicate (x <= y), not the
+                                  #   forbidden state
+    hard: bool                    # True = forbid/require, False = declared
+    origin: str                   # "user" | "bound" | "require" — derived provenance;
+                                  #   excluded from fingerprint preimage. NOT feasibility-
+                                  #   neutral: a bound- or require-origin hard constraint is
+                                  #   feasible-iff-satisfied (opposite of a user forbid). The
+                                  #   preimage canonicalizes any such feasible-predicate
+                                  #   constraint to forbidden-state form so feasibility
+                                  #   polarity survives without `origin`
                                   #   (see Identity — Normalization pipeline)
     tags: frozenset[str]
     meta: dict[str, Any]
@@ -968,7 +977,7 @@ All public objects — expressions, spaces, IR dataclasses, charts — are immut
 
 ## Dependencies
 
-Core: `numpy` (RNG), `polars` (`sample()` output). Built-in priors are implemented internally — no distribution-library dependency; any `Prior`-satisfying object (scipy frozen distributions, preliz) plugs in. Extras: `designspace[pydantic]` for model export.
+Core: `numpy` (RNG), `polars` (`sample()` output), and `rfc8785==0.1.4` (pure-Python, `py.typed`, no transitive dependencies) for the RFC 8785 (JCS) number/byte canonicalization behind `fingerprint`/`config_hash`. `rfc8785` is pinned **exactly**, not `>=`: an already-frozen digest format wants its number-formatting library pin-stable, since a transitive bump could silently shift every committed known-answer vector — bumping the pin is a deliberate act under the format-version protocol. Built-in priors are implemented internally — no distribution-library dependency; any `Prior`-satisfying object (scipy frozen distributions, preliz) plugs in. Extras: `designspace[pydantic]` for model export.
 
 ---
 
@@ -978,10 +987,10 @@ The spec's executable laws double as the acceptance suite:
 
 - **Charts:** known-answer vectors for the four families (including subnormal-range log); floor-integer uniformity; quantized cell measure (uniform ⇒ equiprobable grid); grid canonicalization invariance under bit-different representations.
 - **Kleene:** the truth table; `count` range rule; non-`count` aggregates plain-propagate Unknown (no range tracking); empty-aggregate values; inactive-lift-projection ≠ active-empty-list.
-- **Margins:** sign convention per form; Boolean composition preserves the satisfaction invariant.
+- **Margins:** sign convention per form; Boolean composition preserves the satisfaction invariant; a `require(e)` reports `margin(e)`, equal to `forbid(~e)`'s reported margin.
 - **Defaults:** `apply_defaults` idempotent, monotone, activity-respecting; completeness postcondition (`is_complete(apply_defaults(c))` iff every active param is defaulted-or-supplied); element/list default exclusivity and static-count list defaults; field-wise choice/struct fill; the defaulted-count-param cascade under fill-only output.
 - **Partial Configs:** three-valued activity collapses to binary activity under `unknown → inactive`; the driver-loop coincidence `next_assignable(c) == [] ⟺ is_complete(c)`; `remaining_domain` soundness (never excludes a still-feasible value; every descriptor value validates against the declared domain); the one-unset-operand reducer positive (bound and single-forbid narrowing across kinds) and negative (a two-unset-operand implication is not propagated); the `PartialEval` evaluable/pending partition.
-- **Identity:** sugar-equivalence pairs fingerprint-equal (`log_scale`/prior, `implies`, variadic repeat/chain, expression bounds vs. their `.forbid(x > y)` forbidden-state manual expansion — *and* fingerprint-**distinct** from the feasibility-opposite `.forbid(x <= y)`, so fingerprint-equality tracks feasibility despite `origin`'s exclusion); permuted declarations differ; scope monotonicity (meta/tags/anchors/declared-constraint changes are `sampling`-equal, `full`-distinct); round-trip law; mark-sentinel distinctness; type-tag distinctness (`1` vs `1.0` vs `True`); `−0.0 ≡ 0.0`; known-answer digest vectors.
+- **Identity:** sugar-equivalence pairs fingerprint-equal (`log_scale`/prior, `implies`, variadic repeat/chain, expression bounds vs. their `.forbid(x > y)` forbidden-state manual expansion — *and* fingerprint-**distinct** from the feasibility-opposite `.forbid(x <= y)`, so fingerprint-equality tracks feasibility despite `origin`'s exclusion; `require(e)` feasibility-, margin-, and fingerprint-equal to `forbid(~e)`); permuted declarations differ; scope monotonicity (meta/tags/anchors/declared-constraint changes are `sampling`-equal, `full`-distinct); round-trip law; mark-sentinel distinctness; type-tag distinctness (`1` vs `1.0` vs `True`); `−0.0 ≡ 0.0`; known-answer digest vectors.
 - **Structure:** `unflatten(flatten(c)) == c`; `transform`/`inverse_transform` round-trip when both leaf directions exist; per-element constraint instantiation counts; `Array`-vs-`List` dtype per static/dynamic count level; leaf-flattening aggregate values on nested lifts.
 - **Sampling:** tighten-not-reject on bound-origin constraints is distributionally identical to rejection (truncation ≡ conditioning).
 
