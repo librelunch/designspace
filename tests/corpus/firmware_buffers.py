@@ -1,4 +1,4 @@
-"""`firmware_buffers` corpus fixture (IMPLEMENTATION_PLAN.md corpus table, M5).
+"""`firmware_buffers` corpus fixture (PLAN.md.md corpus table, M5).
 
 Exercises: expression bounds, envelopes, bound-origin margins. Three ring
 buffers are carved out of a fixed RAM budget in sequence — each buffer's

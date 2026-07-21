@@ -222,7 +222,7 @@ class TestListDefaultItemValidation:
 
 
 class TestIntermediateListDefaultItemValidation:
-    """The deferred gap (IMPLEMENTATION_PLAN.md M6, `4fda87b`): a
+    """The deferred gap (PLAN.md.md M6, `4fda87b`): a
     `list_default` set at an *intermediate* nesting level of a chained lift
     (`.repeat(a).default([...]).repeat(b)`) was still only shape/length-
     checked, not deep-item-validated, because `list_default[i]` at that

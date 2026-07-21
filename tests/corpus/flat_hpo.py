@@ -1,4 +1,4 @@
-"""`flat_hpo` corpus fixture (IMPLEMENTATION_PLAN.md corpus table, added M2).
+"""`flat_hpo` corpus fixture (PLAN.md.md corpus table, added M2).
 
 Exercises: reals/ints/categorical, log_scale, quantized, `when`, forbid
 margins. Reused end-to-end by every milestone from here on (round-trip

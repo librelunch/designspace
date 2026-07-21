@@ -1,4 +1,4 @@
-"""Resolution step 3: desugar (API_v3.md, "Resolution").
+"""Resolution step 3: desugar (API.md, "Resolution").
 
 Only `implies` needs a rewrite pass in the flat-scalar/Kleene world M2 adds:
 `expr.implies(other)` was preserved as a distinct `Implies` node through

@@ -1,4 +1,4 @@
-"""Chart dispatcher: resolve step 6 (API_v3.md, "Resolution").
+"""Chart dispatcher: resolve step 6 (API.md, "Resolution").
 
 Only `real` and `integer` params carry a chart — categorical/ordinal/bool
 use weights directly (no unit-interval map is needed for a finite discrete

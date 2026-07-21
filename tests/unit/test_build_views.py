@@ -1,4 +1,4 @@
-"""M4.6 gate: build-layer view types (API_v3.md, "Builder view types";
+"""M4.6 gate: build-layer view types (API.md, "Builder view types";
 DECISIONS.md D-27, D-28).
 
 Pure build-layer typing sugar — no observable value, JSON format,

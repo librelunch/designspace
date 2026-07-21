@@ -39,7 +39,7 @@ def test_depot_stops_are_quick():
 
 def test_total_dwell_within_budget_under_reject_soft():
     # The budget is a `.constrain()` (declared, not feasibility-affecting)
-    # per API_v3.md: ".constrain() ... never affects feasibility or the
+    # per API.md: ".constrain() ... never affects feasibility or the
     # reference measure" — the default sampler may exceed it; only
     # `reject_soft=True` rejects on it.
     space = build_space()

@@ -1,4 +1,4 @@
-"""paths/ grammar unit tests (API_v3.md, "Paths and Scoping").
+"""paths/ grammar unit tests (API.md, "Paths and Scoping").
 
 Segment := name ("[" i "]")* (instance) | name ("[]")* (definition). No
 lift lands until M4, so brackets are never produced by resolution yet —

@@ -1,4 +1,4 @@
-"""M2 gate: `.sample_one()` / `.sample_dicts()` (API_v3.md, "Sampling and
+"""M2 gate: `.sample_one()` / `.sample_dicts()` (API.md, "Sampling and
 Generativity").
 
 Row 26 (V): sampling retry exhaustion, naming the dominant constraint(s).

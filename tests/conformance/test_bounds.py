@@ -1,4 +1,4 @@
-"""Conformance laws: expression bounds (API_v3.md, "Constraints and
+"""Conformance laws: expression bounds (API.md, "Constraints and
 Feasibility" > "Expression bounds are sugar"; "Conformance Laws" >
 "Sampling" — "tighten-not-reject on bound-origin constraints is
 distributionally identical to rejection").

@@ -1,4 +1,4 @@
-"""Conformance laws: Kleene three-valued logic (API_v3.md, "Expressions" >
+"""Conformance laws: Kleene three-valued logic (API.md, "Expressions" >
 "Three-valued semantics"; "Conformance Laws" > "Kleene").
 
 - The truth table, exhaustive over all 9 (a, b) combinations for `&`/`|`,

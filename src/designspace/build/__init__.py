@@ -1,4 +1,4 @@
-"""build: `ds.param` / `ds.space` builders, modifiers, layering (API_v3.md,
+"""build: `ds.param` / `ds.space` builders, modifiers, layering (API.md,
 "Construction" / "Parameter Types" / "Modifiers and Layering").
 """
 

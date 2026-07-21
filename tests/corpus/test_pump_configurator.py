@@ -1,5 +1,5 @@
 """Corpus: `pump_configurator` — a scripted driver loop over
-`next_assignable` + `remaining_domain` (IMPLEMENTATION_PLAN.md, M6)."""
+`next_assignable` + `remaining_domain` (PLAN.md.md, M6)."""
 
 from __future__ import annotations
 

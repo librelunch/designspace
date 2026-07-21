@@ -1,4 +1,4 @@
-"""identity: canonical encoding, `config_hash`, `fingerprint` (API_v3.md,
+"""identity: canonical encoding, `config_hash`, `fingerprint` (API.md,
 "Identity and Serialization"; "config_hash"). Shared with `serialize/`, which
 reuses the same IR codec (`identity/_ir_codec.py`) for `to_json`/`from_json`.
 """

@@ -1,4 +1,4 @@
-"""Quantization grid math (API_v3.md, "Charts" > "Quantization").
+"""Quantization grid math (API.md, "Charts" > "Quantization").
 
 Shared by chart construction (charts/_quantized.py builds the continuous
 chart over the grid's extension) and by validate/ (grid membership and
@@ -8,7 +8,7 @@ Grid points are `g_k = lo + k*step` (linear) or `g_k = lo * factor**k`
 (geometric), `k = 0..K`. `K` is the greatest index with `g_K <= hi`, except
 the degenerate case `step >= hi - lo` (or its geometric analogue
 `factor >= hi/lo`), which collapses to the single point `{lo}` (K=0) even
-though a literal g_1 might coincide with `hi` — API_v3.md's Degeneracy Table
+though a literal g_1 might coincide with `hi` — API.md's Degeneracy Table
 states this as a `{lo}`-only outcome, not a coincidental two-point grid.
 """
 
@@ -30,7 +30,7 @@ class GridShape:
     """A resolved grid: regular points `0..K`, plus an optional appended `hi`.
 
     `extension_top` is the exclusive upper bound of the continuous chart
-    built to floor values onto this grid (API_v3.md: "chart built over the
+    built to floor values onto this grid (API.md: "chart built over the
     extension `[g_0, g_K + cell)`").
     """
 

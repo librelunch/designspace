@@ -1,31 +1,41 @@
-# designspace — Implementation Plan (agent-executable)
+# Implementation plan
 
-This plan is written for an AI coding agent implementing `designspace` against **API_v3.md**. Read this file fully before writing code.
+`API.md` defines the target. This file defines the current route toward it. 
+Keep exactly one milestone in progress. 
+
 
 ## Source of truth and conflict handling
 
-1. **API_v3.md is normative.** This plan sequences it; it never overrides it.
+1. **API.md is normative.** This plan sequences it; it never overrides it.
 2. If the spec and this plan conflict, the spec wins. Record the conflict in `DECISIONS.md`.
-3. If the spec is ambiguous or silent, do not invent silently: choose the least-surprising behavior consistent with the spec's Design Principles and Representation Model, implement it, and record the question, the options, and the choice in `DECISIONS.md` under the current milestone.
-4. Never resolve an ambiguity by weakening a stated law (conformance laws, error table, Kleene table, chart formulas). Laws are frozen text.
+3. If the spec is ambiguous or silent, do not invent silently: choose the least-surprising behavior consistent
+   with the spec's Design Principles and Representation Model, implement it, and record the question, the options,
+   and the choice in `DECISIONS.md` under the current milestone.
+4. Never resolve an ambiguity by weakening a stated law (conformance laws, error table, Kleene table, chart formulas).
+   Laws are frozen text.
+
 
 ## Working protocol
 
 - **One milestone per branch/PR.** Do not start milestone N+1 while N's exit criteria fail.
-- **Laws first.** At the start of each milestone, write that milestone's conformance-law tests (they will fail), then implement until green. Conformance tests are permanent — never delete or loosen one; a milestone may only add.
+- **Laws first.** At the start of each milestone, write that milestone's conformance-law tests (they will fail),
+    then implement until green. Conformance tests are permanent — never delete or loosen one; a milestone may only add.
 - **Track progress in `PROGRESS.md`:** one line per completed milestone with date, test count, and any DECISIONS entries created.
-- **No dead scaffolding.** Do not stub future milestones' APIs. Unimplemented spec surface should not exist yet, so `from designspace import X` fails honestly.
-- **Every commit:** `ruff check`, `mypy --strict src/`, `pytest -q` all green.
-- **Freeze discipline:** after M7 ships, the JSON format and fingerprint preimage are frozen. Any change to either requires bumping the shared format version integer and adding new known-answer vectors alongside (not replacing) the old ones. Do not bend the implementation to avoid a bump; bump deliberately and record it.
+- **No dead scaffolding.** Do not stub future milestones' APIs. Unimplemented spec surface should not exist yet,
+    so `from designspace import X` fails honestly.
+
 
 ## Global conventions
 
 - Python ≥ 3.11. Layout: `src/designspace/`, tests in `tests/`.
 - Tooling: `uv` for env, `ruff` (lint+format), `mypy --strict`, `pytest`, `hypothesis` for property tests.
-- **Dependencies:** `numpy` only, until M10 adds `polars`. `pydantic` only as the `[pydantic]` extra (M13), lazily imported. Nothing else without a DECISIONS entry.
-- All public objects are **immutable** (`@dataclass(frozen=True)` or equivalent); builders return new objects. No global mutable state; RNG passed explicitly.
-- Exception taxonomy per spec: `DesignSpaceError` → `ResolutionError`, `SerializationError`, `SamplingError`; misuse guards raise plain `TypeError`. Every `ResolutionError` message names the offending definition path(s).
-- Do not implement anything in the spec's **Out of Scope** list, even as "helpers": no search operators, no distances, no tree generators, no algebraic expression normalization, no clamping anywhere.
+- All public objects are **immutable** (`@dataclass(frozen=True)` or equivalent); builders return new objects. 
+  No global mutable state; RNG passed explicitly.
+- Exception taxonomy per spec: `DesignSpaceError` → `ResolutionError`, `SerializationError`, `SamplingError`; misuse
+  guards raise plain `TypeError`. Every `ResolutionError` message names the offending definition path(s).
+- Do not implement anything in the spec's **Out of Scope** list, even as "helpers": 
+  no search operators, no distances, no tree generators, no algebraic expression normalization, no clamping anywhere.
+
 
 ## Module map (stable across milestones)
 
@@ -60,7 +70,9 @@ tests/
 
 ## Integration corpus
 
-Each fixture is a real space from the spec's design history. Add each at the milestone tagged; from then on it runs in every end-to-end suite (resolve → sample 200 → validate all → round-trip once serialization exists).
+Each fixture is a real space from the spec's design history. 
+Add each at the milestone tagged; from then on it runs in every end-to-end suite
+(resolve → sample 200 → validate all → round-trip once serialization exists).
 
 | Fixture | Exercises | Added at |
 |---|---|---|
@@ -113,7 +125,7 @@ Each fixture is a real space from the spec's design history. Add each at the mil
 **Gate:** empty-aggregate values table; inactive-lift vs active-empty side-by-side test (the spec's worked example, verbatim); variadic/chain fingerprint-equality deferred to M7 but structural equality asserted now; per-instance instantiation counts; `is_sorted` depth-2 rejection. Corpus: `delivery_routes`, `solver_portfolio`, `memetic_pipeline`.
 
 ### M4.5 — Faithfulness corrections (no new feature surface)
-Corrects M2–M4 resolution behavior to match API_v3.md after the spec was made
+Corrects M2–M4 resolution behavior to match API.md after the spec was made
 precise on points that the (now-cleared) `DECISIONS.md` had recorded as open.
 Pure alignment: three resolution-time rejections that turn a previously-silent
 Unknown-cascade or a wrong chart into a loud `ResolutionError`, plus one
@@ -228,7 +240,7 @@ name early; the views subclass `ParamExpr` directly until then (D-27).
 **Gate:** desugared space structurally identical to hand-written expansion; bound-origin margins; tighten-vs-reject distributional equivalence (fixed-seed KS test). Corpus: `firmware_buffers`.
 
 ### M6 — Defaults and partial-config API
-**Spec:** Defaults (entire section); Space — Partial Configs. M6 first folds the nailed-down normative text into API_v3.md (the `RemainingDomain` type; three-valued activity; the one-unset-operand reducer; the `apply_defaults` cascade; `PartialEval`; `is_complete`/`next_assignable` + the coincidence law), then implements it.
+**Spec:** Defaults (entire section); Space — Partial Configs. M6 first folds the nailed-down normative text into API.md (the `RemainingDomain` type; three-valued activity; the one-unset-operand reducer; the `apply_defaults` cascade; `PartialEval`; `is_complete`/`next_assignable` + the coincidence law), then implements it.
 **Build:**
 - `ir/_results.py` — `PartialEval` + the `RemainingDomain` family (`RealRemaining`/`IntegerRemaining`/`ValueRemaining`/`SubsetRemaining`/`PermutationRemaining`); exported from `ir` and top-level.
 - `eval/` — factor the topological activity walk (+ `_expand_lift_activity`) into one shared, classifier-parameterized helper; `compute_activity` (binary) and new `compute_activity_partial` (three-valued; pending-dependency rule; three-valued `IsActive`) are thin adapters.
@@ -237,7 +249,7 @@ name early; the views subclass `ParamExpr` directly until then (D-27).
 - `build/_space.py` — wire the nine methods (thin delegators; each calls `check_fully_resolved`).
 **Gate:** idempotence + monotonicity (hypothesis); activity-respecting fill (the `turbo`/`chassis` case from the spec's history); completeness postcondition; element/list default exclusivity; the reducer guarantee tested positively *and* negatively (a two-unset-operand implication is documented as not propagated); three-valued activity **collapses to binary**; the driver-loop **coincidence** `next_assignable == [] ⟺ is_complete`; `remaining_domain` soundness. No new error-table rows (row 21 completed in code). Corpus: `pump_configurator` as a scripted driver loop.
 
-### M7 — Identity and serialization  🔒 freeze; ship v0.1
+### M7 — Identity and serialization
 **Spec:** Identity and Serialization (entire section); Config Utilities (`config_hash`, `config_diff`).
 **Build order within milestone:** canonical config encoding → `config_hash` → `config_diff` (variant-switch decomposition, positional repeat alignment) → `to_json`/`from_json` + version + non-serializable set + drop manifest → `fingerprint` (type tags, RFC 8785 — implement JCS in-repo or vendored, do not add a dependency without a DECISIONS entry — scopes, mark sentinel) **last**.
 **Bound-origin preimage canonicalization (freeze-blocker from D-29(4)/M5).** The `fingerprint` step **must** canonicalize every bound-origin constraint (`origin == "bound"`) to its forbidden-state negation before hashing — a stored `x <= y` bound constraint enters the preimage as `x > y`, the shape a user `.forbid()` stores for the *same* feasibility. This is a provenance-specific canonical **encoding** (same category as "subsets sorted", "−0.0→0.0"), homed in the normalization pipeline, **not** algebraic expression rewriting. Rationale: M5 stores the *desired* predicate `x <= y` (for the `y − x` margin) and `eval/_constraint_eval.py::is_violated` keys feasibility off `origin`, which is excluded from the preimage; without this canonicalization a bound sugar and a user `.forbid(x <= y)` would have identical preimages but **opposite** feasible sets, breaking "equal fingerprints ⟹ identical valid-config sets". Also add the general guard: no preimage-excluded field (`origin`, `Constraint.params`, `dependency_graph`) may be feasibility-load-bearing.
@@ -278,20 +290,3 @@ name early; the views subclass `ParamExpr` directly until then (D-27).
 4. `mypy --strict`, `ruff`, full `pytest` green.
 5. `PROGRESS.md` updated; `DECISIONS.md` entries for anything the spec left open.
 6. Public `__init__.py` exports exactly the spec surface implemented so far — nothing speculative.
-
-## Bootstrapping (first session)
-
-Create `CLAUDE.md` at repo root containing:
-
-```markdown
-# designspace
-Implementing API_v3.md per IMPLEMENTATION_PLAN.md. Read both before any change.
-- Spec (API_v3.md) is normative; plan sequences it; conflicts → DECISIONS.md.
-- Current milestone: see PROGRESS.md. Work only within it.
-- Laws-first: conformance tests before implementation; never weaken a law.
-- Frozen after M7: JSON format + fingerprint preimage (version-bump protocol in plan).
-- Commands: uv run pytest -q · uv run mypy --strict src/ · uv run ruff check
-- Deps: numpy (core), polars (M10+), pydantic (extra only). Nothing else undocumented.
-```
-
-Then scaffold: `uv init`, module map directories, empty `PROGRESS.md`/`DECISIONS.md`, CI running the three commands, and begin M0.

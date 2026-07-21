@@ -1,4 +1,4 @@
-"""Conformance laws: lifts and aggregates (API_v3.md, "Modifiers and
+"""Conformance laws: lifts and aggregates (API.md, "Modifiers and
 Layering" > "The lift"; "Expressions" > "Vector expressions and
 aggregates"; "Three-valued semantics" rules 1 and 6; "Paths and Scoping").
 
@@ -16,7 +16,7 @@ aggregates"; "Three-valued semantics" rules 1 and 6; "Paths and Scoping").
 - `unflatten(flatten(c)) == c` over lifted configs.
 - Variadic sugar `.repeat(a, b)` is structurally identical to the chained
   form `.repeat(b).repeat(a)` (fingerprint equality is M7; structural
-  equality is asserted now, per IMPLEMENTATION_PLAN.md's M4 gate).
+  equality is asserted now, per PLAN.md.md's M4 gate).
 - Instance paths in expressions: an out-of-range index is Unknown.
 - `.field(name)` on a non-struct lift, or naming an undeclared element
   field, is a resolution error (row 6) — not a silent Unknown cascade
@@ -78,7 +78,7 @@ class TestEmptyAggregateValues:
 
 
 class TestInactiveLiftVsActiveEmpty:
-    """The spec's own worked example (API_v3.md, "Three-valued semantics",
+    """The spec's own worked example (API.md, "Three-valued semantics",
     lines 295-298), verbatim:
 
         # use_aux = False  -> aux_layers inactive -> .field("w").sum() is
@@ -164,7 +164,7 @@ class TestNonCountAggregatesPlainPropagateUnknown:
 
 class TestRow6FieldProjection:
     """`.field(name)` requires a struct lift whose element declares `name`
-    (API_v3.md, "Expressions" — "Instance paths are legal..." paragraph);
+    (API.md, "Expressions" — "Instance paths are legal..." paragraph);
     projecting an undeclared field, or `.field()` on a non-struct lift, is
     a resolution error (row 6), not a silent Unknown. M4.5 faithfulness
     correction: M4 (D-25) treated both as a silent cascade instead."""

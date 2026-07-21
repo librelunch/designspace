@@ -1,4 +1,4 @@
-"""serialize: `to_json`/`from_json` + format versioning (API_v3.md, "to_json
+"""serialize: `to_json`/`from_json` + format versioning (API.md, "to_json
 / from_json").
 """
 

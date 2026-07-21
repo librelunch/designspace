@@ -1,4 +1,4 @@
-"""`ds.param` / `ds.space` (API_v3.md, "Construction")."""
+"""`ds.param` / `ds.space` (API.md, "Construction")."""
 
 from __future__ import annotations
 

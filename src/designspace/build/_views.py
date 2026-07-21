@@ -1,4 +1,4 @@
-"""Builder view types (API_v3.md, "Builder view types"; DECISIONS.md D-27,
+"""Builder view types (API.md, "Builder view types"; DECISIONS.md D-27,
 D-28).
 
 `ds.param(name)` returns a `FreshParamExpr` — a `ParamExpr` carrying the 9

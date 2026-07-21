@@ -1,9 +1,9 @@
-"""Space: the resolved container returned by `ds.space()` (API_v3.md, "Space").
+"""Space: the resolved container returned by `ds.space()` (API.md, "Space").
 
 M1 exposes only what flat scalar spaces need; M2 adds feasibility
 (`.forbid()`/`.constrain()`), Kleene-aware validation, and the reference
 sampler. `.anchor()` and space-level `.meta()` stay out of scope for M2 —
-IMPLEMENTATION_PLAN.md's M2 Build line names only charts/eval/validate/
+PLAN.md.md's M2 Build line names only charts/eval/validate/
 sample, and no M2 gate or corpus item exercises anchors (see DECISIONS.md,
 which supersedes D-3's forward guess that anchors were M2's).
 """

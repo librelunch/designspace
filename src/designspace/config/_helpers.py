@@ -1,4 +1,4 @@
-"""`ds.variant()` / `ds.payload()` / `ds.destructure()` (API_v3.md, "Config
+"""`ds.variant()` / `ds.payload()` / `ds.destructure()` (API.md, "Config
 Utilities"). Choice values are self-contained, so unlike `flatten`/
 `unflatten` these need no `Space` — the shape (bare string vs. single-key
 dict) is self-describing; `param_path` just addresses a nested dict slot

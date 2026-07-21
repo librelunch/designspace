@@ -1,4 +1,4 @@
-"""`delivery_routes` corpus fixture (IMPLEMENTATION_PLAN.md corpus table, M4).
+"""`delivery_routes` corpus fixture (PLAN.md.md corpus table, M4).
 
 Exercises: struct lifts, instance paths, per-instance constraints, aggregates.
 """

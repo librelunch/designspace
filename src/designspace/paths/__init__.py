@@ -1,4 +1,4 @@
-"""paths: the path grammar (API_v3.md, "Paths and Scoping").
+"""paths: the path grammar (API.md, "Paths and Scoping").
 
 Internal machinery consumed by config/ and resolve/ — not part of the
 public surface (users see paths as plain strings everywhere: `.params`

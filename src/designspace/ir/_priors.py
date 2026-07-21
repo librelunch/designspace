@@ -1,4 +1,4 @@
-"""Prior protocol and built-in prior family markers (API_v3.md, "Charts" /
+"""Prior protocol and built-in prior family markers (API.md, "Charts" /
 "Support Types").
 
 `Log`/`Logit`/`Power` are bounds-aware and parameterless-until-resolution:

@@ -1,12 +1,12 @@
 """One-shot generator for the known-answer digest vectors under
-`tests/conformance/vectors/*.json` (IMPLEMENTATION_PLAN.md M7 gate:
+`tests/conformance/vectors/*.json` (PLAN.md.md M7 gate:
 "known-answer digest vectors ... for every corpus fixture").
 
 **Not collected by pytest** (leading underscore) and **not called by any
 test** — `test_vectors.py` only reads the committed files and fails loudly
 if one is missing, never regenerates. Run this by hand, deliberately, only
 when the version-bump protocol says a new vector should be *added*
-(IMPLEMENTATION_PLAN.md: "bump the shared integer, add — never replace —
+(PLAN.md.md: "bump the shared integer, add — never replace —
 known-answer vectors"):
 
     uv run python tests/conformance/vectors/_generate.py

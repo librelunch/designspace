@@ -1,4 +1,4 @@
-"""Conformance laws: margins (API_v3.md, "Constraints and Feasibility" >
+"""Conformance laws: margins (API.md, "Constraints and Feasibility" >
 "Margins"; "Conformance Laws" > "Margins").
 
 - Sign convention per comparison form.

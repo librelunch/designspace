@@ -1,7 +1,7 @@
-"""`.sample_one()` / `.sample_dicts()` (API_v3.md, "Sampling and Generativity").
+"""`.sample_one()` / `.sample_dicts()` (API.md, "Sampling and Generativity").
 
 `sample_dicts` is M2's stand-in for the spec's `.sample(n) -> pl.DataFrame`
-— IMPLEMENTATION_PLAN.md's M10 line: "`sample(n)` return type switches to
+— PLAN.md.md's M10 line: "`sample(n)` return type switches to
 `pl.DataFrame`... (`sample_dicts` retained as the M2 path)". `.sample_one()`
 keeps its final spec signature (dict output) throughout.
 
@@ -193,7 +193,7 @@ def _draw_lift_element(
 
 
 def _tightenable(pd: ParamDef) -> bool:
-    """Families where truncation provably equals conditioning (API_v3.md,
+    """Families where truncation provably equals conditioning (API.md,
     "All charts are static" — "the reference sampler *may* recognize a
     bound-origin constraint... and draw from the correspondingly tightened
     chart instead of rejecting"): the built-in closed-form priors (or
@@ -318,7 +318,7 @@ def _draw_one(space: Space, rng: np.random.Generator, reject_soft: bool) -> dict
         list(space.constraints) if reject_soft else [c for c in space.constraints if c.hard]
     )
     # Computed once per draw sequence, not per retry attempt (bound_origin_targets
-    # is a single pass over space.constraints; tighten-not-reject, API_v3.md
+    # is a single pass over space.constraints; tighten-not-reject, API.md
     # "All charts are static").
     bound_targets = bound_origin_targets(space)
 

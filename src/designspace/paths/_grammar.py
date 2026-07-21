@@ -1,4 +1,4 @@
-"""The path grammar (API_v3.md, "Paths and Scoping").
+"""The path grammar (API.md, "Paths and Scoping").
 
 ```
 path     := segment ("." segment)*
@@ -9,7 +9,7 @@ segment  := name ("[" i "]")*        # instance path
 One segment per param/variant/struct name; repeated brackets address nested
 lift levels (`mask[2][3]`, `mask[][]`). No lift landed yet (M4), so no
 config produced by M3 ever contains bracket syntax — this module exists
-now, "multi-index ready," per IMPLEMENTATION_PLAN.md's M3 Build line, so
+now, "multi-index ready," per PLAN.md.md's M3 Build line, so
 `validate_param` and the config utilities have one grammar to grow into
 rather than a flat-name special case that needs revisiting at M4.
 """

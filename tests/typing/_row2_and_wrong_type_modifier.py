@@ -1,4 +1,4 @@
-"""Static-typing fixture for the M4.6 gate (API_v3.md, "Builder view types").
+"""Static-typing fixture for the M4.6 gate (API.md, "Builder view types").
 
 Not collected by pytest as a test module — it is fed to `mypy --strict` by
 test_static_typing.py. Each `# type: ignore[attr-defined]` below is only

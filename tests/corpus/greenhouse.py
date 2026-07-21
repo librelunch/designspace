@@ -1,4 +1,4 @@
-"""`greenhouse` corpus fixture (IMPLEMENTATION_PLAN.md corpus table, added M3).
+"""`greenhouse` corpus fixture (PLAN.md.md corpus table, added M3).
 
 Exercises: choice, nested values, defaults cascade (`.default()` accepted
 and resolution-validated since M1; `apply_defaults()` itself is M6 — see

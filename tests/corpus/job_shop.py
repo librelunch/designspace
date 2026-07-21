@@ -1,4 +1,4 @@
-"""`job_shop` corpus fixture (IMPLEMENTATION_PLAN.md corpus table, added M3).
+"""`job_shop` corpus fixture (PLAN.md.md corpus table, added M3).
 
 Exercises: permutation, `position_of`.
 """

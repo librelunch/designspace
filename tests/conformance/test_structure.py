@@ -1,4 +1,4 @@
-"""Conformance laws: structure (API_v3.md, "Parameter Types" > structural +
+"""Conformance laws: structure (API.md, "Parameter Types" > structural +
 combinatorial; "Paths and Scoping"; "Config Utilities").
 
 - Relocatability: a subspace behaves identically whether resolved
@@ -115,7 +115,7 @@ class TestRelocatability:
 
 
 class TestUpReferenceFromEnclosingScope:
-    """API_v3.md's sole scoping rule — "resolve the first segment by walking
+    """API.md's sole scoping rule — "resolve the first segment by walking
     up to the innermost scope where it binds" — and its worked example (a
     `.when(ds.param("global_flag"))  # up` inside a choice-variant payload).
     D-26 makes this resolve as the spec intends (D-12 previously rejected it).

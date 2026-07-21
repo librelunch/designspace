@@ -1,4 +1,4 @@
-"""`memetic_pipeline` corpus fixture (IMPLEMENTATION_PLAN.md corpus table, M4).
+"""`memetic_pipeline` corpus fixture (PLAN.md.md corpus table, M4).
 
 Exercises: lifted choice, `count_of`, list element forms (bare variant
 strings alongside parameterized ones in the same list).

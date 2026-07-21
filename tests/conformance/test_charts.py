@@ -1,4 +1,4 @@
-"""Conformance laws: charts (API_v3.md, "Charts"; "Conformance Laws" > "Charts").
+"""Conformance laws: charts (API.md, "Charts"; "Conformance Laws" > "Charts").
 
 - Known-answer vectors for the four built-in families, including a
   subnormal-range `Log` chart.
@@ -126,7 +126,7 @@ class TestPowerKnownAnswer:
 class TestPowerMonotoneBijectionLaw:
     """Row 9 (M4.5 faithfulness correction): every valid `Power` chart is a
     strictly monotone bijection onto `[lo, hi]`; every domain the spec's
-    "Requires" column rejects raises `ResolutionError` (API_v3.md,
+    "Requires" column rejects raises `ResolutionError` (API.md,
     "Charts" > "Built-in prior families")."""
 
     @pytest.mark.parametrize(

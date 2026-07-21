@@ -1,4 +1,4 @@
-"""sample: the reference sampler (API_v3.md, "Sampling and Generativity")."""
+"""sample: the reference sampler (API.md, "Sampling and Generativity")."""
 
 from designspace.sample._sample import sample_dicts, sample_one
 

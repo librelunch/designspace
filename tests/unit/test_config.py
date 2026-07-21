@@ -1,5 +1,5 @@
 """config/ unit tests: `flatten`/`unflatten`/`variant`/`payload`/
-`destructure` (API_v3.md, "Config Utilities")."""
+`destructure` (API.md, "Config Utilities")."""
 
 from __future__ import annotations
 

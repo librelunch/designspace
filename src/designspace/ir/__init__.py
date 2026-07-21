@@ -1,4 +1,4 @@
-"""ir: resolved intermediate representation (API_v3.md, "IR").
+"""ir: resolved intermediate representation (API.md, "IR").
 
 Internal to the library — users see this shape through introspection
 (`Space.params`, etc.), not by importing these classes directly, so nothing

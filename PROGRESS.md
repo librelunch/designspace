@@ -18,7 +18,7 @@ Current milestone: **M8 — Structural operations and metaprogramming** (not sta
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
 
 The "DECISIONS entries" column above is a **historical** record. As of M5 those
-entries (D-1 … D-29) were resolved into API_v3.md (as normative spec text) or into
+entries (D-1 … D-29) were resolved into API.md (as normative spec text) or into
 the plan, and `DECISIONS.md` was reset to an empty ledger for future use before M6
 began. The original entries remain in this repo's git history. D-30 (M6) through
 D-37 (M7) are live entries, not yet folded.

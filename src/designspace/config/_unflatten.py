@@ -1,4 +1,4 @@
-"""`ds.unflatten()` (API_v3.md, "Config Utilities"): the inverse of
+"""`ds.unflatten()` (API.md, "Config Utilities"): the inverse of
 `flatten` — flat, path-keyed dict -> nested canonical phenotype.
 
 M4 adds list (lift) values, mirroring `_flatten.py`'s template/concrete

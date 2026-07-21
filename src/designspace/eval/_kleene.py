@@ -1,4 +1,4 @@
-"""Kleene evaluation (API_v3.md, "Expressions" > "Three-valued semantics").
+"""Kleene evaluation (API.md, "Expressions" > "Three-valued semantics").
 
 `Unknown` arises only from inactivity (rule 1) — M2 has no partial-config
 API yet (M6), so there is no separate "pending" state to confuse it with
@@ -286,7 +286,7 @@ def _count_range(
     space: Space,
     status: Mapping[str, str] | None = None,
 ) -> tuple[int, int]:
-    """`(true_count, unknown_count)` — API_v3.md: `ds.count` tracks `[t, t + u]`."""
+    """`(true_count, unknown_count)` — API.md: `ds.count` tracks `[t, t + u]`."""
     t = 0
     u = 0
     for operand in node.operands:
@@ -436,7 +436,7 @@ def _evaluate_is_active(
     expr: IsActive, activity: dict[str, bool], status: Mapping[str, str] | None
 ) -> Kleene:
     """`is_active()` is total under *full* evaluation (rule 1: every param has
-    a determined binary activity) but not under *partial* evaluation — API_v3.md,
+    a determined binary activity) but not under *partial* evaluation — API.md,
     "Partial Configs": "`is_active(p)` ... determined for a determined `p`,
     Unknown for an `unknown` one." `status` (the four-valued partial status
     map) carries that extra distinction; absent it, this falls back to the
@@ -641,7 +641,7 @@ def classify_condition(
     space: Space,
 ) -> str:
     """`"active"` / `"inactive"` / `"unknown"` for one param's own condition
-    (API_v3.md, "Partial Configs" — the pending-dependency rule), evaluated
+    (API.md, "Partial Configs" — the pending-dependency rule), evaluated
     against the status already computed for its dependencies (topological
     order guarantees they precede it). Kleene-Unknown collapses to
     `"inactive"` when every param the condition references is itself
@@ -687,7 +687,7 @@ class PartialActivity(NamedTuple):
 
 def compute_activity_partial(space: Space, config: dict[str, Any]) -> PartialActivity:
     """Three/four-valued activity + presence over a *partial* flat config
-    (API_v3.md, "Space — Partial Configs"): `"set"` (active & present),
+    (API.md, "Space — Partial Configs"): `"set"` (active & present),
     `"active_unset"` (active & absent), `"inactive"`, `"unknown"` (Kleene-
     Unknown but resolvable). Collapsing `"set"`/`"active_unset"` to `True`
     and everything else to `False` reproduces `compute_activity` exactly
@@ -712,7 +712,7 @@ def compute_activity_partial(space: Space, config: dict[str, Any]) -> PartialAct
                 space, path, pd.domain, activity_class, config, status, order, deps
             )
         elif pd.type_kind == "space":
-            # A struct has no own value to await (API_v3.md: "a struct
+            # A struct has no own value to await (API.md: "a struct
             # carries no own default value"; its activity never depends on
             # its own members') -- "active_unset" would be meaningless for
             # it, so it collapses to "set" the same way a list container's
@@ -740,7 +740,7 @@ def _determine_count_partial(
     count: int | ArithExpr, config: dict[str, Any], status: dict[str, str], space: Space
 ) -> int | None:
     """The Defaults section's count rule, reused for Partial Configs
-    (API_v3.md: "an undetermined count (a pending count-dependency)
+    (API.md: "an undetermined count (a pending count-dependency)
     contributes none"): a static int is always determined; an `ArithExpr`
     is determined if it evaluates to a definite integer, or is Unknown
     *solely* because a referenced param is inactive (-> 0, "the complete
@@ -769,7 +769,7 @@ def _resolve_list_status(
     deps: dict[str, frozenset[str]],
 ) -> None:
     """A list container is `"set"`/`"unknown"`/`"inactive"`, never
-    `"active_unset"` (API_v3.md, "Partial Configs") — there is no value to
+    `"active_unset"` (API.md, "Partial Configs") — there is no value to
     await for the container itself, only for its count param (elsewhere in
     `topological_order`) and its instance leaves (expanded below, once the
     count is known)."""

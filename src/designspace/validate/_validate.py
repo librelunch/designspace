@@ -1,6 +1,6 @@
 """`.validate()` / `.validate_param()` / `.is_feasible()` /
 `.infeasibility_reasons()` / `.evaluate_constraints()`
-(API_v3.md, "Space — Validation").
+(API.md, "Space — Validation").
 
 Feasibility is param validity plus hard constraints (forbids) only —
 `.constrain()` declarations never affect `valid`, matching
@@ -278,7 +278,7 @@ def _lookup_param_shape(space: Space, path: str) -> ParamDef:
     instance path (`"layers[2].width"` — its `"[]"`-bracketed template is
     already a proper `ParamDef` in `space.params`), or a direct lift
     element instance path (`"dropout[3]"`, `"pipeline[1]"` — synthesized
-    via `_element_paramdef`). API_v3.md: "instance paths supported."
+    via `_element_paramdef`). API.md: "instance paths supported."
     Nested-lift instance paths (D-24's single-bracket-depth boundary for
     struct/choice elements) beyond one level are not resolved here.
     """

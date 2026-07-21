@@ -1,10 +1,10 @@
-"""Domain: type-specific declared value space (API_v3.md, "IR").
+"""Domain: type-specific declared value space (API.md, "IR").
 
 M1 covers the scalar rows; M3 adds combinatorial (subset, permutation) and
 structural (choice, struct) domains. M4 adds the recursive list (lift)
 domain — see DECISIONS.md D-18.
 
-`QuantizedSpec` lives here (not ir/_param.py, where API_v3.md's illustrative
+`QuantizedSpec` lives here (not ir/_param.py, where API.md's illustrative
 ParamDef listing might suggest) because `ListDomain.element_quantized` needs
 it and ir/_param.py already imports from this module — defining it in
 ir/_param.py would make that a cycle.

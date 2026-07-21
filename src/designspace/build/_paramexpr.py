@@ -1,4 +1,4 @@
-"""ParamExpr: `ds.param(name)`, dual reference/definition (API_v3.md, "Construction").
+"""ParamExpr: `ds.param(name)`, dual reference/definition (API.md, "Construction").
 
 Type methods and modifiers are pure recorders: each returns a new, immutable
 ParamExpr with pending state updated. No validation happens here — that is
@@ -11,7 +11,7 @@ body collide (the `def` statement overwrites the field's class-level default),
 so the method needs its own name for the state it reads and writes.
 
 The type methods and `.repeat()` live in `build/_views.py`, not here — see
-API_v3.md, "Builder view types" and DECISIONS.md D-27/D-28. `ParamExpr` is
+API.md, "Builder view types" and DECISIONS.md D-27/D-28. `ParamExpr` is
 the base type: no type methods, no `.repeat()`, but every modifier that stays
 universal across param types (`.prior()`, `.default()`, `.when()`, `.tag()`,
 `.meta()`), the combinatorial queries, and the `VectorExpr` aggregates
@@ -74,7 +74,7 @@ _NUMERIC_ONLY_MODIFIERS = frozenset({"log_scale", "quantized"})
 
 @dataclass(frozen=True)
 class _ElementSnapshot:
-    """Builder-time closure of "everything left of `.repeat()`" (API_v3.md,
+    """Builder-time closure of "everything left of `.repeat()`" (API.md,
     "Modifiers and Layering" — "The lift"; DECISIONS.md D-18).
 
     When `element_class is ListParamExpr`, this snapshot describes one
@@ -113,7 +113,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     """A parameter, in reference position (bare) or definition position
     (after a type method and any modifiers).
 
-    The base type (API_v3.md, "Builder view types"): every param object,
+    The base type (API.md, "Builder view types"): every param object,
     whatever its narrowed view, `isinstance`s as `ParamExpr`.
     """
 
@@ -202,7 +202,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
 
     # `.field()` and the aggregate methods (`.sum()`, `.min()`, `.max()`,
     # `.count_of()`, `.is_sorted()`, `.distinct()`) are inherited from
-    # VectorExpr — universal (DECISIONS.md D-28): API_v3.md requires the
+    # VectorExpr — universal (DECISIONS.md D-28): API.md requires the
     # base to *be* a VectorExpr, and a bare reference (`ds.param("layers")`,
     # before any type is known at the reference site) needs them regardless
     # of what the referenced param turns out to declare.
@@ -242,7 +242,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
         return replace(self, prior_spec=dist)
 
     def default(self, value: Any) -> Self:
-        # Position-sensitive (API_v3.md, "Modifiers and Layering"): before
+        # Position-sensitive (API.md, "Modifiers and Layering"): before
         # `.repeat()` this is the element default; after, it's the list
         # default for the *current* (innermost-so-far) repeat level.
         if self.type_kind == "list":

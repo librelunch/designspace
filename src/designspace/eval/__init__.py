@@ -1,4 +1,4 @@
-"""eval: Kleene evaluation, activity, and margins (API_v3.md, "Expressions" >
+"""eval: Kleene evaluation, activity, and margins (API.md, "Expressions" >
 "Three-valued semantics"; "Constraints and Feasibility" > "Margins").
 
 Internal machinery consumed by validate/ and sample/ — not part of the

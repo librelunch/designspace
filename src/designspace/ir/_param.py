@@ -1,4 +1,4 @@
-"""ParamDef and the condition/constraint IR (API_v3.md, "IR")."""
+"""ParamDef and the condition/constraint IR (API.md, "IR")."""
 
 from __future__ import annotations
 

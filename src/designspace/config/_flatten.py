@@ -1,4 +1,4 @@
-"""`ds.flatten()` (API_v3.md, "Config Utilities"): nested canonical phenotype
+"""`ds.flatten()` (API.md, "Config Utilities"): nested canonical phenotype
 -> flat, path-keyed dict.
 
 `flatten` itself is structural and non-validating (spec: "flatten is

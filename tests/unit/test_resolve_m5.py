@@ -1,4 +1,4 @@
-"""M5 gate: expression-bounds desugaring mechanics (API_v3.md, "Constraints
+"""M5 gate: expression-bounds desugaring mechanics (API.md, "Constraints
 and Feasibility" > "Expression bounds are sugar").
 
 The milestone's *laws* (bound-origin margins, structural/behavioral

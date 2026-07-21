@@ -1,6 +1,6 @@
 """Structural relocation: merging an already-resolved child `Space` (a
 `.choice()` variant payload, or a `.space()` struct payload) into the flat
-IR of its enclosing scope (API_v3.md, "Paths and Scoping" — relocatability;
+IR of its enclosing scope (API.md, "Paths and Scoping" — relocatability;
 "Expressions" rule 3 — cascading deactivation).
 
 A child Space resolves standalone and eagerly: `ParamExpr.space()`/

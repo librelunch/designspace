@@ -1,4 +1,4 @@
-"""Chart protocol (API_v3.md, "IR" / "Charts").
+"""Chart protocol (API.md, "IR" / "Charts").
 
 Every generative scalar param resolves to a static chart: a monotone map
 `[0,1] -> domain`. Concrete implementations (charts/) build these against a

@@ -1,5 +1,5 @@
 """config: nested phenotype <-> flat path-keyed dict, and choice-value
-helpers (API_v3.md, "Config Utilities").
+helpers (API.md, "Config Utilities").
 
 `flatten`/`unflatten`/`variant`/`payload`/`destructure` are M3's build
 item; `config_diff` joins at M7 (`config_hash` lives in `identity/`, which

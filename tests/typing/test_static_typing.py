@@ -1,7 +1,7 @@
 """M4.6 gate: "a static-typing negative check proving each view omits the
 type methods and the wrong-type modifiers (e.g. a `type: ignore[attr-defined]`
 round-trip on `.real(0,1).bool()` and `.categorical(...).log_scale()`)"
-(IMPLEMENTATION_PLAN.md).
+(PLAN.md.md).
 
 Runs `mypy --strict` over `src/` together with the fixture in one
 invocation — a standalone file has no `py.typed` marker for mypy to resolve

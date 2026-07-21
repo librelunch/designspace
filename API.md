@@ -1,6 +1,6 @@
-# designspace — API v3
+# designspace specification
 
-A Python library for declaratively defining algorithm design spaces using a chainable, polars-like expression API.
+A Python library for declaratively defining (algorithm) design spaces using a chainable, polars-like expression API.
 
 The library separates **space definition** (what a valid configuration looks like) from **search strategy** (how to explore it).
 
@@ -73,8 +73,6 @@ df = space.sample(1000, seed=0)
 
 `FreshParamExpr` is a `ParamExpr` carrying the type methods; each type method narrows to a type-specific view (see *Builder view types* under Parameter Types). `ParamExpr` remains the base type of every param object.
 
-`ds.embed` is removed; use the `.space()` type method (below), which subsumes it.
-
 Names may not contain `.`, `[`, or `]` (reserved by the path grammar). Declaration order is **significant**: it is preserved through composition, aligns `.prior(weights=...)`, and enters `fingerprint()`.
 
 ---
@@ -115,7 +113,7 @@ The view types are a **build-layer** convenience: they add no state beyond `Para
 | Method | Value | Notes |
 |---|---|---|
 | `.choice(*bare, *tuples, **keyword)` | see below | ≥1 variant (single variant = constant discriminator). Variant names are unique **within the choice** and obey the name-character rules regardless of syntactic route (bare, tuple, keyword, or `**splat`). |
-| `.space(*exprs)` / `.space(prebuilt: Space)` | `dict` | Struct-valued param: unconditionally-present grouping under a namespace. Subsumes v2's `embed`. Per-element constraints on repeated structs require the prebuilt-`Space` form (the inline form has nowhere to hang a `.forbid`). |
+| `.space(*exprs)` / `.space(prebuilt: Space)` | `dict` | Struct-valued param: unconditionally-present grouping under a namespace. Per-element constraints on repeated structs require the prebuilt-`Space` form (the inline form has nowhere to hang a `.forbid`). |
 
 Choice accepts three interchangeable variant forms:
 
@@ -1011,8 +1009,3 @@ Excluded **by construction** — operators act on genotypes, and core owns only 
 - Exact conditional subset sampling with calibrated marginals; alignment-aware repeat diffing
 - Penalty shapes, weights, priorities, relaxation policies (annotate via constraint `meta`)
 
----
-
-## Changes from v2
-
-Headline: nested self-contained choice values (variant collisions impossible; one path grammar everywhere); `.space()` struct type replacing `embed`; `.repeat()` as a chainable lift replacing `repeat(count, body=)` and `shape=`; Kleene three-valued semantics with `is_active()` and `if_inactive()`; charts unifying priors, integers, quantization, and periodicity; `.constrain()` made purely declarative with constraint `tags`/`meta` and Boolean-composed margins; vector aggregates (`field`, `sum`, `min`, `max`, `count_of`, `is_sorted`, `distinct`, `sum_over`, `count`, `position_of`); the defaults cascade and `apply_defaults`; generative/non-generative split (`.expr()` renamed `.symbolic()`, reference tree sampler removed); bidirectional IR; the `Encoding` protocol and phenotype/genotype representation model; the full `fingerprint()` specification; regenerated error and degeneracy tables; conformance laws. Post-consolidation: expression bounds desugared to envelope bounds plus bound-origin hard constraints — all charts static, `unresolvable_bound`/`default_out_of_bounds` deleted; variadic `.repeat(*counts)` with multi-index paths, leaf-flattening aggregates, and `Array` dtypes for static counts; `ds.payload`/`ds.destructure` config helpers.

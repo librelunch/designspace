@@ -1,7 +1,7 @@
-"""`solver_portfolio` corpus fixture (IMPLEMENTATION_PLAN.md corpus table, M4).
+"""`solver_portfolio` corpus fixture (PLAN.md.md corpus table, M4).
 
 Exercises: bool + `ds.count()`, `if_inactive`, inactive-vs-empty (the
-spec's own worked example pattern, API_v3.md "Three-valued semantics"
+spec's own worked example pattern, API.md "Three-valued semantics"
 lines 295-298).
 """
 

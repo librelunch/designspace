@@ -1,4 +1,4 @@
-"""Result dataclasses for validation and constraint evaluation (API_v3.md, "IR").
+"""Result dataclasses for validation and constraint evaluation (API.md, "IR").
 
 M2 needs (`ConstraintEval`, `ValidationResult`, `ParamError`); M6 adds
 `PartialEval` and the `RemainingDomain` descriptor family; M7 adds
@@ -40,7 +40,7 @@ class ValidationResult:
 
 @dataclass(frozen=True)
 class PartialEval:
-    """`.evaluate_partial(config)` (API_v3.md, "Space — Partial Configs").
+    """`.evaluate_partial(config)` (API.md, "Space — Partial Configs").
 
     `param_status` is keyed by definition *and* instance path (a lift's
     instances only appear once its count is determined — see
@@ -53,7 +53,7 @@ class PartialEval:
     n_remaining: int
 
 
-# -- `remaining_domain`'s per-kind descriptor (API_v3.md, "IR") — a closed
+# -- `remaining_domain`'s per-kind descriptor (API.md, "IR") — a closed
 # union. Sound, not complete: never excludes a still-feasible value (may
 # admit values an unreduced multi-operand coupling would forbid).
 
@@ -93,7 +93,7 @@ class SubsetRemaining:
 
 @dataclass(frozen=True)
 class PermutationRemaining:
-    """No per-item reduction under the guarantee (API_v3.md, "IR") — always
+    """No per-item reduction under the guarantee (API.md, "IR") — always
     echoes the declared items."""
 
     items: tuple[Any, ...]
@@ -106,7 +106,7 @@ RemainingDomain = (
 
 @dataclass(frozen=True)
 class ParamDiff:
-    """`ds.config_diff(a, b, space)` entry (API_v3.md, "Config Utilities")."""
+    """`ds.config_diff(a, b, space)` entry (API.md, "Config Utilities")."""
 
     param: str
     old: Any | None

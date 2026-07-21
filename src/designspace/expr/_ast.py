@@ -1,7 +1,7 @@
 """Expression AST nodes: BoolExpr and ArithExpr trees, construction only.
 
 Every node is an immutable, hashable dataclass exposing `.kind`, `.children`,
-and `.params` (API_v3.md, "Expressions"). No evaluation or resolution happens
+and `.params` (API.md, "Expressions"). No evaluation or resolution happens
 here — building a node never inspects a Space or a config.
 """
 
@@ -120,7 +120,7 @@ class ArithExpr(Expr):
 
     def __eq__(self, other: object) -> BoolExpr:  # type: ignore[override]
         # Overridden by design: `==` builds a Compare node rather than
-        # comparing values (API_v3.md, "Expressions" — BoolExpr).
+        # comparing values (API.md, "Expressions" — BoolExpr).
         return Compare("eq", self, _coerce_arith(other))
 
     def __ne__(self, other: object) -> BoolExpr:  # type: ignore[override]
@@ -406,7 +406,7 @@ class Length(ArithExpr):
 
 
 class VectorExpr(Expr):
-    """Mixin exposing the aggregate namespace (API_v3.md, "Expressions" —
+    """Mixin exposing the aggregate namespace (API.md, "Expressions" —
     "Vector expressions and aggregates"): "a scalar lift *is* a vector
     expression; `.field(name)` projects a struct lift into one." Shared by
     `ParamExpr` (build/_paramexpr.py, when it references a lift) and

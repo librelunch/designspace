@@ -1,4 +1,4 @@
-"""Margins (API_v3.md, "Constraints and Feasibility" > "Margins").
+"""Margins (API.md, "Constraints and Feasibility" > "Margins").
 
 `ConstraintEval.margin` is the signed distance to the boundary: positive
 slack, negative violation, zero on the boundary. `None` absorbs through

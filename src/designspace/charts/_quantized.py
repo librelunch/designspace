@@ -1,4 +1,4 @@
-"""Quantized chart (API_v3.md, "Charts" > "Quantization").
+"""Quantized chart (API.md, "Charts" > "Quantization").
 
 Wraps a continuous chart built over the grid's extension
 (`charts/_grid.py::GridShape.extension_top`); the emitted value is the

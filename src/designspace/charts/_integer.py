@@ -1,4 +1,4 @@
-"""Integer chart (API_v3.md, "Charts" > "Integers").
+"""Integer chart (API.md, "Charts" > "Integers").
 
 Wraps a continuous chart built over `[lo, hi + 1)`; the emitted value is
 `floor(chart(u))`, clamped defensively into `[lo, hi]` for the `u == 1.0`

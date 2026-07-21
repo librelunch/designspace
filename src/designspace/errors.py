@@ -1,4 +1,4 @@
-"""Exception taxonomy (API_v3.md, "Errors, Concurrency").
+"""Exception taxonomy (API.md, "Errors, Concurrency").
 
 `ResolutionError` covers every R-tagged row of the spec's error table.
 `SerializationError` is added when serialize/ (M7) exists to raise it.

@@ -1,4 +1,4 @@
-"""charts: chart construction (API_v3.md, "Charts").
+"""charts: chart construction (API.md, "Charts").
 
 Internal machinery invoked by resolve/'s step 6 — charts are never
 constructed directly by users (they only see `ParamDef.chart` after

@@ -1,4 +1,4 @@
-"""External prior charts (API_v3.md, "Charts" > "External priors").
+"""External prior charts (API.md, "Charts" > "External priors").
 
 Any object satisfying `Prior` (`.ppf(q)` required, `.cdf(value)` optional).
 If the support is contained in `[lo, hi]`, `ppf` is used directly; otherwise

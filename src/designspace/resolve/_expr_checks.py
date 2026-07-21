@@ -1,5 +1,5 @@
 """Shared expression checks: row 6 (undeclared refs) and row 14 (arithmetic /
-ordering type errors) — API_v3.md's error table.
+ordering type errors) — API.md's error table.
 
 Used both for `.when()` conditions (resolve/_pipeline.py, M1) and for
 `.forbid()`/`.constrain()` expressions (resolve/_constraints.py, M2): both
@@ -55,7 +55,7 @@ def _is_declared(path: str, defs_by_path: Mapping[str, Any]) -> bool:
     struct/choice lift element (`"stops[0].dwell"` — its `"[]"`-bracketed
     *template* is a declared def) or a direct scalar/choice lift element
     (`"dropout[3]"` — no template of its own, but its owning list param
-    is declared). API_v3.md, "Expressions": "Instance paths are legal in
+    is declared). API.md, "Expressions": "Instance paths are legal in
     expressions... An out-of-range index makes the leaf inactive" — the
     out-of-range half is an evaluation-time concern (`_leaf_value`
     already handles it for free); this is the resolution-time half (row 6):
@@ -198,7 +198,7 @@ def check_refs_declared(
         if not _is_declared(path, defs_by_path):
             if tolerate_undeclared:
                 # An up-reference to a param bound in an enclosing scope
-                # (API_v3.md's sole scoping rule): unresolvable while this
+                # (API.md's sole scoping rule): unresolvable while this
                 # payload resolves standalone, re-checked at finalization once
                 # every enclosing scope has contributed its params (D-26).
                 continue

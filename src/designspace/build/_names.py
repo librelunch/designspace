@@ -1,5 +1,5 @@
 """Name and meta-value validation shared across construction/resolution
-(API_v3.md, "Paths and Scoping"; "Identity and Serialization").
+(API.md, "Paths and Scoping"; "Identity and Serialization").
 
 Error-table row 5: names may not contain the path grammar's reserved
 characters, regardless of syntactic route.

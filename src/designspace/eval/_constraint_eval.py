@@ -1,6 +1,6 @@
 """Building a `ConstraintEval` from a `Constraint` (shared by validate/ and
 sample/): Kleene-evaluate the expression, and if it isn't Unknown, attach
-its margin (API_v3.md, "Expressions" rule 4; "Constraints and Feasibility").
+its margin (API.md, "Expressions" rule 4; "Constraints and Feasibility").
 
 `Constraint.expr` is stored exactly as the author wrote it, for both
 `.forbid()` and `.constrain()` — introspection and the fingerprint's
@@ -50,7 +50,7 @@ def instance_constraint_evals(
     (DECISIONS.md D-20) — carried as templates on `ListDomain.
     element_constraints`, never in `space.constraints` — instantiated
     once per active instance ("evaluation reports one `ConstraintEval`
-    per instance path," API_v3.md "Modifiers and Layering")."""
+    per instance path," API.md "Modifiers and Layering")."""
     from designspace.resolve._relocate import instantiate_constraints
 
     result: list[ConstraintEval] = []
@@ -88,7 +88,7 @@ def is_violated(ce: ConstraintEval) -> bool:
     A bound-origin constraint (M5, resolve/_bounds.py) is the one exception:
     it is always `hard=True` (it must affect feasibility, exactly like a
     forbid) but stores the *desired* predicate verbatim — `ds.param("x") <=
-    ds.param("y")`, matching API_v3.md's sugar description and yielding the
+    ds.param("y")`, matching API.md's sugar description and yielding the
     spec's stated `y - x` margin, neither of which the forbidden-state form
     (`x > y`) could give at once (its margin would be `x - y`). So its
     `hard`/polarity pairing is `constrain`-shaped (violated iff not
