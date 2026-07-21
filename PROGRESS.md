@@ -26,10 +26,8 @@ the empty ledger; those entries likewise remain in git history. Folded the same 
 without new ledger entries (user-approved directly): four API changes — keeping
 `to_json`/`from_json` (no rename), instance-path `variant`/`payload` on lifted
 choices, the empty/non-existent-path `remaining_domain` `TypeError`, and the new
-`space.require` (positive complement of `space.forbid`; spec only, implementation
-deferred to a future milestone). When `require` is implemented, the existing
-`origin == "bound"` special-cases in `identity/_ir_codec.py`,
-`eval/_constraint_eval.py`, `partial/_partial.py`, and `resolve/_bounds.py` must be
-generalized to `bound`-or-`require`, or the spec's promised `require(e) ≡ forbid(~e)`
-fingerprint/feasibility/margin equivalences (and `remaining_domain` participation)
-will silently break.
+`space.require` (positive complement of `space.forbid`; spec only). Implementation of
+these additions is scheduled as **milestone M7.5** (before M8) — see `PLAN.md`, which
+records the freeze handling (additive `origin="require"`, no version bump) and the
+`origin == "bound"` → `bound`-or-`require` code sites that must be generalized so the
+spec's `require(e) ≡ forbid(~e)` equivalences don't silently break.

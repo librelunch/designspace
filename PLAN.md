@@ -256,9 +256,34 @@ name early; the views subclass `ParamExpr` directly until then (D-27).
 **Gate:** the full Identity law block from the spec: sugar-equivalence pairs (log_scale/prior, implies, variadic repeat/chain, expression bounds/expansion), order-sensitivity, scope-monotonicity, round-trip law, mark distinctness, type-tag distinctness, float edges — plus **known-answer digest vectors** committed under `tests/conformance/vectors/` for every corpus fixture. Whole corpus round-trips. **Plus the bound-origin polarity law (D-29(4)):** a bound-sugar space and its `.forbid(x > y)` manual expansion are fingerprint-equal **and** feasibility-equal; a bound-sugar space and `.forbid(x <= y)` are fingerprint-**distinct** and feasibility-distinct. (Cross-ref: M4.5's deferred note already requires `fingerprint`/`to_json` to call `check_fully_resolved`.)
 **Exit:** tag `v0.1`. Update `PROGRESS.md`; from here the freeze discipline (top of file) applies.
 
+### M7.5 — Post-freeze API additions
+Implements the four API changes folded into `API.md` on 2026-07-21 (the discussion
+additions — **not** D-30…D-37, which only clarified already-shipped M6/M7 behavior and
+needed no new code). Sequenced **before M8** so structural ops (`slice`/`freeze`, which
+substitute into constraint expressions) are built against the complete constraint model,
+including `origin="require"`. Fractional-milestone precedent: M4.5/M4.6.
+
+**Spec (already folded in):** Constraints §`.require` (+ Kleene polarity, margin);
+Sampling §reject on forbids **and requires**; Config Utilities §instance-path
+`variant`/`payload`/`destructure` and non-validating `config_hash`/`config_diff`
+(+ `config_diff` plain-`==`); Partial Configs §`remaining_domain` empty/non-existent-path
+`TypeError` and `require`-origin participation; Identity §feasible-predicate
+(`origin` `bound`|`require`) preimage canonicalization; IR `Constraint.origin` gains
+`"require"`.
+
+**Build:**
+- `build/_space.py` — new `.require(*conditions, tags=(), meta=None)`; `resolve/_constraints.py::add_constraints` gains an `origin` parameter (default `"user"`), `.require` passes `hard=True, origin="require"`.
+- Generalize the four `origin == "bound"` special-cases to `origin in ("bound", "require")`: `identity/_ir_codec.py` (forbidden-state preimage canonicalization), `eval/_constraint_eval.py::is_violated` (feasible-iff-satisfied), `partial/_partial.py` (`remaining_domain` reduction + feasible-side polarity), `resolve/_bounds.py` (canonicalization gate). **Leave `dependency_graph`/`topological_order` bound-only** — `require`, like a forbid, builds no chart and imposes no assignment order (`resolve/_bounds.py:151`-style ordering is bound-specific).
+- `config/_helpers.py::_get_by_path` — honor the path grammar's `[k]` indexing so `variant`/`payload`/`destructure` walk into lifted-choice elements (`pipeline[1]`); the bare list path raises a guiding misuse error naming the indexed form. Stays `Space`-free.
+- `remaining_domain` empty/non-existent path already raises `TypeError` via `_lookup_param_shape` — add coverage, no code change.
+
+**Freeze handling.** `require` adds the `origin="require"` value to the frozen format. Per the user-approved pre-release exemption (no shipped document/vector depends on the prior origin set) this is **additive with no version bump** — the format-version integer is unchanged. **Add — never replace —** known-answer digest vectors for a `require`-using space under `tests/conformance/vectors/`; confirm every existing corpus vector is byte-identical (no fixture uses `require`).
+
+**Gate (conformance):** `require(e)` feasibility-, margin-, **and** fingerprint-equal to `forbid(~e)`, and fingerprint-**distinct** from the feasibility-opposite `forbid(e)`; `require` Kleene polarity (violated iff `e` definitely False; Unknown/True feasible); `require`-origin participates in `remaining_domain` identically to a bound (one-unset-operand reduction, soundness preserved); lifted-choice `variant`/`payload`/`destructure` by instance path with a message-content-tested misuse error on the bare list path; `remaining_domain` misuse `TypeError` on empty/non-existent path; new `require` KA vectors committed and **all prior conformance laws + all corpus vectors stay byte-identical**. **Not touched:** `to_json`/`from_json` names (rename rejected).
+
 ### M8 — Structural operations and metaprogramming
 **Spec:** Space — Structural Operations (incl. anchor interactions, positional dict form); Space — Metaprogramming.
-**Gate:** slice-substitution reaches conditions and constraint expressions incl. bound-origin (envelope recompute test); select prefix-subtree brings variants; strict vs best-effort; `extend` identity with `ds.space()`; `map_params` coarsening example from the spec history; rebuilt spaces fingerprint-equal to equivalent hand-built ones. Corpus: `compiler_pipeline`; `sat_solver` gains freeze-ablation asserts.
+**Gate:** slice-substitution reaches conditions and constraint expressions incl. bound-origin **and require-origin** (envelope recompute test); select prefix-subtree brings variants; strict vs best-effort; `extend` identity with `ds.space()`; `map_params` coarsening example from the spec history; rebuilt spaces fingerprint-equal to equivalent hand-built ones. Corpus: `compiler_pipeline`; `sat_solver` gains freeze-ablation asserts.
 
 ### M9 — Custom types
 **Spec:** Protocols §ParamType + contract laws; `.custom()` both forms; `.prop()`; registry in `from_json`; error rows 16, 23 (describe serializability).
@@ -279,6 +304,10 @@ name early; the views subclass `ParamExpr` directly until then (D-27).
 
 ### M13 — Extras and docs
 `to_json_schema` (core, dependency-free); `[pydantic]` extra: `to_pydantic_model`; `to_dataclass() -> type` + `to_python_source()`; `from_callable` + `Annotated` domain literals as `designspace.contrib.signatures`. Guide pages: tier guidance for structured values, mechanism-choosing, rejection hostility, defaults-vs-anchors, solver-integration walkthrough — source material is the spec's Solver Integration section.
+
+**User-facing docstring pass.** Rewrite docstrings across the **public/exported** surface — `Space` methods, `ds.*` functions, the public IR/result dataclasses, the builder view types, and the protocols — *for library users* (what it does + why + a runnable example), replacing today's absent or implementation/spec-facing docstrings. Private modules keep their spec-referencing maintainer docstrings (they document mechanism, not usage). Deferred to here deliberately: the public surface is not final until M12, so writing user docstrings once against the finished API avoids rewriting them as M8–M12 reshape it. **Enforced, not aspirational:** examples execute under `doctest` in CI, plus a docstring-coverage lint (ruff `D` rules or `interrogate`) scoped to `__init__`'s exports so the public surface cannot ship undocumented. *If a version ship before M13 (v0.2/M10) is meant to be externally consumable, front-load a public-docstring baseline at that milestone rather than waiting.*
+
+**Documentation site (Sphinx + PyData theme).** Build a rendered docs site under `docs/` with **Sphinx** and **`pydata-sphinx-theme`**, shipped as a `designspace[docs]` extra (dev/docs-only — **never core**; core stays `numpy`/`polars`/`rfc8785`). Extensions: `autodoc` + `autosummary` for an API reference generated from the M13 docstrings above; `napoleon` (NumPy/Google-style docstrings); `myst-parser` so guide pages are authored in Markdown, consistent with this repo's `.md` sources; `sphinx-copybutton`; `intersphinx` (python/numpy/polars); and doctest enforcement folded into the **existing `pytest` gate** — `pytest --doctest-modules` for the docstring examples plus `pytest --doctest-glob='*.md'` for guide pages authored as plain `>>>` blocks — so there is one runner and one gate. (Only if the guide pages adopt Sphinx `.. testcode::`/`.. doctest::` directives for richer setup/skip control do you need a directive-aware runner: the MyST-aware native `sphinx.ext.doctest` builder as a separate docs job, or `pytest-sphinx` to bring them under pytest — but `pytest-sphinx` targets rST directive syntax, so verify MyST-fence support before relying on it.) The guide pages listed above live here as MyST documents; **`API.md` stays the normative spec** — a separate maintainer artifact, not a user-docs page. Hosting (Read the Docs vs. GitHub Pages) is deferred; the buildable, doctest-clean site is the M13 deliverable.
 
 ---
 
