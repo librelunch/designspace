@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 CORPUS_DIR = Path(__file__).resolve().parents[2] / "corpus"
+CONF_DIR = Path(__file__).resolve().parents[1]
 VECTORS_DIR = Path(__file__).resolve().parent
 
 FIXTURES = [
@@ -41,25 +42,36 @@ FIXTURES = [
 ]
 
 
+def _write_vector(name: str, space: object) -> None:
+    doc = space.to_json()  # type: ignore[attr-defined]
+    assert "dropped" not in doc, (
+        f"{name}: to_json() carries a 'dropped' manifest — a vector fixture must be "
+        "fully serializable, or it would freeze a mark/drop artifact into the vectors"
+    )
+    vector = {
+        "fingerprint_full": space.fingerprint("full"),  # type: ignore[attr-defined]
+        "fingerprint_sampling": space.fingerprint("sampling"),  # type: ignore[attr-defined]
+        "to_json": doc,
+    }
+    out_path = VECTORS_DIR / f"{name}.json"
+    out_path.write_text(json.dumps(vector, indent=2, sort_keys=True) + "\n")
+    print(f"wrote {out_path}")
+
+
 def main() -> None:
     sys.path.insert(0, str(CORPUS_DIR))
+    sys.path.insert(0, str(CONF_DIR))
     import importlib
 
     for name in FIXTURES:
-        space = importlib.import_module(name).build_space()
-        doc = space.to_json()
-        assert "dropped" not in doc, (
-            f"{name}: to_json() carries a 'dropped' manifest — a corpus fixture must be "
-            "fully serializable, or it would freeze a mark/drop artifact into the vectors"
-        )
-        vector = {
-            "fingerprint_full": space.fingerprint("full"),
-            "fingerprint_sampling": space.fingerprint("sampling"),
-            "to_json": doc,
-        }
-        out_path = VECTORS_DIR / f"{name}.json"
-        out_path.write_text(json.dumps(vector, indent=2, sort_keys=True) + "\n")
-        print(f"wrote {out_path}")
+        _write_vector(name, importlib.import_module(name).build_space())
+
+    # The `require`-demo vector (M7.5) — a non-corpus, `require`-using space kept
+    # apart from the corpus loop so the corpus vectors stay a clean byte-identity
+    # check. Added — never replaces a corpus vector.
+    import _require_demo
+
+    _write_vector("require_demo", _require_demo.build_space())
 
 
 if __name__ == "__main__":

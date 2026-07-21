@@ -1,5 +1,5 @@
-"""`.forbid()` / `.constrain()`: adding constraints to an already-resolved
-`Space` (API_v3.md, "Constraints and Feasibility").
+"""`.forbid()` / `.require()` / `.constrain()`: adding constraints to an
+already-resolved `Space` (API_v3.md, "Constraints and Feasibility").
 
 Each positional condition becomes its own `Constraint` entry (sharing the
 call's `tags`/`meta`) so `evaluate_constraints` reports a margin per
@@ -34,8 +34,13 @@ def add_constraints(
     hard: bool,
     tags: tuple[str, ...],
     meta: dict[str, Any] | None,
+    origin: str = "user",
 ) -> Space:
-    call = "forbid()" if hard else "constrain()"
+    # `.require` stores the desired (feasible) predicate verbatim (like a
+    # bound-origin constraint) with `origin="require"` and `hard=True`; the
+    # feasibility flip and the fingerprint canonicalization to forbidden-state
+    # form live downstream (eval/_constraint_eval.py, identity/_ir_codec.py).
+    call = "require()" if origin == "require" else ("forbid()" if hard else "constrain()")
     _check_tags_meta(call, tags, meta)
     meta_map = MappingProxyType(dict(meta or {}))
     tag_set = frozenset(tags)
@@ -53,7 +58,7 @@ def add_constraints(
             Constraint(
                 expr=desugared,
                 hard=hard,
-                origin="user",
+                origin=origin,
                 tags=tag_set,
                 meta=meta_map,
                 params=desugared.params,

@@ -70,3 +70,46 @@ class TestVariantPayloadDestructure:
     def test_missing_path_raises(self):
         with pytest.raises(KeyError):
             ds.variant({}, "algo")
+
+
+class TestInstancePathVariantPayloadDestructure:
+    """API.md, "Config Utilities": `variant`/`payload`/`destructure` accept
+    instance paths (`pipeline[1]`) into a lifted choice; the bare list path is
+    a misuse error naming the indexed form (PLAN.md M7.5)."""
+
+    def _cfg(self) -> dict:
+        # A lifted-choice config: bare variants alongside parameterized ones.
+        return {
+            "n_ops": 3,
+            "pipeline": ["shuffle", {"mutation": {"rate": 0.1}}, "crossover"],
+        }
+
+    def test_index_into_bare_variant_element(self):
+        cfg = self._cfg()
+        assert ds.variant(cfg, "pipeline[0]") == "shuffle"
+        assert ds.payload(cfg, "pipeline[0]") is None
+        assert ds.destructure(cfg, "pipeline[0]") == ("shuffle", None)
+
+    def test_index_into_parameterized_element(self):
+        cfg = self._cfg()
+        assert ds.variant(cfg, "pipeline[1]") == "mutation"
+        assert ds.payload(cfg, "pipeline[1]") == {"rate": 0.1}
+        assert ds.destructure(cfg, "pipeline[1]") == ("mutation", {"rate": 0.1})
+
+    def test_nested_index_then_field(self):
+        # A lifted struct whose element carries a choice field: index into the
+        # element, then walk the dotted field name.
+        cfg = {"stages": [{"algo": "linear"}, {"algo": {"svm": {"gamma": 0.5}}}]}
+        assert ds.variant(cfg, "stages[0].algo") == "linear"
+        assert ds.variant(cfg, "stages[1].algo") == "svm"
+        assert ds.payload(cfg, "stages[1].algo") == {"gamma": 0.5}
+
+    def test_bare_list_path_is_misuse_error_naming_indexed_form(self):
+        cfg = self._cfg()
+        with pytest.raises(TypeError, match=r"pipeline\[.*\]"):
+            ds.variant(cfg, "pipeline")
+
+    def test_out_of_range_index_raises_lookup_error(self):
+        cfg = self._cfg()
+        with pytest.raises(KeyError):
+            ds.variant(cfg, "pipeline[9]")

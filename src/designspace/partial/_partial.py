@@ -235,14 +235,14 @@ def _negate_compare(cmp: Compare) -> Compare:
 
 def _feasible_expr(c: Constraint) -> BoolExpr:
     """The feasible-side predicate for a *hard* constraint, by origin
-    (API_v3.md, "Space — Partial Configs"): a bound-origin constraint
-    already stores the desired (feasible) predicate; a forbid's `expr`
-    names the *forbidden* state, so feasible = its negation. One level of
-    double-negation is collapsed (`~Not(x) == x`) so a forbid written in
-    forbidden-state form (`.forbid(~cond)`) reduces just as readily as the
-    plain form.
+    (API_v3.md, "Space — Partial Configs"): a feasible-predicate constraint
+    (`origin` `"bound"` or `"require"`) already stores the desired (feasible)
+    predicate; a forbid's `expr` names the *forbidden* state, so feasible = its
+    negation. One level of double-negation is collapsed (`~Not(x) == x`) so a
+    forbid written in forbidden-state form (`.forbid(~cond)`) reduces just as
+    readily as the plain form.
     """
-    if c.origin == "bound":
+    if c.origin in ("bound", "require"):
         return c.expr
     if isinstance(c.expr, Not):
         return c.expr.operand

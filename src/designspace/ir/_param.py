@@ -38,6 +38,11 @@ class Condition:
 class Constraint:
     expr: BoolExpr
     hard: bool
+    # "user" | "bound" | "require" — derived provenance, excluded from the
+    # fingerprint preimage. A "bound" or "require" hard constraint stores the
+    # DESIRED (feasible) predicate and is feasible-iff-satisfied (opposite of a
+    # user forbid); the preimage canonicalizes it to forbidden-state form so
+    # feasibility polarity survives without `origin` (API.md, "IR"; "Identity").
     origin: str
     tags: frozenset[str]
     meta: MappingProxyType[str, Any]

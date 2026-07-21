@@ -1,0 +1,100 @@
+{
+  "fingerprint_full": "1:full:415d2abf7a3953c77212d1c1c3674091f6f6776bbf2747dba65353682ed1ce7b",
+  "fingerprint_sampling": "1:sampling:feea88165c02e5f152cb0a06b0254679023b6799870fbd0c11e4957f88a95c1e",
+  "to_json": {
+    "conditions": [],
+    "constraints": [
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "x"
+            },
+            {
+              "kind": "ref",
+              "path": "y"
+            }
+          ],
+          "kind": "le"
+        },
+        "hard": true,
+        "origin": "require"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "k"
+                },
+                {
+                  "kind": "literal",
+                  "value": {
+                    "$t": "int",
+                    "v": 2
+                  }
+                }
+              ],
+              "kind": "ge"
+            },
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "k"
+                },
+                {
+                  "kind": "literal",
+                  "value": {
+                    "$t": "int",
+                    "v": 8
+                  }
+                }
+              ],
+              "kind": "le"
+            }
+          ],
+          "kind": "and"
+        },
+        "hard": true,
+        "origin": "require"
+      }
+    ],
+    "params": [
+      {
+        "domain": {
+          "hi": 1.0,
+          "kind": "real",
+          "lo": 0.0
+        },
+        "kind": "real",
+        "path": "x",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 1.0,
+          "kind": "real",
+          "lo": 0.0
+        },
+        "kind": "real",
+        "path": "y",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 10,
+          "kind": "integer",
+          "lo": 0
+        },
+        "kind": "integer",
+        "path": "k",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}

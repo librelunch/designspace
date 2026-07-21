@@ -55,6 +55,15 @@ class Space:
 
         return add_constraints(self, conditions, hard=True, tags=tags, meta=meta)
 
+    def require(
+        self, *conditions: BoolExpr, tags: tuple[str, ...] = (), meta: dict[str, Any] | None = None
+    ) -> Space:
+        from designspace.resolve._constraints import add_constraints
+
+        return add_constraints(
+            self, conditions, hard=True, tags=tags, meta=meta, origin="require"
+        )
+
     def constrain(
         self, *conditions: BoolExpr, tags: tuple[str, ...] = (), meta: dict[str, Any] | None = None
     ) -> Space:
