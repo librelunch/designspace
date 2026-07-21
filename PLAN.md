@@ -281,6 +281,41 @@ Sampling §reject on forbids **and requires**; Config Utilities §instance-path
 
 **Gate (conformance):** `require(e)` feasibility-, margin-, **and** fingerprint-equal to `forbid(~e)`, and fingerprint-**distinct** from the feasibility-opposite `forbid(e)`; `require` Kleene polarity (violated iff `e` definitely False; Unknown/True feasible); `require`-origin participates in `remaining_domain` identically to a bound (one-unset-operand reduction, soundness preserved); lifted-choice `variant`/`payload`/`destructure` by instance path with a message-content-tested misuse error on the bare list path; `remaining_domain` misuse `TypeError` on empty/non-existent path; new `require` KA vectors committed and **all prior conformance laws + all corpus vectors stay byte-identical**. **Not touched:** `to_json`/`from_json` names (rename rejected).
 
+### M7.6 — Constraint API symmetrization (no runtime-value or format change)
+User-directed API polish (fractional-milestone precedent: M4.5/M4.6/M7.5). Completes the
+constraint verb set into a symmetric 2×2 and makes constraint polarity a first-class,
+introspectable property, so consumers stop re-deriving it from `(origin, hard)`. **No format
+version bump**: the rename is IR-identical and the one new `origin` value is additive. See **D-39**.
+
+**Spec (folded in):** §Constraints (rename `constrain` → `encourage`; add `discourage`, the
+soft complement `== encourage(~e)`; the *constraint quartet* + polarity-accessor paragraph);
+§Sampling (`reject_soft` names the soft pair); §Identity (scope table; normalization step 1
+extended so `discourage` canonicalizes to `Not(e)` like `require`); §IR (`Constraint.origin`
+gains `"discourage"`; derived `Constraint.kind`/`feasible_when_satisfied` and
+`ConstraintEval.violated`).
+
+**Build:**
+- `build/_space.py` — rename `.constrain` → `.encourage`; add `.discourage`
+  (`add_constraints(hard=False, origin="discourage")`). `resolve/_constraints.py` — the
+  `call` label maps `(origin, hard)` to the four verb names.
+- `ir/_param.py` / `ir/_results.py` — derived properties: `Constraint.kind`
+  (`forbid`|`require`|`encourage`|`discourage`|`bound`), `Constraint.feasible_when_satisfied`
+  (False only for the bad-state verbs), `ConstraintEval.violated` (polarity-correct).
+- `eval/_constraint_eval.py::is_violated` collapses to `return ce.violated`;
+  `validate/_validate.py::infeasibility_reasons` labels by `kind`.
+- `identity/_ir_codec.py::_canonicalize_polarity` (renamed from `_canonicalize_feasible_predicate`)
+  — `origin in ("require","discourage")` negate whole-expression; `bound` op-flips.
+- Rename `.constrain(` → `.encourage(` across corpus fixtures, examples, and tests (semantics
+  preserved; conformance-law test names updated, never loosened). `examples/03` reads
+  constraints via `kind`/`violated` and demonstrates `discourage`.
+
+**Gate (conformance):** `kind`/`feasible_when_satisfied`/`violated` correct for all four verbs
++ bound; `discourage(e)` never affects feasibility, flagged iff satisfied, fingerprint-equal to
+`encourage(~e)` and distinct from `encourage(e)`, absent from the `sampling` scope, rejected only
+under `reject_soft`; new `discourage_demo` KA vector committed and **all prior conformance laws +
+all corpus + `require_demo` vectors stay byte-identical**; `mypy --strict`, `ruff`, full `pytest`
+green.
+
 ### M8 — Structural operations and metaprogramming
 **Spec:** Space — Structural Operations (incl. anchor interactions, positional dict form); Space — Metaprogramming.
 **Gate:** slice-substitution reaches conditions and constraint expressions incl. bound-origin **and require-origin** (envelope recompute test); select prefix-subtree brings variants; strict vs best-effort; `extend` identity with `ds.space()`; `map_params` coarsening example from the spec history; rebuilt spaces fingerprint-equal to equivalent hand-built ones. Corpus: `compiler_pipeline`; `sat_solver` gains freeze-ablation asserts.

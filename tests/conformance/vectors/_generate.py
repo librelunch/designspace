@@ -66,12 +66,14 @@ def main() -> None:
     for name in FIXTURES:
         _write_vector(name, importlib.import_module(name).build_space())
 
-    # The `require`-demo vector (M7.5) — a non-corpus, `require`-using space kept
-    # apart from the corpus loop so the corpus vectors stay a clean byte-identity
-    # check. Added — never replaces a corpus vector.
+    # Non-corpus demo vectors kept apart from the corpus loop so the corpus
+    # vectors stay a clean byte-identity check. Added — never replace a corpus
+    # vector. `require_demo` (M7.5), `discourage_demo` (M7.6).
+    import _discourage_demo
     import _require_demo
 
     _write_vector("require_demo", _require_demo.build_space())
+    _write_vector("discourage_demo", _discourage_demo.build_space())
 
 
 if __name__ == "__main__":

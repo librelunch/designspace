@@ -22,7 +22,7 @@ def build_space() -> Space:
         ds.param("buf_a").integer(1, ds.param("total_ram")),
         ds.param("buf_b").integer(1, ds.param("total_ram") - ds.param("buf_a")),
         ds.param("buf_c").integer(0, ds.param("buf_b") - 1),
-    ).constrain(
+    ).encourage(
         # Declared, not feasibility-affecting: flags configs that leave no
         # headroom at all for a 4th, not-yet-modeled buffer.
         ds.param("total_ram") - ds.param("buf_a") - ds.param("buf_b") - ds.param("buf_c") >= 1,

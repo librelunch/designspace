@@ -89,8 +89,8 @@ class TestFeasibilityRelations:
             config = {"x": x}
             assert space.is_feasible(config) == space.validate(config).valid
 
-    def test_constrain_never_affects_feasibility(self):
-        space = ds.space(ds.param("x").real(0.0, 100.0)).constrain(ds.param("x") <= 1.0)
+    def test_encourage_never_affects_feasibility(self):
+        space = ds.space(ds.param("x").real(0.0, 100.0)).encourage(ds.param("x") <= 1.0)
         assert space.is_feasible({"x": 50.0}) is True
 
     def test_infeasibility_reasons_reports_param_and_forbid(self):
@@ -102,7 +102,7 @@ class TestFeasibilityRelations:
         space = (
             ds.space(ds.param("x").real(0.0, 1.0))
             .forbid(ds.param("x") > 0.9)
-            .constrain(ds.param("x") < 0.5)
+            .encourage(ds.param("x") < 0.5)
         )
         evals = space.evaluate_constraints({"x": 0.6})
         assert len(evals) == 2

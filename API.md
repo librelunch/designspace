@@ -52,7 +52,7 @@ space = ds.space(
     ).repeat(ds.param("n_layers")),
 ).forbid(
     ds.param("lr") > 0.1,
-).constrain(
+).encourage(
     ds.param("layers").field("width").sum() <= 4096,
     tags=("budget",),
 )
@@ -172,7 +172,7 @@ Modifiers are chainable and immutable — each returns a new expression. They be
 |---|---|
 | `.when(condition)` | Multiple calls ANDed. Presence semantics (see Expressions). |
 | `.tag(*tags)` | Accumulates. Empty string rejected. |
-| `.meta(mapping=None, **kwargs)` | Merges; last-write-wins per key. Values may be any JSON-serializable value — scalars, lists, or nested dicts (matching error row 23); each scalar leaf is type-tagged recursively in the fingerprint, the same codec as `default`. Constraint-level `meta=` (on `.forbid`/`.require`/`.constrain`) follows the identical rule. |
+| `.meta(mapping=None, **kwargs)` | Merges; last-write-wins per key. Values may be any JSON-serializable value — scalars, lists, or nested dicts (matching error row 23); each scalar leaf is type-tagged recursively in the fingerprint, the same codec as `default`. Constraint-level `meta=` (on `.forbid`/`.require`/`.encourage`/`.discourage`) follows the identical rule. |
 | `.default(value)` | **List default** when applied after a lift: legal only for static counts; length must match; mutually exclusive with element defaults on the same param. |
 
 **The lift.** `.repeat(count)` closes the element definition: everything left of it defines the element; everything right applies to the list.
@@ -228,7 +228,7 @@ ds.space(
 
 `BoolExpr` and `ArithExpr` are walkable ASTs exposing `.kind: str`, `.params: frozenset[str]`, `.children: tuple`.
 
-**BoolExpr** — for `.when()`, `.forbid()`, `.constrain()`:
+**BoolExpr** — for `.when()` and the constraint verbs (`.forbid()`/`.require()`/`.encourage()`/`.discourage()`):
 
 ```python
 ds.param("x") == != > < >= <= (value | expr)
@@ -242,7 +242,7 @@ ds.all_(*exprs)   ds.any_(*exprs)       # variadic; zero args = literal True / F
 ds.count(*bool_exprs) <op> value        # number of True operands (ArithExpr)
 ```
 
-**ArithExpr** — for `.constrain()`, expression bounds, and repeat counts. Comparisons yield `BoolExpr`:
+**ArithExpr** — for the constraint verbs, expression bounds, and repeat counts. Comparisons yield `BoolExpr`:
 
 ```python
 ds.param("x") + - * / ** % (expr | literal)
@@ -299,7 +299,7 @@ Expressions evaluate in Kleene logic; **Unknown** arises only from inactivity.
 Comparisons and arithmetic with an Unknown operand are Unknown. Range-tracking is specific to `ds.count`, which tracks `[t, t + u]` (True count, Unknown count) and is Unknown iff the comparison outcome differs across that range. Every *other* aggregate (`sum`, `min`, `max`, `count_of`, `is_sorted`, `distinct`) containing any Unknown element is itself Unknown — plain propagation, no range computed: a non-empty vector is treated as an ordered collection of operands, and one Unknown operand makes the whole Unknown, exactly as for ordinary arithmetic. (`count_of` resembles `ds.count` but is a distinct construct over a vector and does not range-track.)
 
 3. **Coercion at `.when()`:** Unknown → False. Deactivation therefore cascades along `topological_order`.
-4. **Coercion at `.forbid()`/`.constrain()` on complete configs:** Unknown → **inapplicable** — not violated, `margin = None`, `ConstraintEval.applicable = False`.
+4. **Coercion at the constraint verbs on complete configs:** Unknown → **inapplicable** — not violated, `margin = None`, `ConstraintEval.applicable = False`.
 5. **Unset ≠ inactive.** In partial evaluation an unset operand makes a constraint *pending*; an inactive one makes it Unknown now. `.if_inactive()` coalesces inactivity only and never eats pending.
 6. **Empty aggregates** (active lift, zero elements): `sum → 0`, `count_of → 0`, `distinct → True`, `is_sorted → True`; `min`/`max` → **Unknown** (containing constraint goes inapplicable rather than erroring).
 
@@ -320,15 +320,20 @@ Chainable on `Space`, each returning a new `Space`:
 
 | Method | Purpose |
 |---|---|
-| `.forbid(*conditions, tags=(), meta=None)` | Defines **feasibility** — violating configs are invalid and rejected by the reference sampler. The argument names the **forbidden** state |
-| `.require(*conditions, tags=(), meta=None)` | Defines **feasibility** via the **required (feasible)** state — feasible iff the predicate is satisfied; the polarity-inverse of `.forbid`. Sugar-equivalent to `.forbid(~condition)` in feasibility, margin, and fingerprint |
-| `.constrain(*conditions, tags=(), meta=None)` | Declares an evaluated, annotated predicate — never affects feasibility or the reference measure |
+| `.forbid(*conditions, tags=(), meta=None)` | Defines **feasibility** — violating configs are invalid and rejected by the reference sampler. The argument names the **forbidden (bad)** state |
+| `.require(*conditions, tags=(), meta=None)` | Defines **feasibility** via the **required (good)** state — feasible iff the predicate is satisfied; the polarity-inverse of `.forbid`. Sugar-equivalent to `.forbid(~condition)` in feasibility, margin, and fingerprint |
+| `.encourage(*conditions, tags=(), meta=None)` | Declares an evaluated, annotated predicate naming a **desired (good)** state — reported with a margin, but **never** affects feasibility or the reference measure |
+| `.discourage(*conditions, tags=(), meta=None)` | Declares an evaluated, annotated predicate naming an **undesirable (bad)** state — the soft complement of `.encourage` (`== encourage(~condition)`); reported, never affects feasibility |
 | `.anchor(configs: dict[str, dict])` | Named reference configs, validated at resolution |
 | `.meta(mapping=None, **kwargs)` | Space-level metadata (objectives, cost models, anchor-role conventions) |
 
-Feasibility is defined by param validity plus forbids **and requires** only (a `require` is a forbid of the negated condition — see below). `validate().valid`, `is_feasible()`, and `infeasibility_reasons()` never consider `.constrain()` declarations; those appear in `constraint_evals` with margins so nothing is hidden. Core stores `tags` and `meta` on constraints and never interprets them — penalty shapes, weights, priorities, and relaxation orders are consumer policy attached via `meta`. A directional preference with no threshold ("minimize capex") is not a constraint — no predicate, no margin — and belongs in space-level `.meta()` as an objective declaration.
+**The constraint quartet.** The four predicate verbs are two polarity pairs on two axes — **hard** (`forbid`/`require`, affect feasibility) vs. **soft** (`encourage`/`discourage`, declared and reported, never affect feasibility), crossed with the **polarity** of the stored predicate: a `forbid`/`discourage` names a *bad* state (the good outcome is *not* satisfying it), a `require`/`encourage` a *good* state. Each is the polarity-inverse of its partner (`require(e) == forbid(~e)`, `discourage(e) == encourage(~e)`). Every verb produces a `Constraint`; read its category and polarity through the derived accessors rather than the storage — `Constraint.kind` (`"forbid"`|`"require"`|`"encourage"`|`"discourage"`|`"bound"`), `Constraint.feasible_when_satisfied` (the polarity — `False` only for the bad-state verbs), and `ConstraintEval.violated` (polarity-correct: an inapplicable eval is never violated; otherwise violated iff `satisfied` differs from the desired polarity).
 
-**`require` — the positive complement.** `space.require(e)` declares that feasible configs must *satisfy* `e`, sparing the user the mental inversion `.forbid` demands. It carries `origin="require"` and stores the **desired (feasible)** predicate `e` — the same *feasible-iff-satisfied* convention a bound-origin constraint uses — so introspection and `infeasibility_reasons` read in the user's own terms and the reported `margin` is `margin(e)` directly (positive is slack). Three-valued: `require(e)` is **violated iff `e` is definitely False**; an Unknown or True `e` is feasible (Unknown ⇒ inapplicable, `margin = None`), exactly `forbid(~e)`'s Kleene behavior. It is therefore feasibility-, margin-, **and** fingerprint-equal to `.forbid(~e)`: the fingerprint preimage canonicalizes every feasible-predicate constraint (`origin` `bound` or `require`) to its forbidden-state (negated) form, so `origin` stays feasibility-neutral (see *Identity — Normalization pipeline*). The `require` origin is additive to the frozen format; no shipped document or known-answer vector depends on the prior origin set, so it introduces no format-version bump.
+Feasibility is defined by param validity plus forbids **and requires** only (a `require` is a forbid of the negated condition — see below). `validate().valid`, `is_feasible()`, and `infeasibility_reasons()` never consider the soft `.encourage()`/`.discourage()` declarations; those appear in `constraint_evals` with margins so nothing is hidden. Core stores `tags` and `meta` on constraints and never interprets them — penalty shapes, weights, priorities, and relaxation orders are consumer policy attached via `meta`. A directional preference with no threshold ("minimize capex") is not a constraint — no predicate, no margin — and belongs in space-level `.meta()` as an objective declaration.
+
+**`require` — the positive complement.** `space.require(e)` declares that feasible configs must *satisfy* `e`, sparing the user the mental inversion `.forbid` demands. It carries `origin="require"` and stores the **desired (feasible)** predicate `e` — the same *feasible-iff-satisfied* convention a bound-origin constraint uses — so introspection and `infeasibility_reasons` read in the user's own terms and the reported `margin` is `margin(e)` directly (positive is slack). Three-valued: `require(e)` is **violated iff `e` is definitely False**; an Unknown or True `e` is feasible (Unknown ⇒ inapplicable, `margin = None`), exactly `forbid(~e)`'s Kleene behavior. It is therefore feasibility-, margin-, **and** fingerprint-equal to `.forbid(~e)`: the fingerprint preimage canonicalizes every polarity-opposite constraint (`origin` `bound`, `require`, or `discourage`) to its baseline-polarity (negated) form, so `origin` stays semantics-neutral (see *Identity — Normalization pipeline*). The `require` origin is additive to the frozen format; no shipped document or known-answer vector depends on the prior origin set, so it introduces no format-version bump.
+
+**`discourage` — the soft complement of `encourage`.** `space.discourage(e)` declares that `e` names an *undesirable* state, the soft sibling of `.forbid` exactly as `.encourage` is the soft sibling of `.require`. It carries `origin="discourage"`, stores the bad-state predicate `e`, is **flagged as a violation iff `e` is satisfied** (mirroring `.forbid`'s Kleene polarity), and — being soft — **never affects feasibility** (it is dropped from the `sampling` fingerprint scope, and only `sample(..., reject_soft=True)` rejects on it). It is fingerprint-equal to `.encourage(~e)` and fingerprint-distinct from `.encourage(e)`: its preimage canonicalizes to `Not(e)` for the same reason `require` does — to keep the excluded `origin` from becoming semantics-load-bearing. Like `require`, the `discourage` origin is additive to the frozen format with no version bump.
 
 ### Margins
 
@@ -415,7 +420,7 @@ The reference sampler *may* recognize a bound-origin constraint whose referenced
 .sample_one(seed=None, reject_soft=False) -> dict
 ```
 
-`seed: int | numpy.random.Generator | None`. The reference sampler is an interpreter of declared measure: walk `topological_order`, decide activity, draw active generative params through their charts (weights for categorical/ordinal/bool/choice; Bernoulli-plus-size-rejection for subsets; uniform shuffle for permutations; `sample(rng)` for customs), reject on **forbids** and **requires** only (a `require` is a forbid of the negated condition). `reject_soft=True` additionally rejects `.constrain()` violations — rejection on a user-declared predicate, off by default. Default max retries 10,000 with an informative error naming the constraints that dominated rejection.
+`seed: int | numpy.random.Generator | None`. The reference sampler is an interpreter of declared measure: walk `topological_order`, decide activity, draw active generative params through their charts (weights for categorical/ordinal/bool/choice; Bernoulli-plus-size-rejection for subsets; uniform shuffle for permutations; `sample(rng)` for customs), reject on **forbids** and **requires** only (a `require` is a forbid of the negated condition). `reject_soft=True` additionally rejects soft-constraint (`.encourage()`/`.discourage()`) violations — rejection on a user-declared predicate, off by default. Default max retries 10,000 with an informative error naming the constraints that dominated rejection.
 
 **Rejection hostility.** Dense combinatorial forbids (pairwise `distinct`, conflict sets near packing limits) collapse rejection acceptance. The remedy is constructive: enforce the invariant inside a `.custom()` sampler or reparameterize (see Solver Integration, tiers). The retry-exhaustion error links here.
 
@@ -483,7 +488,7 @@ Relations: `is_feasible(c) == validate(c).valid`, both defined by param errors p
 
 `next_assignable` lists the `active_unset` params every one of whose referenced params (condition, bound-origin bound, repeat count) is `set` or `inactive`. **This coincides with completeness: `next_assignable(config) == []` iff `is_complete(config)`** — following `topological_order`, the first param that is not `set`/`inactive` is always `active_unset` with all references settled, so a driver loop assigning `next_assignable` halts exactly at completeness. You assign a lift's count param and its instance leaves, never the container.
 
-`remaining_domain` returns a per-kind descriptor — `RealRemaining`/`IntegerRemaining` (interval, grid-intersected if quantized), `ValueRemaining` (still-legal values for bool/categorical/ordinal/choice), `SubsetRemaining` (items forced-in / forced-out / free), `PermutationRemaining` (declared items, unreduced) — or `None` if the param is inactive. It starts from the declared domain and intersects the narrowing of every **hard** constraint (forbid, bound-origin, or require; soft `.constrain()` excluded) that, after substituting all other operands from the config, leaves the param as the sole unset **bare** operand of a comparison — the feasible side by origin (a bound or require stores the feasible predicate; a forbid stores its negation). **Guarantee level:** declared bounds ∩ constraints reducible with exactly one unset bare operand — bound-origin couplings included, so bound tightening falls out of the same rule. A param buried in arithmetic, two unset operands, or an unsupported operator is not reduced; full propagation across multi-param constraints is CSP solving — consumer territory. The descriptor is **sound, not complete**: it never excludes a still-feasible value, though it may admit values an unreduced coupling would forbid. `remaining_domain` on a struct/list container path — or an empty or otherwise non-existent param path — is a misuse `TypeError`: it names no leaf param, and `None` is reserved for an inactive param and must not be overloaded to mean "no such param."
+`remaining_domain` returns a per-kind descriptor — `RealRemaining`/`IntegerRemaining` (interval, grid-intersected if quantized), `ValueRemaining` (still-legal values for bool/categorical/ordinal/choice), `SubsetRemaining` (items forced-in / forced-out / free), `PermutationRemaining` (declared items, unreduced) — or `None` if the param is inactive. It starts from the declared domain and intersects the narrowing of every **hard** constraint (forbid, bound-origin, or require; the soft `.encourage()`/`.discourage()` excluded) that, after substituting all other operands from the config, leaves the param as the sole unset **bare** operand of a comparison — the feasible side by origin (a bound or require stores the feasible predicate; a forbid stores its negation). **Guarantee level:** declared bounds ∩ constraints reducible with exactly one unset bare operand — bound-origin couplings included, so bound tightening falls out of the same rule. A param buried in arithmetic, two unset operands, or an unsupported operator is not reduced; full propagation across multi-param constraints is CSP solving — consumer territory. The descriptor is **sound, not complete**: it never excludes a still-feasible value, though it may admit values an unreduced coupling would forbid. `remaining_domain` on a struct/list container path — or an empty or otherwise non-existent param path — is a misuse `TypeError`: it names no leaf param, and `None` is reserved for an inactive param and must not be overloaded to mean "no such param."
 
 ---
 
@@ -614,13 +619,13 @@ Equal fingerprints guarantee identical valid-config sets, sampling measure, path
 |---|---|---|
 | Params: definition path, kind, domain, prior, quantized, periodic, condition | ✓ | ✓ |
 | Conditions, forbids, requires | ✓ | ✓ |
-| Declared (`.constrain`) constraints | ✓ | — |
+| Declared (`.encourage`/`.discourage`) constraints | ✓ | — |
 | Defaults, tags, meta, anchors | ✓ | — |
 | Format version | ✓ | ✓ |
 
-`sampling` identifies feasible set + measure + chart geometry (warm-start/surrogate transfer); `full` is document identity. Derived fields (`Constraint.params`, `dependency_graph`) never enter the preimage. More generally, **no preimage-excluded field may be feasibility- or semantics-load-bearing** — in particular `Constraint.origin`, which is why a **feasible-predicate constraint** (`origin` `bound` or `require`, both storing the desired predicate and evaluated feasible-iff-satisfied) is canonicalized to its forbidden-state form in the pipeline below (step 1) rather than distinguished by `origin`.
+`sampling` identifies feasible set + measure + chart geometry (warm-start/surrogate transfer); `full` is document identity. Derived fields (`Constraint.params`, `dependency_graph`) never enter the preimage. More generally, **no preimage-excluded field may be feasibility- or semantics-load-bearing** — in particular `Constraint.origin`, which is why a **polarity-opposite constraint** (`origin` `bound`, `require`, or `discourage` — one that stores the polarity-inverse predicate from its `user`-origin baseline) is canonicalized to its baseline-polarity form in the pipeline below (step 1) rather than distinguished by `origin`.
 
-**Normalization pipeline:** (1) resolve and desugar — sugared and explicit spellings of the same space are fingerprint-equal, including variadic `.repeat(*counts)` vs. the chain and expression bounds vs. their manual envelope-plus-constraint expansion; a **feasible-predicate constraint** (a bound-origin sugar or a `require`; `origin` `bound` or `require`) is canonicalized to its **forbidden-state (negated) form** before hashing, by one of two provenance-specific mechanisms (D-38): a **bound** sugar, always a single top-level `Compare`, negates by **operator flip** (`x <= y` → `x > y`, so a bound `x <= y` is fingerprint-equal to its feasibility-equivalent `.forbid(x > y)`); a **`require`**, which stores an arbitrary predicate `e`, negates the **whole expression** (`e` → `~e`, so `require(e)` is fingerprint-equal to `.forbid(~e)`). Both are fingerprint-*distinct* from the feasibility-opposite spelling (`.forbid(x <= y)` / `.forbid(e)`). **Semantic vs. syntactic:** `require(x <= y)` and `.forbid(x > y)` name the *same feasible set* — a **feasibility** equivalence — but are fingerprint-**distinct**, because `require` canonicalizes to `~(x <= y)` (a `Not` node), not the operator-flipped `x > y`; equal fingerprints imply equal feasible sets, but the converse never holds, so distinct fingerprints for identical feasibility are allowed. This puts the feasibility-relevant polarity in the preimage while `origin` itself stays excluded; (2) declaration order preserved, not sorted — permuted params or variants differ; `.when(a).when(b)` folds in call order; (3) unordered collections sort — tags lexicographically, meta/anchors by key; (4) float canonicalization — `−0.0 → 0.0`; NaN/inf are resolution errors wherever floats occur in the IR; (5) type tags at **every `Any`-typed leaf** — categorical/ordinal values, subset/permutation `items`, `is_in`/`count_of`/`sum_over` literal operands, defaults (`default`, `list_default`, `element_default`) and anchor entries, and meta values — each encodes as `{"$t": "int", "v": 1}` with tags `bool|int|float|str|null`, so `categorical(1, 2)` ≠ `categorical(1.0, 2.0)`; list/dict-shaped values (struct/list defaults, nested meta) are tagged **recursively**, per scalar leaf, the same codec as a flat default; positions that never hold `Any`-typed application data (paths, `op`/`type_kind`/variant-name strings, `hard`/`periodic` booleans, literal repeat counts) stay untagged; (6) expressions encode as ASTs — node kind, children in operand order, paths as grammar strings, literals type-tagged.
+**Normalization pipeline:** (1) resolve and desugar — sugared and explicit spellings of the same space are fingerprint-equal, including variadic `.repeat(*counts)` vs. the chain and expression bounds vs. their manual envelope-plus-constraint expansion; a **polarity-opposite constraint** (a bound-origin sugar, a `require`, or a `discourage`; `origin` `bound`, `require`, or `discourage`) is canonicalized to its **baseline-polarity (negated) form** before hashing, by one of two provenance-specific mechanisms (D-38/D-39): a **bound** sugar, always a single top-level `Compare`, negates by **operator flip** (`x <= y` → `x > y`, so a bound `x <= y` is fingerprint-equal to its feasibility-equivalent `.forbid(x > y)`); a **`require`** or **`discourage`**, which store an arbitrary predicate `e`, negate the **whole expression** (`e` → `~e`, so `require(e)` is fingerprint-equal to `.forbid(~e)` and `discourage(e)` to `.encourage(~e)`). Each is fingerprint-*distinct* from the polarity-opposite spelling (`.forbid(x <= y)` / `.forbid(e)` / `.encourage(e)`). **Semantic vs. syntactic:** `require(x <= y)` and `.forbid(x > y)` name the *same feasible set* — a **feasibility** equivalence — but are fingerprint-**distinct**, because `require` canonicalizes to `~(x <= y)` (a `Not` node), not the operator-flipped `x > y`; equal fingerprints imply equal feasible sets, but the converse never holds, so distinct fingerprints for identical feasibility are allowed. This puts the polarity in the preimage while `origin` itself stays excluded; (2) declaration order preserved, not sorted — permuted params or variants differ; `.when(a).when(b)` folds in call order; (3) unordered collections sort — tags lexicographically, meta/anchors by key; (4) float canonicalization — `−0.0 → 0.0`; NaN/inf are resolution errors wherever floats occur in the IR; (5) type tags at **every `Any`-typed leaf** — categorical/ordinal values, subset/permutation `items`, `is_in`/`count_of`/`sum_over` literal operands, defaults (`default`, `list_default`, `element_default`) and anchor entries, and meta values — each encodes as `{"$t": "int", "v": 1}` with tags `bool|int|float|str|null`, so `categorical(1, 2)` ≠ `categorical(1.0, 2.0)`; list/dict-shaped values (struct/list defaults, nested meta) are tagged **recursively**, per scalar leaf, the same codec as a flat default; positions that never hold `Any`-typed application data (paths, `op`/`type_kind`/variant-name strings, `hard`/`periodic` booleans, literal repeat counts) stay untagged; (6) expressions encode as ASTs — node kind, children in operand order, paths as grammar strings, literals type-tagged.
 
 The normalized document is serialized per **RFC 8785 (JCS)** (via the `rfc8785` dependency; see Dependencies) and hashed with SHA-256. (JCS serializes `1.0` as `1` — which is precisely why type tags precede canonicalization.)
 
@@ -757,21 +762,28 @@ class Chart(Protocol):
 
 @dataclass
 class Constraint:
-    expr: BoolExpr                # a bound- or require-origin constraint stores the
-                                  #   DESIRED (feasible) predicate (x <= y), not the
-                                  #   forbidden state
-    hard: bool                    # True = forbid/require, False = declared
-    origin: str                   # "user" | "bound" | "require" — derived provenance;
-                                  #   excluded from fingerprint preimage. NOT feasibility-
-                                  #   neutral: a bound- or require-origin hard constraint is
-                                  #   feasible-iff-satisfied (opposite of a user forbid). The
-                                  #   preimage canonicalizes any such feasible-predicate
-                                  #   constraint to forbidden-state form so feasibility
-                                  #   polarity survives without `origin`
-                                  #   (see Identity — Normalization pipeline)
+    expr: BoolExpr                # stored as the author wrote it; a polarity-opposite
+                                  #   constraint (bound/require/discourage) stores the
+                                  #   predicate whose polarity is inverse to its user
+                                  #   baseline (require stores DESIRED x <= y; discourage
+                                  #   stores the BAD state)
+    hard: bool                    # True = forbid/require (feasibility), False = declared
+    origin: str                   # "user" | "bound" | "require" | "discourage" — derived
+                                  #   provenance; excluded from fingerprint preimage. NOT
+                                  #   semantics-neutral: it selects the stored polarity, so
+                                  #   the preimage canonicalizes a bound/require/discourage
+                                  #   to baseline-polarity form to keep `origin` non-load-
+                                  #   bearing (see Identity — Normalization pipeline).
+                                  #   Read `kind`/`feasible_when_satisfied` instead of `origin`.
     tags: frozenset[str]
     meta: dict[str, Any]
     params: frozenset[str]        # derived; excluded from fingerprint preimage
+
+    # Derived, non-serialized polarity accessors (read these, not origin/hard):
+    @property
+    def kind(self) -> str: ...     # "forbid"|"require"|"encourage"|"discourage"|"bound"
+    @property
+    def feasible_when_satisfied(self) -> bool: ...  # False only for forbid/discourage
 
 @dataclass
 class Condition:
@@ -786,6 +798,11 @@ class ConstraintEval:
     applicable: bool              # False when Kleene-Unknown on a complete config
     satisfied: bool | None        # None when inapplicable
     margin: float | None
+
+    @property
+    def violated(self) -> bool: ...  # polarity-correct across all kinds: an inapplicable
+                                     #   eval is never violated; else satisfied differs from
+                                     #   constraint.feasible_when_satisfied (== eval.is_violated)
 
 @dataclass
 class ValidationResult:
@@ -888,7 +905,7 @@ class Capabilities:
 7. Validate defaults (static domains), anchors, priors, weights
 8. Emit IR
 
-**Resolution timing.** Resolution is unspecified relative to construction. A space built in argument position (a choice variant or struct body) may carry a `.when()` condition that references a param binding only in an *enclosing* scope — the sole scoping rule's up-walk — which cannot resolve while that payload is built standalone. Reference, type, and cycle checks (rows 6, 7, 14) over such conditions are therefore deferred to a finalization pass over the fully-merged space, and any resulting error surfaces no later than the **first terminal operation** — `sample`, `sample_one`, `validate`, `validate_param`, `evaluate_constraints`, and (once implemented) `fingerprint`, `to_json`, and every introspection surface must trigger this finalization. The error is still a `ResolutionError` (phase R), computed from space structure alone with no config; only its timing moves. Constraint (`.forbid()`/`.constrain()`) references stay strict and raise eagerly, since cross-scope constraints use the down-reference-at-the-common-ancestor route instead. **Expression-bound** references are likewise eager (never deferred): the bound's chart envelope must be computed during the declaring scope's own resolution, before any enclosing scope merges, so a bound expression tolerates no enclosing-scope up-reference — a cross-scope bound coupling is written by hand at the common ancestor (see *Expression bounds are sugar*).
+**Resolution timing.** Resolution is unspecified relative to construction. A space built in argument position (a choice variant or struct body) may carry a `.when()` condition that references a param binding only in an *enclosing* scope — the sole scoping rule's up-walk — which cannot resolve while that payload is built standalone. Reference, type, and cycle checks (rows 6, 7, 14) over such conditions are therefore deferred to a finalization pass over the fully-merged space, and any resulting error surfaces no later than the **first terminal operation** — `sample`, `sample_one`, `validate`, `validate_param`, `evaluate_constraints`, and (once implemented) `fingerprint`, `to_json`, and every introspection surface must trigger this finalization. The error is still a `ResolutionError` (phase R), computed from space structure alone with no config; only its timing moves. Constraint (`.forbid()`/`.require()`/`.encourage()`/`.discourage()`) references stay strict and raise eagerly, since cross-scope constraints use the down-reference-at-the-common-ancestor route instead. **Expression-bound** references are likewise eager (never deferred): the bound's chart envelope must be computed during the declaring scope's own resolution, before any enclosing scope merges, so a bound expression tolerates no enclosing-scope up-reference — a cross-scope bound coupling is written by hand at the common ancestor (see *Expression bounds are sugar*).
 
 ### Error table
 

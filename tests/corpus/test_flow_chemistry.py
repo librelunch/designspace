@@ -45,7 +45,7 @@ def test_budget_constraint_is_evaluated_not_enforced():
         if "budget" in e.constraint.tags
     ]
     assert len(evals) == 200
-    # constrain() never affects feasibility, even when violated.
+    # encourage() never affects feasibility, even when violated.
     assert any(not e.satisfied for e in evals)
     assert all(space.validate(cfg).valid for cfg in configs)
 

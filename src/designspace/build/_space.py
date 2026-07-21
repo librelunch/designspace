@@ -1,7 +1,7 @@
 """Space: the resolved container returned by `ds.space()` (API.md, "Space").
 
 M1 exposes only what flat scalar spaces need; M2 adds feasibility
-(`.forbid()`/`.constrain()`), Kleene-aware validation, and the reference
+(`.forbid()`/`.encourage()`), Kleene-aware validation, and the reference
 sampler. `.anchor()` and space-level `.meta()` stay out of scope for M2 —
 PLAN.md.md's M2 Build line names only charts/eval/validate/
 sample, and no M2 gate or corpus item exercises anchors (see DECISIONS.md,
@@ -64,12 +64,21 @@ class Space:
             self, conditions, hard=True, tags=tags, meta=meta, origin="require"
         )
 
-    def constrain(
+    def encourage(
         self, *conditions: BoolExpr, tags: tuple[str, ...] = (), meta: dict[str, Any] | None = None
     ) -> Space:
         from designspace.resolve._constraints import add_constraints
 
         return add_constraints(self, conditions, hard=False, tags=tags, meta=meta)
+
+    def discourage(
+        self, *conditions: BoolExpr, tags: tuple[str, ...] = (), meta: dict[str, Any] | None = None
+    ) -> Space:
+        from designspace.resolve._constraints import add_constraints
+
+        return add_constraints(
+            self, conditions, hard=False, tags=tags, meta=meta, origin="discourage"
+        )
 
     def validate(self, config: dict[str, Any]) -> ValidationResult:
         from designspace.validate import validate as _validate

@@ -3,12 +3,12 @@ sample/): Kleene-evaluate the expression, and if it isn't Unknown, attach
 its margin (API.md, "Expressions" rule 4; "Constraints and Feasibility").
 
 `Constraint.expr` is stored exactly as the author wrote it, for both
-`.forbid()` and `.constrain()` — introspection and the fingerprint's
+`.forbid()` and `.encourage()` — introspection and the fingerprint's
 structural-identity model both need the literal predicate, not a silently
 negated one. `satisfied`/`margin` are therefore a *structural* property of
 the expression (the composition-invariant conformance test builds raw
 `BoolExpr` trees with no hard/soft framing at all), which means `.forbid()`
-and `.constrain()` disagree about which value of `satisfied` is "good":
+and `.encourage()` disagree about which value of `satisfied` is "good":
 a forbid's expr names the *forbidden* state (`lr > 0.1` — bad when true),
 while a declared constraint's expr names the *desired* state (`sum <= 4096`
 — good when true). `is_violated` below is the one place that polarity
@@ -76,29 +76,16 @@ def instance_constraint_evals(
 
 
 def is_violated(ce: ConstraintEval) -> bool:
-    """Whether this evaluation counts against feasibility (forbids) or is
-    flagged as a violation (declared constraints).
+    """Whether this evaluation counts against feasibility (a hard
+    forbid/require) or is flagged as a violation (a soft encourage/discourage).
 
-    Inapplicable (`None`) is never a violation (rule 4). A forbid's stored
-    expr names the forbidden state, so it's violated when `satisfied is
-    True`; a declared constraint's expr names the desired state, so it's
-    violated when `satisfied is False`. Both collapse to one identity:
-    `satisfied == hard`.
-
-    A **feasible-predicate** constraint — `origin` `"bound"` (M5,
-    resolve/_bounds.py) or `"require"` (M7.5, `space.require`) — is the
-    exception: it is always `hard=True` (it must affect feasibility, exactly
-    like a forbid) but stores the *desired* predicate verbatim —
-    `ds.param("x") <= ds.param("y")`, matching API.md's sugar description and
-    yielding the spec's stated `y - x` margin, neither of which the
-    forbidden-state form (`x > y`) could give at once (its margin would be
-    `x - y`). So its `hard`/polarity pairing is `constrain`-shaped (violated
-    iff not satisfied) even though its feasibility impact is `forbid`-shaped —
-    `origin` (already provenance, already excluded from the fingerprint
-    preimage) is what the two conventions key off instead of `hard` alone.
-    This gives `require(e)` its Kleene polarity: violated iff `e` is definitely
-    False; an Unknown or True `e` is feasible (Unknown ⇒ inapplicable).
+    Thin alias for `ConstraintEval.violated` (ir/_results.py), kept as the
+    name validate/ and sample/ already import. The polarity — a `forbid`/
+    `discourage` names the *forbidden* state (violated when satisfied), the
+    other verbs name the *desired* state (violated when not satisfied) — is
+    centralized in `Constraint.feasible_when_satisfied`, so a bound sugar and a
+    `require` (both storing the desired predicate) get the right Kleene
+    behavior for free: violated iff the predicate is definitely False; an
+    Unknown or True predicate is feasible (Unknown ⇒ inapplicable, rule 4).
     """
-    if ce.constraint.origin in ("bound", "require"):
-        return ce.applicable and ce.satisfied is False
-    return ce.applicable and ce.satisfied == ce.constraint.hard
+    return ce.violated

@@ -4,12 +4,11 @@
 
 - `"document"` — `to_json`'s full-fidelity shape: every field, `origin` kept,
   every constraint (hard and declared) present, expression as stored
-  (never feasible-predicate-canonicalized — that canonicalization is
-  preimage-only).
-- `"full"` — the fingerprint `full` scope: `origin` excluded, feasible-predicate
-  constraints (`origin` `"bound"` or `"require"`) canonicalized to
-  forbidden-state form (D-29(4)/D-38), default/tags/meta kept, both hard and
-  declared constraints kept.
+  (never polarity-canonicalized — that canonicalization is preimage-only).
+- `"full"` — the fingerprint `full` scope: `origin` excluded, polarity-opposite
+  constraints (`origin` `"bound"`, `"require"`, or `"discourage"`) canonicalized
+  to their baseline-polarity form (D-29(4)/D-38/D-39), default/tags/meta kept,
+  both hard and declared constraints kept.
 - `"sampling"` — the fingerprint `sampling` scope: as `full` but declared
   (`hard=False`) constraints and per-param default/tags/meta dropped
   (API_v3.md's scope table; DECISIONS.md D-33 additionally puts `quantized`/
@@ -293,11 +292,12 @@ def _decode_list_domain(tree: Any, path: str) -> ListDomain:
 # -- Constraint / Condition -----------------------------------------------
 
 
-def _canonicalize_feasible_predicate(c: Constraint) -> Constraint:
-    """D-29(4)/D-38: a **feasible-predicate** constraint stores the DESIRED
-    predicate (`x <= y`); the preimage canonicalizes it to its forbidden-state
-    (negated) form so fingerprint equality tracks feasibility despite `origin`
-    being excluded from the preimage. Two origins, two mechanisms:
+def _canonicalize_polarity(c: Constraint) -> Constraint:
+    """D-29(4)/D-38/D-39: normalize a constraint's stored predicate to its
+    baseline polarity before hashing, so `origin` (excluded from the preimage)
+    is never semantics-load-bearing. A verb that stores the polarity-opposite
+    predicate from its `origin="user"` sibling — `require` vs `forbid`,
+    `discourage` vs `encourage` — or a `bound` sugar is negated back:
 
     - `origin="bound"` (M5) is always a single top-level
       `Compare(op, ParamExpr(target), other)` (resolve/_bounds.py
@@ -305,13 +305,18 @@ def _canonicalize_feasible_predicate(c: Constraint) -> Constraint:
       (`x <= y` → `x > y`) — byte-identical to a user `.forbid(x > y)`.
       Element-level constraints are never bound-origin (repeat-element bound
       expressions aren't supported yet, D-29).
-    - `origin="require"` (M7.5) stores an arbitrary `BoolExpr`, so its negation
-      is a **whole-expression** `Not(...)` — byte-identical to `.forbid(~e)`.
-      (D-38: this is why `require(x<=y)` is fingerprint-equal to
-      `.forbid(~(x<=y))` but *not* to the operator-flipped `.forbid(x>y)`,
-      even though both name the same feasible set — a semantic equivalence,
-      not a syntactic one. "Equal fingerprints ⇒ equal feasible sets" is
-      one-way, so distinct fingerprints for identical feasibility are allowed.)
+    - `origin="require"` (M7.5) and `origin="discourage"` (M7.6) store an
+      arbitrary `BoolExpr`, so the negation is a **whole-expression** `Not(...)`.
+      `require(e)` is thus fingerprint-equal to `.forbid(~e)`, and
+      `discourage(e)` to `.encourage(~e)`. (D-38: `require(x<=y)` is *not*
+      fingerprint-equal to the operator-flipped `.forbid(x>y)`, even though both
+      name the same feasible set — a semantic equivalence, not a syntactic one.
+      "Equal fingerprints ⇒ equal feasible sets" is one-way, so distinct
+      fingerprints for identical feasibility are allowed.)
+
+    Without this, `discourage(e)` and `encourage(e)` — same `(expr, hard)`, only
+    `origin` differing, opposite polarity — would share a preimage, making the
+    excluded `origin` load-bearing.
     """
     if c.origin == "bound":
         expr = c.expr
@@ -319,7 +324,7 @@ def _canonicalize_feasible_predicate(c: Constraint) -> Constraint:
         flip = {"le": "gt", "ge": "lt"}
         assert expr.op in flip, f"unexpected bound-origin comparison op {expr.op!r}"
         return replace(c, expr=Compare(flip[expr.op], expr.left, expr.right))
-    if c.origin == "require":
+    if c.origin in ("require", "discourage"):
         return replace(c, expr=Not(c.expr))
     return c
 
@@ -329,7 +334,7 @@ def encode_constraint(c: Constraint, scope: Scope) -> Any:
     constraint at `sampling`)."""
     if scope == "sampling" and not c.hard:
         return None
-    expr = c.expr if scope == "document" else _canonicalize_feasible_predicate(c).expr
+    expr = c.expr if scope == "document" else _canonicalize_polarity(c).expr
     tree: dict[str, Any] = {"expr": encode_expr(expr), "hard": c.hard}
     if scope == "document":
         tree["origin"] = c.origin

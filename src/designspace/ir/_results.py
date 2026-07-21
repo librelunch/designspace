@@ -23,6 +23,19 @@ class ConstraintEval:
     satisfied: bool | None
     margin: float | None
 
+    @property
+    def violated(self) -> bool:
+        """Whether this evaluation counts against feasibility (for a hard
+        forbid/require) or is flagged as a violation (for a soft
+        encourage/discourage) — **polarity-correct across all four kinds**.
+        An inapplicable (Kleene-Unknown) eval is never violated (rule 4);
+        otherwise the stored predicate is violated when ``satisfied`` differs
+        from the constraint's desired polarity. This is the public,
+        display-ready reading the reference sampler and ``validate`` use
+        internally (``eval.is_violated``); see
+        ``Constraint.feasible_when_satisfied``."""
+        return self.applicable and self.satisfied is not self.constraint.feasible_when_satisfied
+
 
 @dataclass(frozen=True)
 class ParamError:

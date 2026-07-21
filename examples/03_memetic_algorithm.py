@@ -15,6 +15,9 @@ Concepts introduced here
 - A ``.subset(...)`` payload inside a variant: an unordered set of neighborhoods.
 - Vector aggregates over a lift: ``.count_of(...)`` (in a feasibility
   ``forbid``) and ``.is_sorted(...)`` / ``.sum()`` over a scalar lift.
+- The constraint quartet — hard ``forbid``/``require`` (feasibility) and soft
+  ``encourage``/``discourage`` (declared, reported, never enforced) — read back
+  polarity-agnostically via ``constraint.kind`` and ``ConstraintEval.violated``.
 - Batch sampling with ``sample_dicts`` and a ``flatten`` / ``unflatten``
   round-trip on a nested config.
 
@@ -67,16 +70,18 @@ def build_space() -> ds.Space:
         .forbid(
             ds.param("pipeline").count_of("local_search") < 1,
         )
-        # Declared: keep the pipeline from being mutation-heavy. Reported with
-        # an integer margin, never enforced.
-        .constrain(
-            ds.param("pipeline").count_of("mutation") <= 2,
+        # Declared, *bad*-state polarity: discourage a mutation-heavy pipeline.
+        # `discourage(e)` names the undesirable state (the soft sibling of
+        # `forbid`); it is reported with a margin but never affects feasibility.
+        .discourage(
+            ds.param("pipeline").count_of("mutation") > 2,
             tags=("diversity-cap",),
         )
-        # Declared: restart intensities should decrease across stages (a
-        # cooling schedule). `is_sorted` over the scalar lift; boolean, so its
-        # margin is None.
-        .constrain(
+        # Declared, *good*-state polarity: encourage restart intensities that
+        # decrease across stages (a cooling schedule). `encourage(e)` names the
+        # desired state (the soft sibling of `require`); `is_sorted` is boolean,
+        # so its margin is None.
+        .encourage(
             ds.param("restart_intensity").is_sorted(descending=True),
             tags=("annealing-schedule",),
         )
@@ -117,25 +122,28 @@ def main() -> None:
     print(f"  flat keys: {list(flat)[:4]} ... ({len(flat)} total)")
     print(f"  unflatten(flatten(cfg)) == cfg: {restored == cfg}")
 
-    # Constraints on that config. Mind the polarity: a forbid's `satisfied`
-    # refers to its *forbidden* predicate, so satisfied=True would mean
-    # infeasible. Because this config is a feasible draw, the forbid reads as
-    # clear. We render forbids as feasibility and keep raw satisfied/margin only
-    # for `.constrain()`, where positive margin = slack reads intuitively.
+    # Constraints on that config, read through the polarity-aware accessors so
+    # the display is correct regardless of the verb. `constraint.kind` labels it
+    # ("forbid"/"require"/"encourage"/"discourage") and `ce.violated` folds in
+    # each verb's polarity — a forbid/discourage names a *bad* state (violated
+    # when satisfied), a require/encourage a *good* one — so you never re-derive
+    # it from `satisfied` by hand. Swap any .forbid<->.require or
+    # .encourage<->.discourage above (flipping the condition) and this block
+    # still reads right.
     print("\nConstraints on the sampled config:")
     for ce in space.evaluate_constraints(cfg):
-        tag = ", ".join(sorted(ce.constraint.tags)) or "-"
-        if ce.constraint.hard:
+        c = ce.constraint
+        tag = ", ".join(sorted(c.tags)) or "-"
+        if c.hard:  # forbid / require -> feasibility
             if not ce.applicable:
                 verdict = "inapplicable (Unknown)"
-            elif ce.satisfied:
-                verdict = "TRIPPED  -> infeasible"
             else:
-                verdict = "clear    -> feasible"
-            print(f"  forbid  [{tag:18}] {verdict}")
-        else:
+                verdict = "TRIPPED  -> infeasible" if ce.violated else "clear    -> feasible"
+            print(f"  {c.kind:10}[{tag:18}] {verdict}")
+        else:  # encourage / discourage -> reported, never enforced
             margin = f"{ce.margin:+.2f}" if ce.margin is not None else " n/a"
-            print(f"  declare [{tag:18}] satisfied={ce.satisfied!s:5} margin={margin}")
+            flag = "flagged" if ce.violated else "ok     "
+            print(f"  {c.kind:10}[{tag:18}] {flag} satisfied={ce.satisfied!s:5} margin={margin}")
 
     # And a hand-written infeasible one: a pipeline of only evolutionary ops.
     print("\nA pipeline with no local_search step:")

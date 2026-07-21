@@ -1,0 +1,72 @@
+{
+  "fingerprint_full": "1:full:0e4b8b6b64a664564a81b9017a9c1dd0a9265452daf9389e9d727a4a4761faa9",
+  "fingerprint_sampling": "1:sampling:1fd4a15559185abd4180b42800da0456fe9d873f0ce02c4dd5d1838b9412a340",
+  "to_json": {
+    "conditions": [],
+    "constraints": [
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "x"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "float",
+                "v": 0.5
+              }
+            }
+          ],
+          "kind": "ge"
+        },
+        "hard": false,
+        "origin": "user"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "k"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "int",
+                "v": 8
+              }
+            }
+          ],
+          "kind": "gt"
+        },
+        "hard": false,
+        "origin": "discourage"
+      }
+    ],
+    "params": [
+      {
+        "domain": {
+          "hi": 1.0,
+          "kind": "real",
+          "lo": 0.0
+        },
+        "kind": "real",
+        "path": "x",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 10,
+          "kind": "integer",
+          "lo": 0
+        },
+        "kind": "integer",
+        "path": "k",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}

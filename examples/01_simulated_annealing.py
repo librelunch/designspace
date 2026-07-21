@@ -15,7 +15,7 @@ Concepts introduced here
 - A single conditional parameter via ``.when(...)`` — inactive parameters are
   simply *absent* from a config, never ``None``.
 - ``.forbid(...)`` defines feasibility (the reference sampler respects it);
-  ``.constrain(...)`` only annotates (it is reported, never enforced).
+  ``.encourage(...)`` only annotates (it is reported, never enforced).
 
 Run it:  ``uv run python examples/01_simulated_annealing.py``
 """
@@ -57,7 +57,7 @@ def build_space() -> ds.Space:
         # Declared constraints never change feasibility or the sampler; they
         # ride along in ``evaluate_constraints`` with a signed margin so a
         # consumer can weigh them however it likes.
-        .constrain(
+        .encourage(
             ds.param("cooling_rate") >= 0.95,
             tags=("slow-cooling",),
         )

@@ -160,7 +160,7 @@ class TestScopeMonotonicity:
     def test_declared_constraint_is_sampling_equal_full_distinct(self):
         base = ds.space(ds.param("x").real(0, 1))
         a = base
-        b = base.constrain(ds.param("x") > 0.9)
+        b = base.encourage(ds.param("x") > 0.9)
         assert a.fingerprint("sampling") == b.fingerprint("sampling")
         assert a.fingerprint("full") != b.fingerprint("full")
 
@@ -209,7 +209,7 @@ class TestRoundTrip:
                 ds.param("lifted").real(0, 1).default(0.5).repeat(3),
             )
             .forbid(ds.param("lr") < 1e-4)
-            .constrain(ds.param("n") > 1, tags=("soft",), meta={"note": "x"})
+            .encourage(ds.param("n") > 1, tags=("soft",), meta={"note": "x"})
         ]
 
     def test_fingerprint_round_trips_at_both_scopes(self):
@@ -245,7 +245,7 @@ class TestNestedMetaValues:
         assert restored.fingerprint() == space.fingerprint()
 
     def test_constraint_meta_list_and_dict_round_trip(self):
-        space = ds.space(ds.param("x").real(0, 1)).constrain(
+        space = ds.space(ds.param("x").real(0, 1)).encourage(
             ds.param("x") > 0.5, meta={"history": [{"step": 1}, {"step": 2}]}
         )
         restored = Space.from_json(space.to_json())

@@ -195,11 +195,11 @@ class TestVectorAggregateMethods:
 
     def test_length_on_non_lift_raises(self):
         with pytest.raises(ResolutionError):
-            ds.space(ds.param("x").real(0.0, 1.0)).constrain(ds.param("x").length() > 0)
+            ds.space(ds.param("x").real(0.0, 1.0)).encourage(ds.param("x").length() > 0)
 
     def test_sum_on_non_lift_raises(self):
         with pytest.raises(ResolutionError):
-            ds.space(ds.param("x").real(0.0, 1.0)).constrain(ds.param("x").sum() > 0)
+            ds.space(ds.param("x").real(0.0, 1.0)).encourage(ds.param("x").sum() > 0)
 
 
 class TestValidateParamOnInstancePaths:

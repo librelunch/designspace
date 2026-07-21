@@ -4,11 +4,11 @@
 - Sign convention per comparison form.
 - Boolean composition preserves the satisfaction invariant (`&` holds iff
   min(margin) >= 0, `|` holds iff max(margin) >= 0, `~p` negates), tested
-  with hypothesis over random expression trees — no forbid/constrain
+  with hypothesis over random expression trees — no forbid/encourage
   wrapper, since margin is a structural property of the expression alone
   (DECISIONS.md D-4).
 - `-0.0` never leaks out as a distinct sign from `0.0`.
-- `.forbid()`/`.constrain()` polarity (D-4): a forbid's stored predicate
+- `.forbid()`/`.encourage()` polarity (D-4): a forbid's stored predicate
   names the *forbidden* state; a declared constraint's names the *desired*
   state.
 - Continuous-`==` warning (row 25).
@@ -186,7 +186,7 @@ def test_composition_preserves_satisfaction_invariant(data):
     assert not_val == (m_left < 0)
 
 
-class TestForbidConstrainPolarity:
+class TestForbidEncouragePolarity:
     """D-4: a forbid's predicate names the forbidden (bad) state; a
     declared constraint's predicate names the desired (good) state."""
 
@@ -195,12 +195,12 @@ class TestForbidConstrainPolarity:
         assert space.validate({"lr": 0.9}).valid is False
         assert space.validate({"lr": 0.1}).valid is True
 
-    def test_constrain_never_affects_validity_but_flags_violation(self):
-        space = ds.space(ds.param("x").real(0.0, 100.0)).constrain(ds.param("x") <= 10.0)
+    def test_encourage_never_affects_validity_but_flags_violation(self):
+        space = ds.space(ds.param("x").real(0.0, 100.0)).encourage(ds.param("x") <= 10.0)
         result_ok = space.validate({"x": 5.0})
         result_bad = space.validate({"x": 50.0})
         assert result_ok.valid is True
-        assert result_bad.valid is True  # constrain never affects feasibility
+        assert result_bad.valid is True  # encourage never affects feasibility
         assert result_ok.constraint_evals[0].satisfied is True
         assert result_bad.constraint_evals[0].satisfied is False
 
@@ -215,19 +215,19 @@ class TestContinuousEqualityWarning:
     def test_warns_on_unquantized_real_equality(self):
         space = ds.space(ds.param("x").real(0.0, 1.0))
         with pytest.warns(UserWarning, match="measure-zero"):
-            space.constrain(ds.param("x") == 0.5)
+            space.encourage(ds.param("x") == 0.5)
 
     def test_no_warning_for_quantized_real(self):
         space = ds.space(ds.param("x").real(0.0, 1.0).quantized(step=0.1))
         with warnings.catch_warnings():
             warnings.simplefilter("error")
-            space.constrain(ds.param("x") == 0.5)
+            space.encourage(ds.param("x") == 0.5)
 
     def test_no_warning_for_categorical(self):
         space = ds.space(ds.param("c").categorical("a", "b"))
         with warnings.catch_warnings():
             warnings.simplefilter("error")
-            space.constrain(ds.param("c") == "a")
+            space.encourage(ds.param("c") == "a")
 
     def test_no_warning_when_real_compared_to_integer(self):
         space = ds.space(
@@ -236,4 +236,4 @@ class TestContinuousEqualityWarning:
         )
         with warnings.catch_warnings():
             warnings.simplefilter("error")
-            space.constrain(ds.param("x") == ds.param("n"))
+            space.encourage(ds.param("x") == ds.param("n"))

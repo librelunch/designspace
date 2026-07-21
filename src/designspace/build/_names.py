@@ -5,7 +5,7 @@ Error-table row 5: names may not contain the path grammar's reserved
 characters, regardless of syntactic route.
 
 `check_meta_json_serializable` backs row 23 (`.meta()`/`.forbid()`/
-`.constrain()` tags and meta): the error table's own wording is
+`.encourage()` tags and meta): the error table's own wording is
 "non-JSON-serializable meta value" — a list/dict value passes that bar. The
 Identity normalization pipeline's step 5 ("meta values encode as {"$t": ...,
 "v": ...}") describes how a *scalar* leaf gets tagged, not a ceiling on

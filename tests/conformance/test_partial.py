@@ -213,7 +213,7 @@ class TestPartialEvalPartition:
         space = ds.space(
             ds.param("flag").bool(),
             ds.param("x").real(0.0, 1.0).when(ds.param("flag")),
-        ).constrain(ds.param("x") <= 0.5)
+        ).encourage(ds.param("x") <= 0.5)
         pe = space.evaluate_partial({"flag": False})
         assert len(pe.evaluable_constraints) == 1
         ce = pe.evaluable_constraints[0]
@@ -223,13 +223,13 @@ class TestPartialEvalPartition:
         space = ds.space(
             ds.param("flag").bool(),
             ds.param("x").real(0.0, 1.0).when(ds.param("flag")),
-        ).constrain(ds.param("x") <= 0.5)
+        ).encourage(ds.param("x") <= 0.5)
         pe = space.evaluate_partial({"flag": True})
         assert len(pe.pending_constraints) == 1
         assert len(pe.evaluable_constraints) == 0
 
     def test_determined_constraint_reports_margin(self):
-        space = ds.space(ds.param("x").real(0.0, 1.0)).constrain(ds.param("x") <= 0.5)
+        space = ds.space(ds.param("x").real(0.0, 1.0)).encourage(ds.param("x") <= 0.5)
         pe = space.evaluate_partial({"x": 0.3})
         assert len(pe.evaluable_constraints) == 1
         ce = pe.evaluable_constraints[0]

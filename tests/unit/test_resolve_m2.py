@@ -1,5 +1,5 @@
 """M2 gate: chart-family domain errors (row 9), external-prior support (row
-19), and `.forbid()`/`.constrain()` resolution (rows 6/14 generalized to
+19), and `.forbid()`/`.encourage()` resolution (rows 6/14 generalized to
 constraints, row 23 tags/meta).
 
 Per milestone gate: every implemented error-table row has a test asserting
@@ -87,16 +87,16 @@ class TestRow19ExternalPriorSupport:
         assert 0.0 <= v <= 1.0
 
 
-class TestForbidConstrainReferenceAndTypeChecks:
+class TestForbidEncourageReferenceAndTypeChecks:
     def test_forbid_references_undeclared_param_raises(self):
         space = ds.space(ds.param("x").real(0.0, 1.0))
         with pytest.raises(ResolutionError, match="'y'"):
             space.forbid(ds.param("y") > 0.5)
 
-    def test_constrain_arithmetic_on_categorical_raises(self):
+    def test_encourage_arithmetic_on_categorical_raises(self):
         space = ds.space(ds.param("algo").categorical("sgd", "adam"))
         with pytest.raises(ResolutionError, match="'algo'"):
-            space.constrain((ds.param("algo") + 1) == 2)  # type: ignore[operator]
+            space.encourage((ds.param("algo") + 1) == 2)  # type: ignore[operator]
 
     def test_forbid_non_boolexpr_raises_typeerror(self):
         space = ds.space(ds.param("x").real(0.0, 1.0))
@@ -104,7 +104,7 @@ class TestForbidConstrainReferenceAndTypeChecks:
             space.forbid(ds.param("x") + 1)  # type: ignore[arg-type]
 
 
-class TestRow23ForbidConstrainTagsMeta:
+class TestRow23ForbidEncourageTagsMeta:
     def test_empty_string_tag_raises(self):
         space = ds.space(ds.param("x").real(0.0, 1.0))
         with pytest.raises(ResolutionError, match="forbid"):
@@ -112,15 +112,15 @@ class TestRow23ForbidConstrainTagsMeta:
 
     def test_non_json_serializable_meta_raises(self):
         space = ds.space(ds.param("x").real(0.0, 1.0))
-        with pytest.raises(ResolutionError, match="constrain"):
-            space.constrain(ds.param("x") > 0.5, meta={"k": object()})
+        with pytest.raises(ResolutionError, match="encourage"):
+            space.encourage(ds.param("x") > 0.5, meta={"k": object()})
 
     def test_list_meta_value_is_accepted(self):
         # DECISIONS.md D-36 (corrected): row 23 gates "JSON-serializable"
         # (a list passes that bar), not "scalar" — a nested list/dict meta
         # value recurses through the same codec as `default`/`list_default`
         # (see tests/conformance/test_identity.py for the round-trip law).
-        space = ds.space(ds.param("x").real(0.0, 1.0)).constrain(
+        space = ds.space(ds.param("x").real(0.0, 1.0)).encourage(
             ds.param("x") > 0.5, meta={"k": [1, 2]}
         )
         assert dict(space.constraints[0].meta) == {"k": [1, 2]}
@@ -137,8 +137,8 @@ class TestRow23ForbidConstrainTagsMeta:
         # not left to crash later at fingerprint()/to_json() (DECISIONS.md
         # D-36).
         space = ds.space(ds.param("x").real(0.0, 1.0))
-        with pytest.raises(ResolutionError, match="constrain"):
-            space.constrain(ds.param("x") > 0.5, meta={"k": (1, 2)})
+        with pytest.raises(ResolutionError, match="encourage"):
+            space.encourage(ds.param("x") > 0.5, meta={"k": (1, 2)})
 
     def test_non_string_dict_key_in_meta_raises(self):
         space = ds.space(ds.param("x").real(0.0, 1.0))
@@ -151,13 +151,13 @@ class TestRow23ForbidConstrainTagsMeta:
         # at construction rather than crashing from_json with a bare
         # KeyError later (DECISIONS.md D-36).
         space = ds.space(ds.param("x").real(0.0, 1.0))
-        with pytest.raises(ResolutionError, match="constrain"):
-            space.constrain(ds.param("x") > 0.5, meta={"cfg": {"$t": "oops"}})
+        with pytest.raises(ResolutionError, match="encourage"):
+            space.encourage(ds.param("x") > 0.5, meta={"cfg": {"$t": "oops"}})
         with pytest.raises(ResolutionError, match="forbid"):
             space.forbid(ds.param("x") > 0.5, meta={"$opaque": True})
 
 
-class TestForbidConstrainStructural:
+class TestForbidEncourageStructural:
     def test_each_condition_is_its_own_constraint(self):
         space = ds.space(ds.param("x").real(0.0, 1.0), ds.param("y").real(0.0, 1.0)).forbid(
             ds.param("x") > 0.9,
@@ -166,14 +166,14 @@ class TestForbidConstrainStructural:
         assert len(space.constraints) == 2
         assert all(c.hard for c in space.constraints)
 
-    def test_forbid_and_constrain_are_immutable_and_chainable(self):
+    def test_forbid_and_encourage_are_immutable_and_chainable(self):
         base = ds.space(ds.param("x").real(0.0, 1.0))
         forbidden = base.forbid(ds.param("x") > 0.9)
         assert len(base.constraints) == 0
         assert len(forbidden.constraints) == 1
 
     def test_tags_and_meta_stored_on_constraint(self):
-        space = ds.space(ds.param("x").real(0.0, 1.0)).constrain(
+        space = ds.space(ds.param("x").real(0.0, 1.0)).encourage(
             ds.param("x") > 0.1, tags=("budget",), meta={"note": "example"}
         )
         c = space.constraints[0]

@@ -38,12 +38,40 @@ class Condition:
 class Constraint:
     expr: BoolExpr
     hard: bool
-    # "user" | "bound" | "require" — derived provenance, excluded from the
-    # fingerprint preimage. A "bound" or "require" hard constraint stores the
-    # DESIRED (feasible) predicate and is feasible-iff-satisfied (opposite of a
-    # user forbid); the preimage canonicalizes it to forbidden-state form so
-    # feasibility polarity survives without `origin` (API.md, "IR"; "Identity").
+    # "user" | "bound" | "require" | "discourage" — derived provenance,
+    # excluded from the fingerprint preimage. Storage is an implementation
+    # detail; read `kind`/`feasible_when_satisfied` instead. A constraint whose
+    # stored predicate is the polarity-opposite of its `origin="user"` baseline
+    # (require vs forbid; discourage vs encourage) or a bound sugar stores that
+    # predicate verbatim; the preimage canonicalizes it to the baseline polarity
+    # so `origin` stays non-load-bearing (API.md, "IR"; "Identity").
     origin: str
     tags: frozenset[str]
     meta: MappingProxyType[str, Any]
     params: frozenset[str]
+
+    @property
+    def kind(self) -> str:
+        """The builder verb that created this constraint, for display and
+        dispatch: ``"forbid"`` | ``"require"`` | ``"encourage"`` |
+        ``"discourage"`` | ``"bound"`` (the last is the implicit constraint an
+        expression bound desugars to). Derived from ``(origin, hard)`` so
+        consumers never re-derive polarity by hand (API.md, "Constraints")."""
+        if self.origin == "bound":
+            return "bound"
+        if self.origin == "require":
+            return "require"
+        if self.origin == "discourage":
+            return "discourage"
+        return "forbid" if self.hard else "encourage"
+
+    @property
+    def feasible_when_satisfied(self) -> bool:
+        """Whether the stored ``expr`` is the **desired** predicate (satisfied
+        is the good outcome) rather than a **forbidden** one (satisfied is the
+        bad outcome). ``False`` only for ``forbid``/``discourage`` — the two
+        verbs that name a bad state. This is the single source of truth for
+        "is this constraint supposed to hold?"; ``ConstraintEval.violated``
+        reads it, so forbid/require/encourage/discourage all report
+        consistently (API.md, "Constraints and Feasibility")."""
+        return self.kind not in ("forbid", "discourage")

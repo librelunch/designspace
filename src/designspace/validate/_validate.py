@@ -3,7 +3,7 @@
 (API.md, "Space — Validation").
 
 Feasibility is param validity plus hard constraints (forbids) only —
-`.constrain()` declarations never affect `valid`, matching
+`.encourage()` declarations never affect `valid`, matching
 "Feasibility is defined by param validity plus forbids only."
 
 `validate()`/`evaluate_constraints()` take the canonical *nested* config;
@@ -328,6 +328,8 @@ def infeasibility_reasons(space: Space, config: dict[str, Any]) -> list[str]:
     result = validate(space, config)
     reasons = [f"{pe.param}: {pe.reason}" for pe in result.param_errors]
     for ce in result.constraint_evals:
-        if ce.constraint.hard and is_violated(ce):
-            reasons.append(f"forbid violated (margin={ce.margin}): {ce.constraint.expr.kind}")
+        if ce.constraint.hard and ce.violated:
+            reasons.append(
+                f"{ce.constraint.kind} violated (margin={ce.margin}): {ce.constraint.expr.kind}"
+            )
     return reasons

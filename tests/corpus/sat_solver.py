@@ -28,7 +28,7 @@ def build_space() -> Space:
         .forbid(
             (ds.param("verbosity") >= "debug") & (ds.param("timeout_s") < 60),
         )
-        .constrain(
+        .encourage(
             ds.param("verbosity") > "silent",
             tags=("observability",),
         )

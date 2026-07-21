@@ -81,14 +81,14 @@ class TestSampleDicts:
 
 class TestRejectSoft:
     def test_reject_soft_false_ignores_declared_constraints(self):
-        space = ds.space(ds.param("x").real(0.0, 1.0)).constrain(ds.param("x") <= 0.1)
+        space = ds.space(ds.param("x").real(0.0, 1.0)).encourage(ds.param("x") <= 0.1)
         # With reject_soft=False (default), draws violating the declared
         # constraint are still accepted.
         draws = [space.sample_one(seed=i, reject_soft=False) for i in range(30)]
         assert any(cfg["x"] > 0.1 for cfg in draws)
 
     def test_reject_soft_true_also_rejects_declared_violations(self):
-        space = ds.space(ds.param("x").real(0.0, 1.0)).constrain(ds.param("x") <= 0.5)
+        space = ds.space(ds.param("x").real(0.0, 1.0)).encourage(ds.param("x") <= 0.5)
         for i in range(30):
             cfg = space.sample_one(seed=i, reject_soft=True)
             assert cfg["x"] <= 0.5

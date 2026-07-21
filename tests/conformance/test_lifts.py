@@ -86,7 +86,7 @@ class TestInactiveLiftVsActiveEmpty:
         # use_aux = True, n_aux count yields []  -> sum() == 0 ->
         #   constraint applies and is satisfied
 
-    Built through an actual `.constrain()` so the law is checked at the
+    Built through an actual `.encourage()` so the law is checked at the
     `ConstraintEval` level the spec itself describes it at, not by reading
     a raw evaluator return value.
     """
@@ -99,7 +99,7 @@ class TestInactiveLiftVsActiveEmpty:
             .space(ds.param("w").real(0.0, 1.0))
             .repeat(ds.param("n_aux"))
             .when(ds.param("use_aux")),
-        ).constrain(ds.param("aux_layers").field("w").sum() <= 1.0)
+        ).encourage(ds.param("aux_layers").field("w").sum() <= 1.0)
 
     def test_inactive_lift_makes_the_constraint_inapplicable(self):
         space = self._space()
@@ -171,26 +171,26 @@ class TestRow6FieldProjection:
 
     def test_field_on_scalar_lift_raises(self):
         with pytest.raises(ResolutionError, match="'xs'"):
-            ds.space(ds.param("xs").real(0.0, 1.0).repeat(3)).constrain(
+            ds.space(ds.param("xs").real(0.0, 1.0).repeat(3)).encourage(
                 ds.param("xs").field("y").sum() > 0
             )
 
     def test_field_on_non_lift_raises(self):
         with pytest.raises(ResolutionError, match="'x'"):
-            ds.space(ds.param("x").real(0.0, 1.0)).constrain(
+            ds.space(ds.param("x").real(0.0, 1.0)).encourage(
                 ds.param("x").field("y").sum() > 0
             )
 
     def test_undeclared_field_name_raises(self):
         item = ds.space(ds.param("width").real(0.0, 1.0))
         with pytest.raises(ResolutionError, match="'items'"):
-            ds.space(ds.param("items").space(item).repeat(3)).constrain(
+            ds.space(ds.param("items").space(item).repeat(3)).encourage(
                 ds.param("items").field("nonexistent").sum() > 0
             )
 
     def test_declared_field_name_resolves(self):
         item = ds.space(ds.param("width").real(0.0, 1.0))
-        space = ds.space(ds.param("items").space(item).repeat(3)).constrain(
+        space = ds.space(ds.param("items").space(item).repeat(3)).encourage(
             ds.param("items").field("width").sum() > 0
         )
         result = space.validate({"items": [{"width": 0.1}, {"width": 0.2}, {"width": 0.3}]})
@@ -238,7 +238,7 @@ class TestDistinctFieldTuples:
             ds.param("flag").bool(),
             ds.param("b").integer(0, 10).when(ds.param("flag")),
         )
-        return ds.space(ds.param("items").space(item).repeat(3)).constrain(
+        return ds.space(ds.param("items").space(item).repeat(3)).encourage(
             ds.param("items").distinct("a", "b")
         )
 
@@ -290,13 +290,13 @@ class TestIsSortedDepthRestriction:
     canonical order"."""
 
     def test_depth_1_is_legal(self):
-        ds.space(ds.param("order").integer(0, 10).repeat(4)).constrain(
+        ds.space(ds.param("order").integer(0, 10).repeat(4)).encourage(
             ds.param("order").is_sorted()
         )
 
     def test_depth_2_is_a_resolution_error(self):
         with pytest.raises(ResolutionError, match="row 24"):
-            ds.space(ds.param("grid").real(0.0, 1.0).repeat(3).repeat(2)).constrain(
+            ds.space(ds.param("grid").real(0.0, 1.0).repeat(3).repeat(2)).encourage(
                 ds.param("grid").is_sorted()
             )
 

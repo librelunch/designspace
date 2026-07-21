@@ -16,7 +16,7 @@ Concepts introduced here
 - Reading structured configs back with ``ds.variant`` / ``ds.payload`` /
   ``ds.destructure``.
 - ``infeasibility_reasons(...)`` and interpreting ``evaluate_constraints``
-  (hard *forbid* vs. declared *constrain*).
+  (hard *forbid* vs. declared *encourage*).
 
 Run it:  ``uv run python examples/02_genetic_algorithm.py``
 """
@@ -68,7 +68,7 @@ def build_space() -> ds.Space:
             (ds.param("population_size") > 400) & (ds.param("selection") == "rank"),
         )
         # A soft budget on mutation intensity — reported, never enforced.
-        .constrain(
+        .encourage(
             ds.param("mutation_rate") <= 0.1,
             tags=("exploration-budget",),
         )
@@ -129,7 +129,7 @@ def main() -> None:
     # Mind the polarity: a forbid's `satisfied` refers to its *forbidden*
     # predicate, so `satisfied=True` means the forbidden state holds -> the
     # config is infeasible. We therefore render forbids as feasibility, and keep
-    # the raw satisfied/margin only for `.constrain()`, where positive margin =
+    # the raw satisfied/margin only for `.encourage()`, where positive margin =
     # slack reads the intuitive way.
     print("\nAll constraints on that config:")
     for ce in space.evaluate_constraints(bad):

@@ -105,11 +105,76 @@ API.md §Identity normalization-pipeline step (1) rewritten to describe the two 
 negation mechanisms (bound = operator flip; `require` = whole-expression `Not`) and to state
 explicitly that `require(x <= y) ≡ forbid(x > y)` is a feasibility equivalence, fingerprint-distinct
 from the `require`'s `~(x <= y)` canonical form. Implemented in `identity/_ir_codec.py`
-(`_canonicalize_feasible_predicate`) under milestone M7.5.
+(`_canonicalize_polarity`, since generalized) under milestone M7.5.
+
+---
+
+## D-39 — Constraint API symmetrization: `constrain` → `encourage`, add `discourage`, derived polarity accessors
+
+- Status: Resolved
+- Date: 2026-07-21
+- Spec section: API.md §Constraints and Feasibility; §IR; §Identity
+- Decided by: User
+
+### Question
+
+The constraint verbs formed an asymmetric set — hard `forbid`/`require` (a
+polarity pair) but only a single soft `constrain` — and there was no intuitive
+way to read a constraint's polarity ("is its stored predicate supposed to be
+true or false?") for display: consumers had to re-derive it from `(origin,
+hard)`, which broke silently when a `forbid` was switched to a `require`
+(observed in `examples/03`). Should the API complete the 2×2 grid, and how?
+
+### Why the specification is insufficient
+
+`API.md` defined `forbid`/`require`/`constrain` with polarity only described in
+prose; no accessor exposed it. Completing the grid needs a fourth verb (a soft
+`forbid`) and a decision on naming and on how its new stored form interacts with
+the frozen format and the fingerprint invariant.
+
+### Possibilities considered
+
+1. **Derived accessors only.** Add `Constraint.kind` /
+   `feasible_when_satisfied` / `ConstraintEval.violated`; keep three verbs.
+   Fixes the *display* awkwardness but leaves the grid asymmetric.
+2. **Add `discourage`, keep `constrain`.** Names stay asymmetric
+   (`constrain`/`discourage`), and the verb `constrain` keeps colliding with the
+   umbrella noun (`Constraint`, `space.constraints`).
+3. **Rename `constrain` → `encourage`, add `discourage`, plus the accessors.**
+   Symmetric quartet `forbid`/`require` + `encourage`/`discourage`; the verb no
+   longer collides with the noun; polarity is a first-class derived property.
+
+### Answer
+
+**Possibility 3.** Rename the soft verb `constrain` → `encourage` and add its
+bad-state complement `discourage` (`== encourage(~e)`); expose `Constraint.kind`,
+`Constraint.feasible_when_satisfied`, and `ConstraintEval.violated`. `is_violated`
+collapses to the property; `infeasibility_reasons` labels by `kind`.
+
+### Reasoning
+
+The quartet is self-documenting and parallels the just-added `require`. The
+rename does not touch stored IR (`encourage` produces the identical
+`origin="user", hard=False` constraint as the old `constrain`), so **every corpus
+and `require_demo` KA vector stays byte-identical and there is no format-version
+bump**. `discourage` only adds an `origin` value additively (like `require`,
+under the pre-release exemption). To keep the preimage-excluded `origin`
+non-load-bearing, `discourage` canonicalizes to `Not(e)` in the fingerprint
+preimage exactly as `require` does — otherwise `discourage(e)` and `encourage(e)`
+(same `expr`/`hard`, opposite polarity) would collide. The derived accessors are
+properties (not fields), so they never enter the preimage or serialization.
+
+### Specification update
+
+API.md §Constraints table (rename + `discourage` row + "constraint quartet" and
+polarity-accessor paragraph), §Sampling (`reject_soft` names the soft pair),
+§Identity (scope table, normalization pipeline step 1 extended to `discourage`),
+§IR (`Constraint.origin` gains `"discourage"`; `kind`/`feasible_when_satisfied`/
+`ConstraintEval.violated` documented). Implemented under milestone M7.6.
 
 ---
 
 _Ledger tail._ D-30 (M6) through D-37 (M7) were resolved into `API.md` on
 2026-07-21 and their entries removed here (preserved in git history), matching the
-post-M5 reset. See `PROGRESS.md` for the fold record. D-38 (M7.5) above remains as an
-open-format entry recording a genuine spec inconsistency resolved with the user.
+post-M5 reset. See `PROGRESS.md` for the fold record. D-38 (M7.5) and D-39 (M7.6)
+above remain as open-format entries recording decisions resolved with the user.

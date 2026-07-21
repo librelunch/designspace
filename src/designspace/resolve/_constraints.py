@@ -1,5 +1,8 @@
-"""`.forbid()` / `.require()` / `.constrain()`: adding constraints to an
-already-resolved `Space` (API_v3.md, "Constraints and Feasibility").
+"""`.forbid()` / `.require()` / `.encourage()` / `.discourage()`: adding
+constraints to an already-resolved `Space` (API.md, "Constraints and
+Feasibility"). Two polarity pairs: hard `forbid`/`require` (affect
+feasibility), soft `encourage`/`discourage` (declared, reported, never
+affect feasibility).
 
 Each positional condition becomes its own `Constraint` entry (sharing the
 call's `tags`/`meta`) so `evaluate_constraints` reports a margin per
@@ -36,11 +39,15 @@ def add_constraints(
     meta: dict[str, Any] | None,
     origin: str = "user",
 ) -> Space:
-    # `.require` stores the desired (feasible) predicate verbatim (like a
-    # bound-origin constraint) with `origin="require"` and `hard=True`; the
-    # feasibility flip and the fingerprint canonicalization to forbidden-state
-    # form live downstream (eval/_constraint_eval.py, identity/_ir_codec.py).
-    call = "require()" if origin == "require" else ("forbid()" if hard else "constrain()")
+    # The four builder verbs are two polarity pairs — hard `forbid`/`require`
+    # and soft `discourage`/`encourage` — distinguished by `(origin, hard)`.
+    # `require`/`discourage` store the polarity-opposite predicate from their
+    # sibling and carry a non-`user` origin; the feasibility flip and the
+    # fingerprint canonicalization to forbidden-state form live downstream
+    # (eval/_constraint_eval.py, identity/_ir_codec.py).
+    call = {"require": "require()", "discourage": "discourage()"}.get(
+        origin, "forbid()" if hard else "encourage()"
+    )
     _check_tags_meta(call, tags, meta)
     meta_map = MappingProxyType(dict(meta or {}))
     tag_set = frozenset(tags)

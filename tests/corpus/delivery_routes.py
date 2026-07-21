@@ -27,7 +27,7 @@ def build_space() -> Space:
             ds.param("n_stops").integer(1, MAX_STOPS),
             ds.param("stops").space(stop).repeat(ds.param("n_stops")),
         )
-        .constrain(
+        .encourage(
             # Aggregate over the lift.
             ds.param("stops").field("dwell_min").sum() <= TOTAL_DWELL_BUDGET_MIN,
         )

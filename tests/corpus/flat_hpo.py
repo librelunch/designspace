@@ -25,7 +25,7 @@ def build_space() -> Space:
         .forbid(
             ds.param("lr") > 0.5,
         )
-        .constrain(
+        .encourage(
             ds.param("momentum") < 0.95,
             tags=("stability",),
         )

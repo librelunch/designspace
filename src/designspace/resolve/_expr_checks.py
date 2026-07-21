@@ -2,7 +2,7 @@
 ordering type errors) — API.md's error table.
 
 Used both for `.when()` conditions (resolve/_pipeline.py, M1) and for
-`.forbid()`/`.constrain()` expressions (resolve/_constraints.py, M2): both
+`.forbid()`/`.encourage()` expressions (resolve/_constraints.py, M2): both
 walk a `BoolExpr`/`Expr` tree against a `path -> definition` mapping, where
 the mapping may hold either builder-time `ParamExpr`s (fresh `ds.space()`)
 or resolved `ParamDef`s (a constraint added to an already-resolved `Space`)

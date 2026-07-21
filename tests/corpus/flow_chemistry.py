@@ -31,7 +31,7 @@ def build_space() -> Space:
         .forbid(
             ds.param("reagents").contains("catalyst") & (ds.param("temperature_c") <= 50.0),
         )
-        .constrain(
+        .encourage(
             ds.param("reagents").sum_over(COSTS) <= 15.0,
             tags=("budget",),
         )

@@ -336,32 +336,32 @@ class TestRow17SubsetChoiceWeights:
 class TestRow18CombinatorialExpressionChecks:
     def test_sum_over_key_outside_universe_raises(self):
         with pytest.raises(ResolutionError, match="'s'"):
-            ds.space(ds.param("s").subset(("a", "b"))).constrain(
+            ds.space(ds.param("s").subset(("a", "b"))).encourage(
                 ds.param("s").sum_over({"a": 1.0, "z": 2.0}) <= 1.0
             )
 
     def test_position_of_non_member_raises(self):
         with pytest.raises(ResolutionError, match="'p'"):
-            ds.space(ds.param("p").permutation(("a", "b"))).constrain(
+            ds.space(ds.param("p").permutation(("a", "b"))).encourage(
                 ds.param("p").position_of("z") == 0
             )
 
     def test_contains_on_permutation_raises(self):
         with pytest.raises(ResolutionError, match="'p'"):
-            ds.space(ds.param("p").permutation(("a", "b"))).constrain(ds.param("p").contains("a"))
+            ds.space(ds.param("p").permutation(("a", "b"))).encourage(ds.param("p").contains("a"))
 
     def test_size_on_non_subset_raises(self):
         with pytest.raises(ResolutionError, match="'x'"):
-            ds.space(ds.param("x").real(0.0, 1.0)).constrain(ds.param("x").size() > 0)
+            ds.space(ds.param("x").real(0.0, 1.0)).encourage(ds.param("x").size() > 0)
 
     def test_ordinal_compare_against_non_member_literal_raises(self):
         with pytest.raises(ResolutionError, match="'size'"):
-            ds.space(ds.param("size").ordinal("s", "m", "l")).constrain(
+            ds.space(ds.param("size").ordinal("s", "m", "l")).encourage(
                 ds.param("size") > "xl"
             )
 
     def test_ordinal_compare_against_declared_literal_is_legal(self):
-        space = ds.space(ds.param("size").ordinal("s", "m", "l")).constrain(
+        space = ds.space(ds.param("size").ordinal("s", "m", "l")).encourage(
             ds.param("size") > "s"
         )
         assert space.n_params == 1
