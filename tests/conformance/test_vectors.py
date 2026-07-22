@@ -39,6 +39,7 @@ FIXTURES = [
     "memetic_pipeline",
     "firmware_buffers",
     "pump_configurator",
+    "compiler_pipeline",
 ]
 
 

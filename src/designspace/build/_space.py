@@ -2,28 +2,37 @@
 
 M1 exposes only what flat scalar spaces need; M2 adds feasibility
 (`.forbid()`/`.encourage()`), Kleene-aware validation, and the reference
-sampler. `.anchor()` and space-level `.meta()` stay out of scope for M2 —
-PLAN.md.md's M2 Build line names only charts/eval/validate/
-sample, and no M2 gate or corpus item exercises anchors (see DECISIONS.md,
-which supersedes D-3's forward guess that anchors were M2's).
+sampler. `.anchor()` and space-level `.meta()` are added at M8 (API.md,
+"Constraints and Feasibility"; DECISIONS.md D-40) — they were deferred
+past M2 and have no assigned milestone until M8's structural operations
+need to interact with them (`freeze`/`slice` re-validate anchors).
+
+`anchors`/`meta_map` default empty and are omitted from the preimage/
+`to_json` document when empty (identity/_ir_codec.py's byte-identity
+guarantee for additive fields), so every pre-M8 space is unaffected.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from designspace.expr import BoolExpr
+from designspace.build._paramexpr import ParamExpr
+from designspace.expr import ArithExpr, BoolExpr
 from designspace.ir import (
     Condition,
     Constraint,
     ConstraintEval,
+    ListDomain,
     ParamDef,
     PartialEval,
+    RealDomain,
     RemainingDomain,
+    SubspaceInfo,
     ValidationResult,
 )
 
@@ -39,6 +48,12 @@ class Space:
     params: MappingProxyType[str, ParamDef]
     conditions: tuple[Condition, ...]
     constraints: tuple[Constraint, ...] = field(default_factory=tuple)
+    # M8: named reference configs (API.md, ".anchor()") and space-level
+    # metadata (".meta()"). `meta_map`, not `meta` — a same-named field and
+    # method collide (the `def meta` statement would overwrite the field's
+    # class-level default), mirroring ParamExpr's `meta_map`/`.meta()` split.
+    anchors: MappingProxyType[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    meta_map: MappingProxyType[str, Any] = field(default_factory=lambda: MappingProxyType({}))
 
     @property
     def n_params(self) -> int:
@@ -47,6 +62,77 @@ class Space:
     @property
     def is_conditional(self) -> bool:
         return any(p.condition is not None for p in self.params.values())
+
+    @property
+    def is_hierarchical(self) -> bool:
+        return any(pd.type_kind in ("space", "choice") for pd in self.params.values())
+
+    @property
+    def has_variable_length(self) -> bool:
+        return any(
+            pd.type_kind == "list" and _has_dynamic_count(pd.domain)
+            for pd in self.params.values()
+            if isinstance(pd.domain, ListDomain)
+        )
+
+    @property
+    def is_finite(self) -> bool:
+        """Cheap, declaration-only check (API.md, "Space — Introspection"):
+        `False` iff an unquantized real appears anywhere (top-level or as a
+        `.repeat()` element); does not account for a constraint that might
+        happen to reduce a continuous domain to finitely many points — that
+        is `.cardinality()`'s job, deferred past M8 (no enumeration/CSP
+        machinery yet — DECISIONS.md D-43)."""
+        return all(_is_finite_domain(pd) for pd in self.params.values())
+
+    @property
+    def subspaces(self) -> dict[str, SubspaceInfo]:
+        from designspace.ops._introspect import subspaces as _subspaces
+
+        return _subspaces(self)
+
+    @property
+    def dependency_graph(self) -> dict[str, frozenset[str]]:
+        from designspace.ops._introspect import dependency_graph as _dependency_graph
+
+        return _dependency_graph(self)
+
+    def param_constraints(self, path: str) -> list[Constraint]:
+        return [c for c in self.constraints if path in c.params]
+
+    def param_conditions(self, path: str) -> list[Condition]:
+        return [c for c in self.conditions if c.target == path or path in c.params]
+
+    def slice(self, values: dict[str, Any] | None = None, **kw: Any) -> Space:
+        from designspace.ops._structural import parse_path_values, slice_space
+
+        return slice_space(self, parse_path_values(values, kw, call=".slice()"))
+
+    def freeze(self, values: dict[str, Any] | None = None, **kw: Any) -> Space:
+        from designspace.ops._structural import freeze as _freeze
+        from designspace.ops._structural import parse_path_values
+
+        return _freeze(self, parse_path_values(values, kw, call=".freeze()"))
+
+    def active_subspace(self, config: dict[str, Any]) -> Space:
+        from designspace.ops._structural import active_subspace as _active_subspace
+
+        return _active_subspace(self, config)
+
+    def select(self, *paths: str, strict: bool = False) -> Space:
+        from designspace.ops._structural import select as _select
+
+        return _select(self, paths, strict=strict)
+
+    def filter(self, tags: tuple[str, ...] = (), mode: str = "any", strict: bool = False) -> Space:
+        from designspace.ops._structural import filter_space
+
+        return filter_space(self, tags, mode=mode, strict=strict)
+
+    def extend(self, *exprs: ParamExpr) -> Space:
+        from designspace.ops._structural import extend as _extend
+
+        return _extend(self, exprs)
 
     def forbid(
         self, *conditions: BoolExpr, tags: tuple[str, ...] = (), meta: dict[str, Any] | None = None
@@ -78,6 +164,40 @@ class Space:
 
         return add_constraints(
             self, conditions, hard=False, tags=tags, meta=meta, origin="discourage"
+        )
+
+    def anchor(self, configs: dict[str, dict[str, Any]]) -> Space:
+        from designspace.resolve._anchors import add_anchors
+
+        return add_anchors(self, configs)
+
+    def meta(self, mapping: dict[str, Any] | None = None, **kwargs: Any) -> Space:
+        from designspace.resolve._anchors import add_meta
+
+        return add_meta(self, mapping, kwargs)
+
+    def map_params(self, fn: Callable[[ParamDef], ParamDef]) -> Space:
+        """Sugar (API.md, "Space — Metaprogramming"): rewrite every
+        `ParamDef` through `fn` and re-validate via `space_from_ir` —
+        "resolution re-validates whatever comes in" covers whatever `fn`
+        produces, however coarse or otherwise transformed."""
+        from designspace.meta._meta import space_from_ir
+
+        new_params = [fn(pd) for pd in self.params.values()]
+        return space_from_ir(
+            new_params, self.conditions, self.constraints, dict(self.anchors), dict(self.meta_map)
+        )
+
+    def without_constraints(self, tags: tuple[str, ...] = ()) -> Space:
+        """Sugar: drop every constraint (of any kind — forbid/require/
+        encourage/discourage/bound) whose own `tags` intersect `tags`, then
+        re-validate via `space_from_ir`."""
+        from designspace.meta._meta import space_from_ir
+
+        tag_set = frozenset(tags)
+        kept = [c for c in self.constraints if not (c.tags & tag_set)]
+        return space_from_ir(
+            self.params, self.conditions, kept, dict(self.anchors), dict(self.meta_map)
         )
 
     def validate(self, config: dict[str, Any]) -> ValidationResult:
@@ -188,3 +308,30 @@ class Space:
         from designspace.identity import fingerprint as _fingerprint
 
         return _fingerprint(self, scope=scope, on_unserializable=on_unserializable)
+
+
+def _has_dynamic_count(domain: ListDomain) -> bool:
+    if isinstance(domain.count, ArithExpr):
+        return True
+    if domain.element_kind == "list":
+        assert isinstance(domain.element_domain, ListDomain)
+        return _has_dynamic_count(domain.element_domain)
+    return False
+
+
+def _is_finite_domain(pd: ParamDef) -> bool:
+    if isinstance(pd.domain, RealDomain):
+        return pd.quantized is not None
+    if isinstance(pd.domain, ListDomain):
+        return _is_finite_list_domain(pd.domain)
+    return True
+
+
+def _is_finite_list_domain(domain: ListDomain) -> bool:
+    if domain.element_kind == "list":
+        assert isinstance(domain.element_domain, ListDomain)
+        return _is_finite_list_domain(domain.element_domain)
+    if domain.element_kind == "real":
+        assert isinstance(domain.element_domain, RealDomain)
+        return domain.element_quantized is not None
+    return True

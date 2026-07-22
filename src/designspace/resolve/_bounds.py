@@ -104,11 +104,11 @@ def _hull_mul(
 ) -> Interval:
     if isinstance(right, Literal):
         c = _require_numeric_literal(right, path)
-        lo, hi = _hull(left, envelope_of, path=path)
+        lo, hi = hull(left, envelope_of, path=path)
         return _scale(c, lo, hi)
     if isinstance(left, Literal):
         c = _require_numeric_literal(left, path)
-        lo, hi = _hull(right, envelope_of, path=path)
+        lo, hi = hull(right, envelope_of, path=path)
         return _scale(c, lo, hi)
     raise ResolutionError(
         f"param {path!r}: bound expression multiplies two non-constant operands "
@@ -118,7 +118,7 @@ def _hull_mul(
     )
 
 
-def _hull(expr: ArithExpr, envelope_of: Callable[[str], Interval], *, path: str) -> Interval:
+def hull(expr: ArithExpr, envelope_of: Callable[[str], Interval], *, path: str) -> Interval:
     if isinstance(expr, Literal):
         v = _require_numeric_literal(expr, path)
         return (v, v)
@@ -126,12 +126,12 @@ def _hull(expr: ArithExpr, envelope_of: Callable[[str], Interval], *, path: str)
         return envelope_of(expr.path)
     if isinstance(expr, ArithOp):
         if expr.op == "add":
-            l_lo, l_hi = _hull(expr.left, envelope_of, path=path)
-            r_lo, r_hi = _hull(expr.right, envelope_of, path=path)
+            l_lo, l_hi = hull(expr.left, envelope_of, path=path)
+            r_lo, r_hi = hull(expr.right, envelope_of, path=path)
             return (l_lo + r_lo, l_hi + r_hi)
         if expr.op == "sub":
-            l_lo, l_hi = _hull(expr.left, envelope_of, path=path)
-            r_lo, r_hi = _hull(expr.right, envelope_of, path=path)
+            l_lo, l_hi = hull(expr.left, envelope_of, path=path)
+            r_lo, r_hi = hull(expr.right, envelope_of, path=path)
             return (l_lo - r_hi, l_hi - r_lo)
         if expr.op == "mul":
             return _hull_mul(expr.left, expr.right, envelope_of, path=path)
@@ -179,8 +179,8 @@ def compute_bound_envelopes(
                 "constraint by hand"
             )
         lo, hi = d.domain.lo, d.domain.hi
-        env_lo = _hull(lo, envelope_of, path=path)[0] if isinstance(lo, ArithExpr) else lo
-        env_hi = _hull(hi, envelope_of, path=path)[1] if isinstance(hi, ArithExpr) else hi
+        env_lo = hull(lo, envelope_of, path=path)[0] if isinstance(lo, ArithExpr) else lo
+        env_hi = hull(hi, envelope_of, path=path)[1] if isinstance(hi, ArithExpr) else hi
         result = (env_lo, env_hi)
         envelopes[path] = result
         return result

@@ -9,22 +9,29 @@ runtime — never a bare `AttributeError`). `.repeat()` — available on any
 typed view, not on `FreshParamExpr` or the base — narrows to `ListParamExpr`,
 which re-offers `.repeat()` for nested/variadic lifts.
 
+`TypedParamExpr` is public as of M8 (API.md, "Space — Metaprogramming":
+"`TypedParamExpr` is the type-specific builder view for `pd`'s type ... when
+this surface lands (M8) it becomes the common base of those views" —
+D-27). It was already the shared implementation base of every narrowed view
+(as `_TypedParamExpr`); M8 only promotes the name and gives
+`ds.param_from_def(pd: ParamDef) -> TypedParamExpr` a base to return.
+
 Class shape, bottom to top:
-    ParamExpr                      (build/_paramexpr.py — no type methods, no .repeat();
-                                     type_kind: ClassVar[str | None] = None)
-    +-- FreshParamExpr             9 type methods only; inherits type_kind = None
-    +-- _TypedParamExpr            .repeat() only — shared by every narrowed view
-        +-- _NumericParamExpr      + .log_scale()/.quantized() — Real/Integer only
-        |   +-- RealParamExpr      type_kind = "real"
-        |   +-- IntegerParamExpr   type_kind = "integer"
-        +-- BoolParamExpr          type_kind = "bool"
-        +-- CategoricalParamExpr   type_kind = "categorical"
-        +-- OrdinalParamExpr       type_kind = "ordinal"
-        +-- SubsetParamExpr        type_kind = "subset"
-        +-- PermutationParamExpr   type_kind = "permutation"
-        +-- ChoiceParamExpr        type_kind = "choice"
-        +-- StructParamExpr        type_kind = "space"
-        +-- ListParamExpr          type_kind = "list"
+    ParamExpr                     (build/_paramexpr.py — no type methods, no .repeat();
+                                    type_kind: ClassVar[str | None] = None)
+    +-- FreshParamExpr            9 type methods only; inherits type_kind = None
+    +-- TypedParamExpr            .repeat() only — shared by every narrowed view
+        +-- _NumericParamExpr     + .log_scale()/.quantized() — Real/Integer only
+        |   +-- RealParamExpr     type_kind = "real"
+        |   +-- IntegerParamExpr  type_kind = "integer"
+        +-- BoolParamExpr         type_kind = "bool"
+        +-- CategoricalParamExpr  type_kind = "categorical"
+        +-- OrdinalParamExpr      type_kind = "ordinal"
+        +-- SubsetParamExpr       type_kind = "subset"
+        +-- PermutationParamExpr  type_kind = "permutation"
+        +-- ChoiceParamExpr       type_kind = "choice"
+        +-- StructParamExpr       type_kind = "space"
+        +-- ListParamExpr         type_kind = "list"
 
 None of these subclasses add fields (API_v3.md: "they add no state beyond
 ParamExpr"); each is a thin method surface (plus, on the 10 leaves, a fixed
@@ -135,10 +142,14 @@ class FreshParamExpr(ParamExpr):
         return self._as(StructParamExpr, domain=StructDomain(), struct_space=child)
 
 
-class _TypedParamExpr(ParamExpr):
+class TypedParamExpr(ParamExpr):
     """Shared by every narrowed view (a type has been chosen, or a lift
     applied): `.repeat()` (API_v3.md, "The lift") — the one modifier valid
-    across every element type, including a list itself (nested lifts)."""
+    across every element type, including a list itself (nested lifts).
+
+    Public since M8 (API.md, "Space — Metaprogramming"): the common base
+    `ds.param_from_def()` returns, and the static return type every
+    `.real`/`.integer`/.../`.repeat()` type method already narrowed to."""
 
     def repeat(self, *counts: int | ArithExpr) -> ListParamExpr:
         if len(counts) == 0:
@@ -185,7 +196,7 @@ class _TypedParamExpr(ParamExpr):
         )
 
 
-class _NumericParamExpr(_TypedParamExpr):
+class _NumericParamExpr(TypedParamExpr):
     """Real/Integer only: `.log_scale()`/`.quantized()` (API_v3.md,
     "Modifiers and Layering"). Absent from every other view — misuse
     (`.categorical(...).log_scale()`) is a static `attr-defined` error and,
@@ -212,39 +223,39 @@ class IntegerParamExpr(_NumericParamExpr):
     type_kind: ClassVar[str] = "integer"
 
 
-class BoolParamExpr(_TypedParamExpr):
+class BoolParamExpr(TypedParamExpr):
     # Already a BoolExpr transitively (ParamExpr is BoolExpr-inheriting) —
     # API_v3.md: "BoolParamExpr is additionally a BoolExpr (a boolean param
     # is usable directly as a condition)".
     type_kind: ClassVar[str] = "bool"
 
 
-class CategoricalParamExpr(_TypedParamExpr):
+class CategoricalParamExpr(TypedParamExpr):
     type_kind: ClassVar[str] = "categorical"
 
 
-class OrdinalParamExpr(_TypedParamExpr):
+class OrdinalParamExpr(TypedParamExpr):
     type_kind: ClassVar[str] = "ordinal"
 
 
-class SubsetParamExpr(_TypedParamExpr):
+class SubsetParamExpr(TypedParamExpr):
     type_kind: ClassVar[str] = "subset"
 
 
-class PermutationParamExpr(_TypedParamExpr):
+class PermutationParamExpr(TypedParamExpr):
     type_kind: ClassVar[str] = "permutation"
 
 
-class ChoiceParamExpr(_TypedParamExpr):
+class ChoiceParamExpr(TypedParamExpr):
     type_kind: ClassVar[str] = "choice"
 
 
-class StructParamExpr(_TypedParamExpr):
+class StructParamExpr(TypedParamExpr):
     type_kind: ClassVar[str] = "space"
 
 
-class ListParamExpr(_TypedParamExpr):
+class ListParamExpr(TypedParamExpr):
     """`.repeat()`'s return type; re-offers `.repeat()` (inherited from
-    `_TypedParamExpr`) for nested/variadic lifts."""
+    `TypedParamExpr`) for nested/variadic lifts."""
 
     type_kind: ClassVar[str] = "list"

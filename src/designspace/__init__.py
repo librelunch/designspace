@@ -18,6 +18,7 @@ from designspace.build import (
     Space,
     StructParamExpr,
     SubsetParamExpr,
+    TypedParamExpr,
     param,
     space,
 )
@@ -36,8 +37,10 @@ from designspace.ir import (
     RealRemaining,
     RemainingDomain,
     SubsetRemaining,
+    SubspaceInfo,
     ValueRemaining,
 )
+from designspace.meta import param_from_def, space_from_ir
 
 __version__ = "0.0.0"
 
@@ -71,6 +74,8 @@ __all__ = [
     "StructParamExpr",
     "SubsetParamExpr",
     "SubsetRemaining",
+    "SubspaceInfo",
+    "TypedParamExpr",
     "ValueRemaining",
     "__version__",
     "all_",
@@ -81,8 +86,10 @@ __all__ = [
     "destructure",
     "flatten",
     "param",
+    "param_from_def",
     "payload",
     "space",
+    "space_from_ir",
     "unflatten",
     "variant",
 ]

@@ -8,9 +8,11 @@ from designspace.build._space import Space
 from designspace.identity._ir_codec import (
     EncodeContext,
     OnUnserializable,
+    encode_anchors,
     encode_condition,
     encode_constraint,
     encode_param,
+    encode_space_meta,
 )
 from designspace.resolve._pipeline import check_fully_resolved
 from designspace.serialize._version import FORMAT_VERSION
@@ -32,6 +34,12 @@ def to_json(space: Space, on_unserializable: OnUnserializable = "raise") -> dict
         "conditions": [encode_condition(c) for c in space.conditions],
         "constraints": [encode_constraint(c, "document") for c in space.constraints],
     }
+    anchors_tree = encode_anchors(space.anchors)
+    if anchors_tree is not None:
+        doc["anchors"] = anchors_tree
+    meta_tree = encode_space_meta(space.meta_map)
+    if meta_tree is not None:
+        doc["meta"] = meta_tree
     if ctx.dropped:
         # "the reconstructed space is a *different* space by design" — the
         # manifest names exactly which sites were omitted.

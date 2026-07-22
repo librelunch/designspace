@@ -1,0 +1,201 @@
+{
+  "fingerprint_full": "1:full:495e11dcf97d8c4eed7f19a05ba830dccb5e2f1888a99cbbdf6e02596c6d193d",
+  "fingerprint_sampling": "1:sampling:d177551d45d4d90a96105b4ab77145071a93cbb4033faddbf3d73e1355b9fc2c",
+  "to_json": {
+    "conditions": [],
+    "constraints": [
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "enable_constant_folding"
+                }
+              ],
+              "kind": "not"
+            },
+            {
+              "bool": true,
+              "kind": "literal"
+            }
+          ],
+          "kind": "or"
+        },
+        "hard": true,
+        "origin": "require"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "enable_inlining"
+                }
+              ],
+              "kind": "not"
+            },
+            {
+              "bool": true,
+              "kind": "literal"
+            }
+          ],
+          "kind": "or"
+        },
+        "hard": true,
+        "origin": "require"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "enable_dead_code_elimination"
+                }
+              ],
+              "kind": "not"
+            },
+            {
+              "kind": "ref",
+              "path": "enable_constant_folding"
+            }
+          ],
+          "kind": "or"
+        },
+        "hard": true,
+        "origin": "require"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "enable_loop_invariant_motion"
+                }
+              ],
+              "kind": "not"
+            },
+            {
+              "kind": "ref",
+              "path": "enable_constant_folding"
+            }
+          ],
+          "kind": "or"
+        },
+        "hard": true,
+        "origin": "require"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "enable_vectorization"
+                }
+              ],
+              "kind": "not"
+            },
+            {
+              "kind": "ref",
+              "path": "enable_loop_invariant_motion"
+            }
+          ],
+          "kind": "or"
+        },
+        "hard": true,
+        "origin": "require"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "enable_register_allocation"
+                }
+              ],
+              "kind": "not"
+            },
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "enable_dead_code_elimination"
+                },
+                {
+                  "kind": "ref",
+                  "path": "enable_inlining"
+                }
+              ],
+              "kind": "and"
+            }
+          ],
+          "kind": "or"
+        },
+        "hard": true,
+        "origin": "require"
+      }
+    ],
+    "params": [
+      {
+        "domain": {
+          "kind": "bool"
+        },
+        "kind": "bool",
+        "path": "enable_constant_folding",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "kind": "bool"
+        },
+        "kind": "bool",
+        "path": "enable_inlining",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "kind": "bool"
+        },
+        "kind": "bool",
+        "path": "enable_dead_code_elimination",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "kind": "bool"
+        },
+        "kind": "bool",
+        "path": "enable_loop_invariant_motion",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "kind": "bool"
+        },
+        "kind": "bool",
+        "path": "enable_vectorization",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "kind": "bool"
+        },
+        "kind": "bool",
+        "path": "enable_register_allocation",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}

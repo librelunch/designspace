@@ -17,6 +17,11 @@ Concepts introduced here
   ``ds.destructure``.
 - ``infeasibility_reasons(...)`` and interpreting ``evaluate_constraints``
   (hard *forbid* vs. declared *encourage*).
+- ``.select(*paths)``: a definition-path prefix subtree of an already-built
+  ``Space`` — selecting a choice brings its variants along.
+- ``.active_subspace(config)``: the params actually active for one concrete,
+  fully-materialized draw (the conditional and choice structure collapsed
+  down to what that specific config uses).
 
 Run it:  ``uv run python examples/02_genetic_algorithm.py``
 """
@@ -146,6 +151,32 @@ def main() -> None:
             margin = f"{ce.margin:+.4f}" if ce.margin is not None else "  n/a "
             print(f"  declare [{tag:18}] satisfied={ce.satisfied!s:5} "
                   f"margin={margin}")
+
+    # -- Structural operations: reshaping an already-built Space -------------
+    print("\n--- Structural operations ---")
+
+    # Deploying a reduced variant that only ever uses the `selection`
+    # operator family. `.select()` keeps the definition-path prefix subtree
+    # — selecting a choice brings its variants (tournament/rank) along, not
+    # just the bare discriminator. This *does* print a UserWarning: both the
+    # `population_size > 400 & selection == "rank"` forbid and the
+    # `mutation_rate <= 0.1` encourage reference params outside the
+    # "selection" subtree (population_size, mutation_rate), so `.select()`'s
+    # best-effort default drops them and warns rather than raising —
+    # `strict=True` would raise instead if silently losing a constraint were
+    # unacceptable here.
+    selection_only = space.select("selection")
+    print(f"\nselect('selection'): {list(selection_only.params)}")
+
+    # Given one concrete, fully-materialized draw, which params did it
+    # actually use? Inactive branches (the un-chosen crossover/selection
+    # variants, and mutation_decay/elite_fraction when their flags are off)
+    # disappear from the returned Space entirely.
+    cfg2 = space.sample_one(seed=5)
+    active = space.active_subspace(cfg2)
+    print(f"\nactive_subspace(...) for one draw ({describe(cfg2).strip()}):")
+    print(f"  {active.n_params} of {space.n_params} declared params active: "
+          f"{list(active.params)}")
 
 
 if __name__ == "__main__":

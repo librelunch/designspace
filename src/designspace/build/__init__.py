@@ -17,6 +17,7 @@ from designspace.build._views import (
     RealParamExpr,
     StructParamExpr,
     SubsetParamExpr,
+    TypedParamExpr,
 )
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
     "Space",
     "StructParamExpr",
     "SubsetParamExpr",
+    "TypedParamExpr",
     "param",
     "space",
 ]

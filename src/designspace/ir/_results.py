@@ -2,7 +2,9 @@
 
 M2 needs (`ConstraintEval`, `ValidationResult`, `ParamError`); M6 adds
 `PartialEval` and the `RemainingDomain` descriptor family; M7 adds
-`ParamDiff`. `SubspaceInfo`/`Capabilities` (M8) join when their milestone does.
+`ParamDiff`; M8 adds `SubspaceInfo` (`Capabilities` waits for the M11
+Representation/Encoding layer `.capability_report()` needs — DECISIONS.md
+D-43 defers it, "cheap read-only accessors only" for M8).
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
+from designspace.expr import BoolExpr
 from designspace.ir._domain import QuantizedSpec
 from designspace.ir._param import Constraint
 
@@ -124,3 +127,27 @@ class ParamDiff:
     param: str
     old: Any | None
     new: Any | None
+
+
+@dataclass(frozen=True)
+class SubspaceInfo:
+    """One entry of `Space.subspaces` (API.md, "Space — Introspection":
+    "struct and variant subspaces by prefix"; DECISIONS.md D-43 — the shape
+    is not otherwise specified). A struct param (`.space(...)`) or a
+    choice's payload-bearing variant, each relocates its descendants under
+    a definition-path prefix (`ops/_introspect.py::subspaces` builds one
+    entry per relocation site, keyed by that same `prefix`).
+
+    `condition` is the *folded* activation condition gating every member —
+    for a struct, its own `.when()` (if any); for a variant, that ANDed
+    with the discriminator equality (`choice_path == variant`) — the same
+    expression `resolve/_relocate.py::relocate_child` folds into each
+    descendant's own condition, reconstructed here as a single value
+    describing the subspace as a whole rather than repeated per member.
+    """
+
+    prefix: str
+    kind: str  # "struct" | "variant"
+    member_paths: tuple[str, ...]
+    condition: BoolExpr | None
+    variant_name: str | None = None  # set only for kind == "variant"

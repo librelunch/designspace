@@ -16,6 +16,11 @@ Concepts introduced here
   simply *absent* from a config, never ``None``.
 - ``.forbid(...)`` defines feasibility (the reference sampler respects it);
   ``.encourage(...)`` only annotates (it is reported, never enforced).
+- Structural operations on an already-built ``Space``: ``.freeze(...)`` pins
+  tuned knobs to a single value (kept, domain narrowed) after a search;
+  ``.slice(...)`` removes a rejected knob entirely, substituting its value at
+  every reference site; ``.filter(tags=...)`` carves out a tagged
+  sub-space; ``.extend(...)`` adds a new knob after the fact.
 
 Run it:  ``uv run python examples/01_simulated_annealing.py``
 """
@@ -31,18 +36,18 @@ def build_space() -> ds.Space:
             # Temperatures span orders of magnitude, so search them in log
             # space: a solver perturbing the u-coordinate gets multiplicative
             # noise, and uniform sampling is uniform *per decade*.
-            ds.param("initial_temp").real(1e-2, 1e3).log_scale(),
-            ds.param("min_temp").real(1e-4, 1.0).log_scale(),
+            ds.param("initial_temp").real(1e-2, 1e3).log_scale().tag("schedule"),
+            ds.param("min_temp").real(1e-4, 1.0).log_scale().tag("schedule"),
             # Geometric cooling factor, snapped to a 0.005 grid.
-            ds.param("cooling_rate").real(0.80, 0.999).quantized(step=0.005),
+            ds.param("cooling_rate").real(0.80, 0.999).quantized(step=0.005).tag("schedule"),
             # Inner-loop length: how many moves at each temperature.
             ds.param("steps_per_temp").integer(1, 500),
             # The neighborhood move. Categorical: unordered, compared by
             # equality only.
-            ds.param("neighborhood").categorical("swap", "insert", "reverse"),
+            ds.param("neighborhood").categorical("swap", "insert", "reverse").tag("operator"),
             # The acceptance rule. Ordinal: ordered by declaration, so
             # comparisons like ``>= "boltzmann"`` are meaningful.
-            ds.param("acceptance").ordinal("greedy", "boltzmann", "metropolis"),
+            ds.param("acceptance").ordinal("greedy", "boltzmann", "metropolis").tag("operator"),
             # Whether to reheat on stagnation, and — only then — by how much.
             ds.param("reheat").bool(),
             ds.param("reheat_factor").real(1.5, 5.0).when(ds.param("reheat")),
@@ -98,6 +103,38 @@ def main() -> None:
         if not ce.constraint.hard:  # skip the forbid; show the annotation
             tag = ", ".join(sorted(ce.constraint.tags))
             print(f"  [{tag}] satisfied={ce.satisfied} margin={ce.margin:+.4f}")
+
+    # -- Structural operations: reshaping an already-built Space -------------
+    print("\n--- Structural operations ---")
+
+    # A search on this problem class found a good schedule -- pin it and keep
+    # searching only the operator/acceptance knobs. Unlike .slice(), .freeze()
+    # KEEPS the param (still present in every config) but narrows its domain
+    # to that single value, so a submitted config can never disagree with it.
+    tuned = space.freeze(initial_temp=50.0, cooling_rate=0.85)
+    print(f"\nfreeze(initial_temp=50.0, cooling_rate=0.85): still {tuned.n_params} params "
+          f"(kept, domain narrowed):")
+    for cfg in tuned.sample_dicts(8, seed=2):
+        print(f"  initial_temp={cfg['initial_temp']}, cooling_rate={cfg['cooling_rate']}, "
+              f"neighborhood={cfg['neighborhood']!r}")
+
+    # Reheating never paid off in practice -- remove it permanently. .slice()
+    # REMOVES the param and substitutes its fixed value at every reference
+    # site; reheat_factor's `.when(reheat)` condition collapses to a constant
+    # (`False == False`), so it stays declared but can never be sampled.
+    no_reheat = space.slice(reheat=False)
+    still_absent = all("reheat_factor" not in c for c in no_reheat.sample_dicts(20, seed=3))
+    print(f"\nslice(reheat=False): {no_reheat.n_params} params (down from {space.n_params}); "
+          f"reheat_factor never sampled: {still_absent}")
+
+    # Just the cooling schedule, for a report that only discusses those knobs.
+    schedule_only = space.filter(tags=("schedule",))
+    print(f"\nfilter(tags=('schedule',)): {list(schedule_only.params)}")
+
+    # A knob added after the fact. `.extend()` is additive; `ds.space()` (no
+    # new params) would be the identity.
+    with_logging = space.extend(ds.param("log_every_n").integer(1, 100))
+    print(f"\nextend(log_every_n): {with_logging.n_params} params (was {space.n_params})")
 
 
 if __name__ == "__main__":

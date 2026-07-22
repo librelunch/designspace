@@ -32,6 +32,7 @@ from designspace.ir._results import (
     RealRemaining,
     RemainingDomain,
     SubsetRemaining,
+    SubspaceInfo,
     ValidationResult,
     ValueRemaining,
 )
@@ -67,6 +68,7 @@ __all__ = [
     "StructDomain",
     "SubsetDomain",
     "SubsetRemaining",
+    "SubspaceInfo",
     "ValidationResult",
     "ValueRemaining",
     "Weights",

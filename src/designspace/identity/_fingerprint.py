@@ -23,9 +23,11 @@ from typing import Any, Literal
 from designspace.build._space import Space
 from designspace.identity._ir_codec import (
     EncodeContext,
+    encode_anchors,
     encode_condition,
     encode_constraint,
     encode_param,
+    encode_space_meta,
 )
 from designspace.identity._jcs import canonical_digest
 from designspace.resolve._pipeline import check_fully_resolved
@@ -62,5 +64,15 @@ def fingerprint(
             if (encoded := encode_constraint(c, scope)) is not None
         ],
     }
+    # Anchors/meta are `full`-scope only (API.md's scope table) and omitted
+    # entirely when empty, so an anchor/meta-free space's preimage is
+    # byte-identical whether or not this branch exists.
+    if scope != "sampling":
+        anchors_tree = encode_anchors(space.anchors)
+        if anchors_tree is not None:
+            tree["anchors"] = anchors_tree
+        meta_tree = encode_space_meta(space.meta_map)
+        if meta_tree is not None:
+            tree["meta"] = meta_tree
     digest = canonical_digest(tree)
     return f"{FORMAT_VERSION}:{scope}:{digest}"

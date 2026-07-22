@@ -20,13 +20,20 @@ Concepts introduced here
   polarity-agnostically via ``constraint.kind`` and ``ConstraintEval.violated``.
 - Batch sampling with ``sample_dicts`` and a ``flatten`` / ``unflatten``
   round-trip on a nested config.
+- ``.map_params(fn)``: rewrite every ``ParamDef`` in the space through a
+  function — a blanket transformation that reaches params wherever they live,
+  including inside a lifted choice's variant payloads.
+- ``.without_constraints(tags=...)``: drop declared constraints by tag.
 
 Run it:  ``uv run python examples/03_memetic_algorithm.py``
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import designspace as ds
+from designspace.ir import ParamDef, QuantizedSpec, RealDomain
 
 MIN_OPS = 2
 MAX_OPS = 6
@@ -156,6 +163,33 @@ def main() -> None:
     print(f"  is_feasible: {space.is_feasible(bad)}")
     for reason in space.infeasibility_reasons(bad):
         print(f"  reason: {reason}")
+
+    # -- Structural operations: reshaping an already-built Space -------------
+    print("\n--- Structural operations ---")
+
+    # A follow-up sweep only needs coarse precision. `.map_params()` rewrites
+    # every ParamDef through `fn` -- reaching a real param wherever it lives,
+    # including inside a lifted choice's variant payloads (`swap_p`, `rate`),
+    # without needing to know each one's path in advance.
+    def coarsen(pd: ParamDef) -> ParamDef:
+        if isinstance(pd.domain, RealDomain) and pd.quantized is None:
+            return replace(pd, quantized=QuantizedSpec(step=0.05, factor=None, include_hi=False))
+        return pd
+
+    coarsened = space.map_params(coarsen)
+    newly_coarsened = [
+        p
+        for p, pd in coarsened.params.items()
+        if space.params[p].quantized is None and pd.quantized is not None
+    ]
+    print(f"\nmap_params(coarsen): {len(newly_coarsened)} previously-unquantized real param(s) "
+          f"now on a 0.05 grid: {newly_coarsened}")
+
+    # The diversity cap was a suggestion for early exploration; a later,
+    # focused run drops it and reports fewer declared constraints.
+    relaxed = space.without_constraints(tags=("diversity-cap",))
+    print(f"\nwithout_constraints(tags=('diversity-cap',)): "
+          f"{len(relaxed.constraints)} constraint(s), was {len(space.constraints)}")
 
 
 if __name__ == "__main__":

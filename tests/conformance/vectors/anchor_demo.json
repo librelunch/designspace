@@ -1,0 +1,77 @@
+{
+  "fingerprint_full": "1:full:690de4fcc69a5a72b824c57d0a7de1236bd6982ddfd63c9e766ea148478de8c0",
+  "fingerprint_sampling": "1:sampling:4ce1ae0be48de86ba200251eb900f16115db55a8b246826473553e90215e5722",
+  "to_json": {
+    "anchors": {
+      "baseline": {
+        "mode": {
+          "$t": "str",
+          "v": "fast"
+        },
+        "x": {
+          "$t": "float",
+          "v": 0.5
+        }
+      },
+      "best_known": {
+        "mode": {
+          "$t": "str",
+          "v": "accurate"
+        },
+        "x": {
+          "$t": "float",
+          "v": 0.9
+        }
+      }
+    },
+    "conditions": [],
+    "constraints": [],
+    "meta": {
+      "cost_model": {
+        "accurate": {
+          "$t": "int",
+          "v": 4
+        },
+        "fast": {
+          "$t": "int",
+          "v": 1
+        }
+      },
+      "objective": {
+        "$t": "str",
+        "v": "minimize_latency"
+      }
+    },
+    "params": [
+      {
+        "domain": {
+          "hi": 1.0,
+          "kind": "real",
+          "lo": 0.0
+        },
+        "kind": "real",
+        "path": "x",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "kind": "categorical",
+          "values": [
+            {
+              "$t": "str",
+              "v": "fast"
+            },
+            {
+              "$t": "str",
+              "v": "accurate"
+            }
+          ]
+        },
+        "kind": "categorical",
+        "path": "mode",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}

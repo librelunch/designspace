@@ -406,6 +406,41 @@ def encode_param(pd: ParamDef, scope: Scope, ctx: EncodeContext) -> dict[str, An
     return tree
 
 
+# -- Space-level anchors / meta (M8) --------------------------------------
+#
+# Both are `Mapping[str, Any]` keyed by an untagged string (an anchor name;
+# a meta key) whose *value* is `Any`-typed application data — tagged
+# recursively via the same generic codec `default`/`ParamDef.meta`/
+# `Constraint.meta` use (normalization step 5). Keys sort (step 3). Omitted
+# entirely when empty, never emitted as `{}` (identity/_ir_codec.py's
+# module docstring: an anchor/meta-free space's preimage must be
+# byte-identical to a pre-M8 one).
+
+
+def encode_anchors(anchors: Any) -> Any:
+    if not anchors:
+        return None
+    return {name: encode_default_value(config) for name, config in sorted(anchors.items())}
+
+
+def decode_anchors(tree: Any) -> MappingProxyType[str, Any]:
+    if tree is None:
+        return MappingProxyType({})
+    return MappingProxyType({name: decode_default_value(cfg) for name, cfg in tree.items()})
+
+
+def encode_space_meta(meta: Any) -> Any:
+    if not meta:
+        return None
+    return {k: encode_default_value(v) for k, v in sorted(meta.items())}
+
+
+def decode_space_meta(tree: Any) -> MappingProxyType[str, Any]:
+    if tree is None:
+        return MappingProxyType({})
+    return MappingProxyType({k: decode_default_value(v) for k, v in tree.items()})
+
+
 def decode_param(tree: Any) -> ParamDef:
     path = tree["path"]
     kind = tree["kind"]

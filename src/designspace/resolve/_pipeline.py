@@ -24,6 +24,7 @@ re-validation.
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import replace
 from types import MappingProxyType
 from typing import Any
@@ -31,7 +32,18 @@ from typing import Any
 from designspace.build._names import check_meta_json_serializable, check_name
 from designspace.build._paramexpr import ParamExpr, _ElementSnapshot
 from designspace.build._space import Space
-from designspace.build._views import ChoiceParamExpr, ListParamExpr, StructParamExpr
+from designspace.build._views import (
+    BoolParamExpr,
+    CategoricalParamExpr,
+    ChoiceParamExpr,
+    IntegerParamExpr,
+    ListParamExpr,
+    OrdinalParamExpr,
+    PermutationParamExpr,
+    RealParamExpr,
+    StructParamExpr,
+    SubsetParamExpr,
+)
 from designspace.charts import build_chart, build_grid_shape, grid_membership
 from designspace.errors import ResolutionError
 from designspace.expr import ArithExpr, Compare, Literal
@@ -142,6 +154,167 @@ def _check_merged_cycles(space: Space) -> None:
 
     for target in deps:
         visit(target)
+
+
+# -- M8: ParamDef <-> ParamExpr view inversion, and re-validation of a -------
+# hand-assembled or rewritten flat IR (API.md, "Space — Metaprogramming":
+# "the IR is bidirectional"; "resolution re-validates whatever comes in").
+# Shared by `meta/_meta.py` (`param_from_def`, `space_from_ir`) and
+# `serialize/_fromjson.py` (chart rebuilding on load) — kept here, next to
+# `_build_list_domain`/`_validate_declarations`, whose exact inverse and
+# re-check this is.
+
+_VIEW_BY_KIND: dict[str, type[ParamExpr]] = {
+    "real": RealParamExpr,
+    "integer": IntegerParamExpr,
+    "bool": BoolParamExpr,
+    "categorical": CategoricalParamExpr,
+    "ordinal": OrdinalParamExpr,
+    "subset": SubsetParamExpr,
+    "permutation": PermutationParamExpr,
+    "choice": ChoiceParamExpr,
+    "space": StructParamExpr,
+}
+
+
+def param_def_to_view(pd: ParamDef) -> ParamExpr:
+    """Invert a resolved `ParamDef` back into the `ParamExpr` view the
+    fluent builder would have produced for it — the reverse of `_emit`'s
+    per-definition half. Structural relocation (the *other* half of `_emit`,
+    folding a struct/choice payload's descendants into the flat space) has
+    no single-`ParamDef` inverse: a struct/choice view built here is always
+    payload-less (`struct_space=None` / empty `choice_payloads`), since its
+    descendants are separate `ParamDef` entries this function never sees.
+    That is fine for every caller: `validate_param_defs` (below) only needs
+    each definition's *own* declaration, and the public, single-`ParamDef`
+    `meta/_meta.py::param_from_def` rejects the two container kinds before
+    ever reaching this function (DECISIONS.md D-41) rather than returning
+    one silently short of its descendants.
+    """
+    if pd.type_kind == "list":
+        assert isinstance(pd.domain, ListDomain)
+        return ListParamExpr(
+            path=pd.path,
+            condition=pd.condition,
+            tags=pd.tags,
+            meta_map=pd.meta,
+            lift=_list_domain_to_snapshot(pd.domain),
+        )
+    view_class = _VIEW_BY_KIND[pd.type_kind]
+    return view_class(
+        path=pd.path,
+        domain=pd.domain,
+        periodic=pd.periodic,
+        prior_spec=pd.prior,
+        quantized_spec=pd.quantized,
+        default_value=pd.default,
+        condition=pd.condition,
+        tags=pd.tags,
+        meta_map=pd.meta,
+    )
+
+
+def _list_domain_to_snapshot(domain: ListDomain) -> _ElementSnapshot:
+    """Inverse of `_build_list_domain`: rebuild the `_ElementSnapshot` chain
+    `.repeat()` would have produced for this resolved `ListDomain`,
+    recursing once per chained lift level exactly as `_build_list_domain`
+    does in the other direction. A struct/choice element's snapshot is
+    payload-less (see `param_def_to_view`)."""
+    if domain.element_kind == "list":
+        assert isinstance(domain.element_domain, ListDomain)
+        inner = _list_domain_to_snapshot(domain.element_domain)
+    elif domain.element_kind in ("space", "choice"):
+        inner = _ElementSnapshot(
+            element_class=_VIEW_BY_KIND[domain.element_kind], domain=domain.element_domain
+        )
+    else:
+        inner = _ElementSnapshot(
+            element_class=_VIEW_BY_KIND[domain.element_kind],
+            domain=domain.element_domain,
+            prior_spec=domain.element_prior,
+            quantized_spec=domain.element_quantized,
+            periodic=domain.element_periodic,
+            default_value=domain.element_default,
+        )
+    return _ElementSnapshot(
+        element_class=ListParamExpr,
+        element=inner,
+        count=domain.count,
+        list_default=domain.list_default,
+    )
+
+
+def validate_param_defs(defs_by_path: Mapping[str, ParamDef]) -> None:
+    """Re-validate a flat mapping of already-resolved `ParamDef`s: each
+    one's own domain/prior/quantized/default/tags/meta, plus — for a
+    `.repeat()`-closed ("list") kind — its element and (for a dynamic
+    count) the type of the param the count references. The same
+    per-definition checks `_validate_declarations` runs during ordinary
+    builder resolution (row 2's "more than one type" cannot recur here —
+    a `ParamDef.type_kind` string always names exactly one kind by
+    construction, unlike a hand-built `ParamExpr`). Conditions/cycles are
+    `check_fully_resolved`'s separate job, over the merged `Space`.
+    """
+    views: dict[str, ParamExpr] = {path: param_def_to_view(pd) for path, pd in defs_by_path.items()}
+    for path, pd in defs_by_path.items():
+        view = views[path]
+        if pd.type_kind == "list":
+            _validate_lift(view, views)
+        else:
+            _validate_domain(view)
+            _validate_prior(view)
+            _validate_quantized(view)
+            _validate_default(view)
+        _validate_tags_meta(view)
+
+
+def rebuild_charts(pd: ParamDef) -> ParamDef:
+    """Charts are always derived, never trusted from input — rebuild fresh
+    from domain/prior/quantized, discarding whatever `pd.chart` already
+    holds. Shared by `serialize/_fromjson.py` (loading a `to_json`
+    document) and `meta/_meta.py::space_from_ir` (assembling a `Space` from
+    raw `ParamDef`s), both of which start from a chartless or
+    not-to-be-trusted `pd.chart`.
+    """
+    if pd.type_kind == "list":
+        assert isinstance(pd.domain, ListDomain)
+        return replace(pd, domain=rebuild_list_domain_charts(pd.path, pd.domain))
+    chart = build_chart(pd.path, pd.type_kind, pd.domain, pd.prior, pd.quantized)
+    return replace(pd, chart=chart)
+
+
+def rebuild_list_domain_charts(path: str, domain: ListDomain) -> ListDomain:
+    if domain.element_kind == "list":
+        assert isinstance(domain.element_domain, ListDomain)
+        return replace(
+            domain, element_domain=rebuild_list_domain_charts(path, domain.element_domain)
+        )
+    element_chart = (
+        build_chart(
+            path, domain.element_kind, domain.element_domain, domain.element_prior,
+            domain.element_quantized,
+        )
+        if domain.element_kind in ("real", "integer")
+        else None
+    )
+    return replace(domain, element_chart=element_chart)
+
+
+def revalidate_space(space: Space) -> Space:
+    """Re-run every per-definition and cross-definition check ordinary
+    builder resolution performs, over an already-flat `Space` assembled
+    from raw IR rather than produced by `resolve_space`'s own pipeline
+    (`meta/_meta.py::space_from_ir`). "Resolution re-validates whatever
+    comes in" (API.md, "Space — Metaprogramming"): a `ParamDef` reaching
+    `space_from_ir` may have come from anywhere — a coarsening
+    `map_params` rewrite, a hand-built registry, a foreign document — so it
+    is held to the same standard as one the fluent builder produced.
+    Returns `space` for convenient chaining.
+    """
+    validate_param_defs(space.params)
+    _validate_list_defaults_deep(space)
+    check_fully_resolved(space)
+    return space
 
 
 def _desugar(defs: tuple[ParamExpr, ...]) -> tuple[ParamExpr, ...]:
