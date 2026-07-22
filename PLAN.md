@@ -321,8 +321,23 @@ green.
 **Gate:** slice-substitution reaches conditions and constraint expressions incl. bound-origin **and require-origin** (envelope recompute test); select prefix-subtree brings variants; strict vs best-effort; `extend` identity with `ds.space()`; `map_params` coarsening example from the spec history; rebuilt spaces fingerprint-equal to equivalent hand-built ones. Corpus: `compiler_pipeline`; `sat_solver` gains freeze-ablation asserts.
 
 ### M9 — Custom types
-**Spec:** Protocols §ParamType + contract laws; `.custom()` both forms; `.prop()`; registry in `from_json`; error rows 16, 23 (describe serializability).
-**Gate:** `factory(x.describe()) ≡ x`; `extract` only-after-validate enforced in the evaluator; canonical-ordering law exercised by a prop-driven lift count; shorthand form correctly poisoned for `to_json`/`fingerprint` (raise + mark). Corpus: `vi_family`.
+**Spec:** Protocols §ParamType + contract laws; `.custom()` both forms; `.prop()`; registry in `from_json`; error rows 16, 23 (describe serializability); Space — Introspection `.has_nongenerative_params` and `.cardinality()` (deferred out of M8 — D-43 — since no non-generative param could exist before this milestone, and a custom type is the last `None`-yielding source `.cardinality()` needs to fully specify).
+**Build:** alongside `.custom()`, `.has_nongenerative_params` (true iff any param is non-generative); `.cardinality()` (finite-config count over the structural product — `None` for infinite/continuous/unquantized-real and for a custom type with no finite `describe()`-derived domain). Also settles **freeze-on-custom**: a custom param's value is opaque, so `.freeze()` pins it via `require(p == value)` when the type supports `==`, otherwise it is out of scope like the M9.5 container kinds — no new machinery, reuses the `.freeze()` bool-pin mechanism.
+**Gate:** `factory(x.describe()) ≡ x`; `extract` only-after-validate enforced in the evaluator; canonical-ordering law exercised by a prop-driven lift count; shorthand form correctly poisoned for `to_json`/`fingerprint` (raise + mark); `.cardinality()` exact count on a finite corpus fixture and `None` on `flat_hpo`-shaped continuous spaces; `.has_nongenerative_params` true only once a custom/program param exists. Corpus: `vi_family`.
+
+### M9.5 — Container freeze completion
+Completes `.freeze()` for the five kinds D-44 scoped out of M8 (choice, subset, permutation, struct, list), generalizing M8's constraint-pin mechanism (real/integer/categorical/ordinal domain-narrowing; bool `require`/`require(~·)` pin — see API.md, "Space — Structural Operations"). Fractional-milestone precedent: M4.5/M4.6/M7.5/M7.6.
+
+**Directive:** fold the nailed-down container-freeze normative text into API.md's `.freeze` row as part of this milestone (the M6 fold-then-implement pattern), replacing the current forward reference.
+
+**Build:**
+- **subset** — per-item pins: `require(contains(p, i))` for each forced-in item, `require(~contains(p, i))` for each forced-out item (reuses `contains`, cf. `flow_chemistry`).
+- **permutation** — per-position pins: `require(position_of(p, item) == k)` for the fixed arrangement (reuses `position_of`, cf. `job_shop`).
+- **struct** — fans out to per-field `.freeze()` (fields are already scalar/combinatorial params; this kind needs no new mechanism, only dispatch).
+- **choice** — discriminator pin `require(c == variant)` **plus** structural pruning of the non-selected variants' relocated descendant params, reusing `.select()`/`resolve/_relocate.py` machinery (the piece D-44 flagged as materially larger than value-fixing).
+- **list** — per-element pinning plus fixing the count.
+
+**Gate:** each container `.freeze()` is fingerprint-equal to its hand-written pin/prune expansion; a frozen space samples/validates to only the fixed value (or, for choice, only the fixed variant); all prior conformance laws + corpus + known-answer vectors stay byte-identical — freeze composes existing constructs (`require`, `.select()`-style pruning), so **no format-version bump**; the M8 `ResolutionError` for these five kinds is removed.
 
 ### M10 — DataFrame output
 **Spec:** Config Representation §DataFrame table incl. `Array`-per-static-level and lifted-choice encoding.

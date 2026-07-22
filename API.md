@@ -517,7 +517,9 @@ Relations: `is_feasible(c) == validate(c).valid`, both defined by param errors p
 .capability_report(encodings=None) -> dict[str, Capabilities]
 ```
 
-`dependency_graph` maps each definition path to the params it depends on via conditions, constraints, and repeat counts (bound-origin constraints and repeat counts included; only conditions, bound-origin constraints, and repeat counts impose assignment order — a runtime-evaluated count is not a bound, but it must still be assigned before its list).
+`dependency_graph` maps each definition path to the params it depends on via conditions, constraints, and repeat counts (bound-origin constraints and repeat counts included; only conditions, bound-origin constraints, and repeat counts impose assignment order — a runtime-evaluated count is not a bound, but it must still be assigned before its list). A plain constraint has no distinguished target, so it couples every param it mentions **symmetrically** — each mentioned path's entry gains every other mentioned path. Every key of `.params` gets an entry, lift-descendant templates (`"[]"`) included, matching `.params`'s own unfiltered transparency.
+
+`param_conditions(path)` returns the **union**: every condition whose `target == path`, plus every condition that merely *references* `path` in its expression. `param_constraints(path)` returns every constraint that references `path` (a constraint has no target to distinguish).
 
 ---
 
@@ -536,6 +538,8 @@ Each returns a new `Space`. Path arguments accept both keyword form and a positi
 
 **Anchors under structural operations:** `freeze`/`slice` re-validate anchors; a conflict with a frozen/sliced value is a resolution error. `select`/`filter` drop conflicting anchor keys with the same warning mechanism. `extend` keeps anchors and re-validates.
 
+**`.freeze`'s per-kind mechanism.** Real/integer/categorical/ordinal narrow the param's own domain to the single fixed value (`lo == hi` is already a legal degenerate domain — Degeneracy Table) and set `default` to it, dropping any prior. Bool has no domain to narrow, so it is pinned instead via a hard `require`/`require(~·)` constraint on the param — this is deliberately visible in `.constraints` and the fingerprint (fingerprint-equal to a hand-written `.require(b)`), not a silent domain fact. The container/combinatorial kinds — choice, subset, permutation, struct, list — are fixed by the same constraint-pin (and, for choice, structural-prune) principle, generalized.
+
 ---
 
 ## Space — Metaprogramming
@@ -551,6 +555,8 @@ ds.space_from_ir(params, conditions, constraints, anchors=None, meta=None) -> Sp
 ```
 
 `TypedParamExpr` is the type-specific builder view for `pd`'s type (see *Builder view types*); when this surface lands (M8) it becomes the common base of those views. Until then the views subclass `ParamExpr` directly.
+
+`param_from_def` inverts every scalar kind (real/integer/bool/categorical/ordinal/subset/permutation) and any list thereof, fingerprint-equal to the original. A struct or choice `ParamDef` (or a `"list"` `ParamDef` repeating one) has no single-`ParamDef` inverse — its descendants live as separate flat entries the lone `ParamDef` carries no reference to — so `param_from_def` **raises `TypeError`** for these, naming `space_from_ir` as the tool that reconstructs them from the full flat IR (where every descendant already exists as its own entry).
 
 Resolution re-validates whatever comes in. Expressions are values — rewrites reattach existing `BoolExpr` objects; `.kind`/`.children` walking covers expression-level rewrites. `ds.all_`/`ds.any_` provide fold identities for generated constraint sets. Degenerate arities produced by generators are legal with defined semantics (see Degeneracy Table). A space-valued param (searching a catalog of inner spaces) needs no new machinery: a `.custom()` type with `fingerprint()` as value identity.
 
@@ -874,8 +880,12 @@ class ParamDiff:
 @dataclass
 class SubspaceInfo:
     prefix: str                   # definition-path prefix
-    space: Space
-    condition: BoolExpr | None    # variant subspaces carry the discriminator condition
+    kind: str                     # "struct" | "variant"
+    member_paths: tuple[str, ...] # descendant definition paths relocated under prefix
+    condition: BoolExpr | None    # folded activation condition gating every member —
+                                  #   a struct's own `.when()`; a variant's ANDed with
+                                  #   its discriminator equality
+    variant_name: str | None = None  # set only for kind == "variant"
 
 @dataclass
 class Capabilities:
