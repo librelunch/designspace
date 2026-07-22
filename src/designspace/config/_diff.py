@@ -1,4 +1,4 @@
-"""`ds.config_diff` (API_v3.md, "Config Utilities"): structural, no
+"""`ds.config_diff` (API.md, "Config Utilities"): structural, no
 magnitude.
 
 Built entirely on `flatten()` — a variant switch "decomposes into the

@@ -1,4 +1,4 @@
-"""`.to_json()` (API_v3.md, "to_json / from_json"): the full-IR document."""
+"""`.to_json()` (API.md, "to_json / from_json"): the full-IR document."""
 
 from __future__ import annotations
 

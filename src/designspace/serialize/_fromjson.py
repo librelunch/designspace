@@ -1,4 +1,4 @@
-"""`Space.from_json()` (API_v3.md, "to_json / from_json"): reconstructs the
+"""`Space.from_json()` (API.md, "to_json / from_json"): reconstructs the
 resolved IR directly (no builder replay) and rebuilds every chart via
 `resolve.rebuild_charts` (which calls `charts.build_chart`) — charts are
 derived, never stored, so the round-trip law

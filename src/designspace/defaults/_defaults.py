@@ -1,4 +1,4 @@
-"""`.apply_defaults()` (API_v3.md, "Defaults").
+"""`.apply_defaults()` (API.md, "Defaults").
 
 A partial-evaluation operator: idempotent, monotone (never overwrites,
 never removes), activity-respecting. Modeled on `sample/_sample.py::
@@ -45,7 +45,7 @@ def apply_defaults(space: Space, config: dict[str, Any]) -> dict[str, Any]:
             assert isinstance(pd.domain, ListDomain)
             _fill_list(space, path, pd.domain, activity_class, flat, status)
         elif pd.type_kind == "space":
-            # No own value to fill (API_v3.md: "a struct carries no own
+            # No own value to fill (API.md: "a struct carries no own
             # default value") -- its members are filled independently,
             # later in topological order.
             status[path] = "set" if activity_class == "active" else activity_class
@@ -74,7 +74,7 @@ def _fill_scalar(
 def _determine_count(
     count: int | ArithExpr, flat: dict[str, Any], status: dict[str, str], space: Space
 ) -> int | None:
-    """The count rule (API_v3.md, "Defaults" > "Counts and lifts"): a
+    """The count rule (API.md, "Defaults" > "Counts and lifts"): a
     static int is always determined; an `ArithExpr` is determined if it
     evaluates to a definite integer, or is Unknown *solely* because a
     referenced param is inactive (-> 0, "the complete value []");

@@ -1,4 +1,4 @@
-"""RFC 8785 (JCS) canonical digest (API_v3.md, "fingerprint()" /
+"""RFC 8785 (JCS) canonical digest (API.md, "fingerprint()" /
 "config_hash"; DECISIONS.md D-32).
 
 A single call site around the `rfc8785` dependency: everywhere else in

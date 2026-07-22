@@ -1,4 +1,4 @@
-"""Conformance laws: Identity and Serialization (API_v3.md, "Identity and
+"""Conformance laws: Identity and Serialization (API.md, "Identity and
 Serialization"; "Conformance Laws" > "Identity").
 
 - Sugar-equivalence pairs fingerprint-equal.

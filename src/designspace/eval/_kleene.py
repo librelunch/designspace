@@ -923,7 +923,7 @@ def _lift_count_deps(domain: Any) -> frozenset[str]:
 def _bound_order_deps(
     bound_targets: dict[str, tuple[ArithExpr | None, ArithExpr | None]], path: str
 ) -> frozenset[str]:
-    """Bound-origin constraints impose assignment order too (M5, API_v3.md
+    """Bound-origin constraints impose assignment order too (M5, API.md
     "Expression bounds are sugar" — "Ordering"): the params a bound
     expression references must be assigned before the param it bounds."""
     lo_expr, hi_expr = bound_targets.get(path, (None, None))

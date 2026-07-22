@@ -85,7 +85,7 @@ class TestTypeMethodsReturnTypeSpecificViews:
         assert all(isinstance(v, ParamExpr) for v in views)
 
     def test_bool_param_expr_is_also_a_bool_expr(self):
-        # API_v3.md: "BoolParamExpr is additionally a BoolExpr (a boolean
+        # API.md: "BoolParamExpr is additionally a BoolExpr (a boolean
         # param is usable directly as a condition)".
         assert isinstance(ds.param("x").bool(), BoolExpr)
 
@@ -128,7 +128,7 @@ class TestModifiersPreserveView:
 
 
 class TestRow2SecondTypeMethod:
-    """API_v3.md, "Builder view types": choosing a second type still raises
+    """API.md, "Builder view types": choosing a second type still raises
     the path-named row-2 ResolutionError, caught immediately on the fluent
     route (before any `ds.space()` call, since the narrowed view simply
     lacks the method). The "however it was built" half of the law — a

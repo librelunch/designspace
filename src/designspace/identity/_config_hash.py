@@ -1,4 +1,4 @@
-"""`ds.config_hash` (API_v3.md, "config_hash"): SHA-256 over the canonical
+"""`ds.config_hash` (API.md, "config_hash"): SHA-256 over the canonical
 config encoding. Does **not** embed the space fingerprint — "the globally
 unique observation key is the pair `(space.fingerprint(), ds.config_hash
 (config, space))`", so the two are combined by the caller, not here.

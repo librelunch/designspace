@@ -1,4 +1,4 @@
-"""Conformance laws: Defaults (API_v3.md, "Defaults"; "Conformance Laws" >
+"""Conformance laws: Defaults (API.md, "Defaults"; "Conformance Laws" >
 "Defaults").
 
 - `apply_defaults` is idempotent and monotone (never overwrites, never
@@ -181,7 +181,7 @@ class TestFieldWiseFill:
     def test_supplied_variant_wins_and_is_filled_field_wise(self):
         """"If a config already supplies a choice's variant, partial input
         wins — that variant's payload is filled from its own members'
-        defaults."" (API_v3.md, "Defaults")."""
+        defaults."" (API.md, "Defaults")."""
         space = ds.space(
             ds.param("heating").choice(
                 "electric",

@@ -1,4 +1,4 @@
-"""Canonical **config** encoding (API_v3.md, "config_hash"): "type tags,
+"""Canonical **config** encoding (API.md, "config_hash"): "type tags,
 float rules, grid canonicalization; subsets sorted, inactive stripped."
 
 Mirrors `config/_flatten.py`'s space-guided recursive traversal (same

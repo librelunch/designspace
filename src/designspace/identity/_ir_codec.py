@@ -1,5 +1,5 @@
 """Shared IR codec: `ParamDef`/`Domain`/`Prior`/`QuantizedSpec`/`Constraint`/
-`Condition` <-> canonical tree (API_v3.md, "Identity and Serialization";
+`Condition` <-> canonical tree (API.md, "Identity and Serialization";
 "IR"). One encoder, three call shapes selected by `scope`:
 
 - `"document"` — `to_json`'s full-fidelity shape: every field, `origin` kept,
@@ -11,7 +11,7 @@
   both hard and declared constraints kept.
 - `"sampling"` — the fingerprint `sampling` scope: as `full` but declared
   (`hard=False`) constraints and per-param default/tags/meta dropped
-  (API_v3.md's scope table; DECISIONS.md D-33 additionally puts `quantized`/
+  (API.md's scope table; DECISIONS.md D-33 additionally puts `quantized`/
   `periodic` in both fingerprint scopes despite the table's "domain, prior"
   shorthand).
 

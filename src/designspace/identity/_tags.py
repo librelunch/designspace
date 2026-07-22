@@ -1,5 +1,5 @@
 """Type tags for `Any`-typed leaf data, and the expression-AST codec
-(API_v3.md, "Identity and Serialization" > "Normalization pipeline", steps
+(API.md, "Identity and Serialization" > "Normalization pipeline", steps
 4-6).
 
 Every position that holds application data of otherwise-unknown type (a

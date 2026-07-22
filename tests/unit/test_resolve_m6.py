@@ -1,4 +1,4 @@
-"""M6 gate: completed row-21 default validation (API_v3.md, "Defaults";
+"""M6 gate: completed row-21 default validation (API.md, "Defaults";
 error table row 21).
 
 The milestone's *laws* (idempotence/monotonicity, completeness postcondition,

@@ -1,4 +1,4 @@
-"""The resolve pass pipeline (API_v3.md, "Resolution").
+"""The resolve pass pipeline (API.md, "Resolution").
 
 Covers steps 1-8: collect, type-check, desugar (`implies`; `log_scale`
 already resolved eagerly at the builder, D-2), resolve references,
@@ -107,7 +107,7 @@ def check_fully_resolved(space: Space) -> None:
     space (DECISIONS.md D-26, superseding D-12).
 
     A `.when()` condition may reference a param bound in an *enclosing* scope
-    (API_v3.md's sole scoping rule — resolve the first segment by walking up).
+    (API.md's sole scoping rule — resolve the first segment by walking up).
     Such an up-reference cannot be resolved while its payload is resolved
     standalone, so per-scope resolution *tolerates* it (skipping it in
     `check_refs_declared`/`check_expr_types`/cycle detection). Here — at every
@@ -469,7 +469,7 @@ def _resolve_condition_refs(
         if d.condition is None:
             continue
         context = f"param {d.path!r}"
-        # Condition up-references to an enclosing scope's params (API_v3.md's
+        # Condition up-references to an enclosing scope's params (API.md's
         # sole scoping rule) are tolerated here and re-checked at finalization
         # over the merged space, once every enclosing scope has contributed
         # its params (DECISIONS.md D-26, superseding D-12's eager rejection).
@@ -945,7 +945,7 @@ def _validate_list_defaults_deep(space: Space) -> None:
     `"[]"`-bracketed prefix and don't exist any earlier in the pipeline).
 
     Recurses through `ListDomain.element_domain` so every level of a chained
-    lift (`.repeat(a).default([...]).repeat(b)`, API_v3.md's "per-level list
+    lift (`.repeat(a).default([...]).repeat(b)`, API.md's "per-level list
     modifiers between lifts") gets its own `list_default` deep-checked, not
     just the outermost. A level below the outermost has no single real
     instance path to hang the check on (the same literal default applies

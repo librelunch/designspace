@@ -156,7 +156,7 @@ class TestTightenNotReject:
         return float(np.max(np.abs(cdf_a - cdf_b)))
 
     def test_tighten_vs_reject_distributional_equivalence(self):
-        """Truncation ≡ conditioning (API_v3.md, "All charts are static"):
+        """Truncation ≡ conditioning (API.md, "All charts are static"):
         the shipped (tightening) sampler and a naive reference sampler that
         always draws `x` from the full envelope and rejects `x > y` are two
         Monte Carlo estimates of the *same* theoretical law — a two-sample

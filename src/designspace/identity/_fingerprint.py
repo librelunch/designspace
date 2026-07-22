@@ -1,4 +1,4 @@
-"""`.fingerprint()` (API_v3.md, "fingerprint()"): a stable identifier of the
+"""`.fingerprint()` (API.md, "fingerprint()"): a stable identifier of the
 resolved space — post-resolution IR, never builder expressions.
 
 Output: `"{version}:{scope}:{64 hex chars}"`. The format version and the

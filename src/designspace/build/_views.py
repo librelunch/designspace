@@ -33,7 +33,7 @@ Class shape, bottom to top:
         +-- StructParamExpr       type_kind = "space"
         +-- ListParamExpr         type_kind = "list"
 
-None of these subclasses add fields (API_v3.md: "they add no state beyond
+None of these subclasses add fields (API.md: "they add no state beyond
 ParamExpr"); each is a thin method surface (plus, on the 10 leaves, a fixed
 `type_kind` override) over the same dataclass fields, constructed via
 `ParamExpr._as()`. None needs `@dataclass` redecoration — `type_kind` was
@@ -74,7 +74,7 @@ from designspace.ir import (
 class FreshParamExpr(ParamExpr):
     """`ds.param(name)`'s return type: a `ParamExpr` that additionally
     carries the 9 type methods, each choosing the param's type exactly
-    once (API_v3.md, "Construction" / "Builder view types")."""
+    once (API.md, "Construction" / "Builder view types")."""
 
     def real(
         self, lo: float | ArithExpr, hi: float | ArithExpr, periodic: builtins.bool = False
@@ -179,7 +179,7 @@ class FreshParamExpr(ParamExpr):
 
 class TypedParamExpr(ParamExpr):
     """Shared by every narrowed view (a type has been chosen, or a lift
-    applied): `.repeat()` (API_v3.md, "The lift") — the one modifier valid
+    applied): `.repeat()` (API.md, "The lift") — the one modifier valid
     across every element type, including a list itself (nested lifts).
 
     Public since M8 (API.md, "Space — Metaprogramming"): the common base
@@ -191,7 +191,7 @@ class TypedParamExpr(ParamExpr):
             raise ResolutionError(f"param {self.path!r}: repeat() requires at least one count")
         # Variadic sugar: `.repeat(2, 3)` reads as shape (2, 3), first count
         # outermost, desugaring to chained lifts in *reverse* order —
-        # `.repeat(3).repeat(2)` (API_v3.md, "The lift").
+        # `.repeat(3).repeat(2)` (API.md, "The lift").
         ordered = list(reversed(counts))
         result = self._repeat_one(ordered[0])
         for c in ordered[1:]:
@@ -232,7 +232,7 @@ class TypedParamExpr(ParamExpr):
 
 
 class _NumericParamExpr(TypedParamExpr):
-    """Real/Integer only: `.log_scale()`/`.quantized()` (API_v3.md,
+    """Real/Integer only: `.log_scale()`/`.quantized()` (API.md,
     "Modifiers and Layering"). Absent from every other view — misuse
     (`.categorical(...).log_scale()`) is a static `attr-defined` error and,
     at runtime, `ParamExpr.__getattr__` re-raises it as row 11's
@@ -260,7 +260,7 @@ class IntegerParamExpr(_NumericParamExpr):
 
 class BoolParamExpr(TypedParamExpr):
     # Already a BoolExpr transitively (ParamExpr is BoolExpr-inheriting) —
-    # API_v3.md: "BoolParamExpr is additionally a BoolExpr (a boolean param
+    # API.md: "BoolParamExpr is additionally a BoolExpr (a boolean param
     # is usable directly as a condition)".
     type_kind: ClassVar[str] = "bool"
 

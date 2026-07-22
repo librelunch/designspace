@@ -1,4 +1,4 @@
-"""Expression bounds are sugar (API_v3.md, "Constraints and Feasibility" >
+"""Expression bounds are sugar (API.md, "Constraints and Feasibility" >
 "Expression bounds are sugar"; resolution step 6).
 
 `ds.param("x").integer(1, ds.param("y"))` desugars to `ds.param("x").integer(1,
@@ -6,7 +6,7 @@ env_hi)` plus the implicit hard constraint `ds.param("x") <= ds.param("y")`.
 `env_hi` is the interval-arithmetic **hull** of the bound expression, computed
 over the referenced params' own (already-enveloped) domains along the
 dependency DAG — not the expression's value for any one config, since charts
-are static and built once, independent of any assignment (API_v3.md, "All
+are static and built once, independent of any assignment (API.md, "All
 charts are static").
 
 **Which side of the hull.** A hi-bound expression's envelope is the hull's
@@ -215,7 +215,7 @@ def bound_origin_targets(
     space: Any,  # designspace.build._space.Space; Any avoids an import cycle
 ) -> dict[str, tuple[ArithExpr | None, ArithExpr | None]]:
     """path -> (lo_expr, hi_expr) recovered from `space.constraints`'
-    bound-origin entries. `origin` is derived provenance (API_v3.md, "IR") —
+    bound-origin entries. `origin` is derived provenance (API.md, "IR") —
     this reconstructs the dependency/tightening information from it rather
     than a dedicated IR field, relying on `_bound_constraint`'s invariant
     that the target param is always the `Compare`'s *left* operand.
