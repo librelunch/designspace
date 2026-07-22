@@ -93,6 +93,22 @@ class StructDomain:
 
 
 @dataclass(frozen=True)
+class CustomDomain:
+    """`.custom(param_type)` (full protocol form) or `.custom(sampler,
+    validator)` (callback shorthand, non-serializable) — exactly one of
+    `param_type` / `(sampler, validator)` is set, enforced at the builder
+    (`build/_views.py::FreshParamExpr.custom`). Typed `Any` to avoid a
+    cycle (`designspace.custom` is a leaf module that does not import
+    `ir/`; this stays consistent with `ListDomain.element_constraints`'s
+    same avoidance). A custom value is opaque to core: no bounds, no
+    chart, no domain-level modifiers (DECISIONS.md D-45)."""
+
+    param_type: Any = None  # designspace.custom.ParamType | None
+    sampler: Any = None  # Callable[[Any], Any] | None (shorthand)
+    validator: Any = None  # Callable[[Any], bool] | None (shorthand)
+
+
+@dataclass(frozen=True)
 class ListDomain:
     """`.repeat(count)` (the lift). Recursive — `element_domain` is another
     `ListDomain` for a chained/variadic `.repeat().repeat()`. Every fact
@@ -132,5 +148,6 @@ Domain = (
     | PermutationDomain
     | ChoiceDomain
     | StructDomain
+    | CustomDomain
     | ListDomain
 )

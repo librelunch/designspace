@@ -29,11 +29,11 @@ from designspace.serialize._version import FORMAT_VERSION
 
 
 def from_json(data: dict[str, Any], custom_types: dict[str, Any] | None = None) -> Space:
-    # `custom_types` is part of the spec's `from_json` signature (registry
-    # mapping `type_key -> factory` for custom params) but no document can
-    # currently contain a custom-type entry — no builder surface for
-    # `.custom()` exists before M9. Accepted now for signature fidelity;
-    # consulted starting M9.
+    # `custom_types` (API.md, "to_json / from_json"): a registry mapping
+    # `type_key -> factory` for reconstructing each custom param's
+    # `ParamType` instance from its `describe()` output (round-trip law:
+    # `factory(x.describe()) ≡ x`). A missing entry for a `type_key` present
+    # in the document is row 27.
     version = data.get("version")
     if version != FORMAT_VERSION:
         raise SerializationError(
@@ -42,7 +42,7 @@ def from_json(data: dict[str, Any], custom_types: dict[str, Any] | None = None) 
         )
     params: dict[str, ParamDef] = {}
     for entry in data["params"]:
-        pd = rebuild_charts(decode_param(entry))
+        pd = rebuild_charts(decode_param(entry, custom_types))
         params[pd.path] = pd
     conditions = tuple(decode_condition(c) for c in data.get("conditions", ()))
     constraints = tuple(decode_constraint(c) for c in data.get("constraints", ()))

@@ -27,6 +27,7 @@ is byte-identical before and after anchors exist as a concept.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any, Literal
@@ -48,6 +49,7 @@ from designspace.ir import (
     ChoiceDomain,
     Condition,
     Constraint,
+    CustomDomain,
     Domain,
     IntegerDomain,
     ListDomain,
@@ -65,6 +67,8 @@ from designspace.ir import (
     Weights,
 )
 
+CustomTypeRegistry = Mapping[str, Any]  # type_key -> factory(describe_dict) -> ParamType
+
 Scope = Literal["document", "full", "sampling"]
 OnUnserializable = Literal["raise", "mark", "drop"]
 
@@ -74,10 +78,11 @@ _OPAQUE_MARKER = {"kind": "opaque", "$opaque": True}
 @dataclass
 class EncodeContext:
     """Threaded through every encoder that might hit a non-serializable
-    site. In M7 the only such site is an external `Prior` (DECISIONS.md
-    D-31) — the other four sites the spec enumerates (`.custom()` shorthand,
-    `code`/`symbolic` validators, `symbolic` sampler, `Primitive.fn`) have no
-    builder surface yet (M9/M12), so no IR they'd appear in can exist."""
+    site. Through M7 the only such site was an external `Prior` (DECISIONS.md
+    D-31); M9 adds the `.custom(sampler, validator)` shorthand. The three
+    remaining sites the spec enumerates (`code`/`symbolic` validators,
+    `symbolic` sampler, `Primitive.fn`) still have no builder surface (M12),
+    so no IR they'd appear in can exist yet."""
 
     mode: OnUnserializable
     dropped: list[str] = field(default_factory=list)
@@ -199,10 +204,46 @@ def encode_domain(kind: str, domain: Domain, scope: Scope, ctx: EncodeContext, p
     if kind == "space":
         assert isinstance(domain, StructDomain)
         return {"kind": "space"}
+    if kind == "custom":
+        assert isinstance(domain, CustomDomain)
+        return _encode_custom_domain(domain, ctx, path)
     if kind == "list":
         assert isinstance(domain, ListDomain)
         return _encode_list_domain(domain, scope, ctx, path)
     raise SerializationError(f"param {path!r}: unknown domain kind {kind!r}")
+
+
+def _encode_custom_domain(domain: CustomDomain, ctx: EncodeContext, path: str) -> Any:
+    """Custom params serialize as `type_key` + the `describe()` output
+    (API.md, "to_json / from_json"). The `.custom(sampler, validator)`
+    shorthand is in the enumerated non-serializable set (API.md:606) — it
+    rides the same raise / mark (`{"$opaque": true}`) / drop-plus-manifest
+    path as an external prior (`encode_prior`, above), since a whole custom
+    param has no serializable substance without its type (DECISIONS.md
+    D-47: "drop" degrades to the same opaque marker as "mark" here, rather
+    than removing the whole param — a document produced this way is not
+    meant to round-trip through `from_json`, "a different space by
+    design")."""
+    if domain.param_type is not None:
+        pt = domain.param_type
+        try:
+            described = encode_default_value(pt.describe())
+        except SerializationError as e:
+            raise SerializationError(
+                f"param {path!r}: custom type describe() output is not "
+                f"JSON-serializable ({e}) (row 23)"
+            ) from e
+        return {"kind": "custom", "type_key": pt.type_key, "describe": described}
+    if ctx.mode == "raise":
+        raise SerializationError(
+            f"param {path!r}: .custom(sampler, validator) shorthand has no "
+            "structural encoding — pass on_unserializable='mark' or 'drop'"
+        )
+    if ctx.mode == "mark":
+        return dict(_OPAQUE_MARKER)
+    assert ctx.mode == "drop"
+    ctx.dropped.append(f"param {path!r}: custom type (shorthand, opaque)")
+    return dict(_OPAQUE_MARKER)
 
 
 def _encode_list_domain(domain: ListDomain, scope: Scope, ctx: EncodeContext, path: str) -> Any:
@@ -235,7 +276,9 @@ def _encode_list_domain(domain: ListDomain, scope: Scope, ctx: EncodeContext, pa
     return tree
 
 
-def decode_domain(kind: str, tree: Any, path: str) -> Domain:
+def decode_domain(
+    kind: str, tree: Any, path: str, custom_types: CustomTypeRegistry | None = None
+) -> Domain:
     if kind == "real":
         return RealDomain(float(tree["lo"]), float(tree["hi"]))
     if kind == "integer":
@@ -260,12 +303,37 @@ def decode_domain(kind: str, tree: Any, path: str) -> Domain:
         )
     if kind == "space":
         return StructDomain()
+    if kind == "custom":
+        return _decode_custom_domain(tree, path, custom_types)
     if kind == "list":
-        return _decode_list_domain(tree, path)
+        return _decode_list_domain(tree, path, custom_types)
     raise SerializationError(f"param {path!r}: unknown domain kind {kind!r}")
 
 
-def _decode_list_domain(tree: Any, path: str) -> ListDomain:
+def _decode_custom_domain(
+    tree: Any, path: str, custom_types: CustomTypeRegistry | None
+) -> CustomDomain:
+    if tree.get("kind") == "opaque":
+        raise SerializationError(
+            f"param {path!r}: cannot reconstruct a custom param from a "
+            "mark-sentinel document (the .custom(sampler, validator) "
+            "shorthand is not serializable) — from_json only round-trips "
+            "fully serializable spaces"
+        )
+    type_key = tree["type_key"]
+    if custom_types is None or type_key not in custom_types:
+        raise SerializationError(
+            f"from_json: param {path!r} has type_key {type_key!r}, which has "
+            "no entry in custom_types (row 27)"
+        )
+    factory = custom_types[type_key]
+    described = decode_default_value(tree["describe"])
+    return CustomDomain(param_type=factory(described))
+
+
+def _decode_list_domain(
+    tree: Any, path: str, custom_types: CustomTypeRegistry | None = None
+) -> ListDomain:
     element_kind = tree["element_kind"]
     element_default = (
         decode_default_value(tree["element_default"]) if "element_default" in tree else None
@@ -275,7 +343,7 @@ def _decode_list_domain(tree: Any, path: str) -> ListDomain:
     )
     return ListDomain(
         element_kind=element_kind,
-        element_domain=decode_domain(element_kind, tree["element_domain"], path),
+        element_domain=decode_domain(element_kind, tree["element_domain"], path, custom_types),
         element_chart=None,  # rebuilt by the caller (needs the enclosing param's path)
         element_prior=decode_prior(tree.get("element_prior")),
         element_periodic=tree["element_periodic"],
@@ -441,7 +509,7 @@ def decode_space_meta(tree: Any) -> MappingProxyType[str, Any]:
     return MappingProxyType({k: decode_default_value(v) for k, v in tree.items()})
 
 
-def decode_param(tree: Any) -> ParamDef:
+def decode_param(tree: Any, custom_types: CustomTypeRegistry | None = None) -> ParamDef:
     path = tree["path"]
     kind = tree["kind"]
     default = decode_default_value(tree["default"]) if "default" in tree else None
@@ -451,7 +519,7 @@ def decode_param(tree: Any) -> ParamDef:
     return ParamDef(
         path=path,
         type_kind=kind,
-        domain=decode_domain(kind, tree["domain"], path),
+        domain=decode_domain(kind, tree["domain"], path, custom_types),
         prior=decode_prior(tree.get("prior")),
         periodic=tree["periodic"],
         default=default,

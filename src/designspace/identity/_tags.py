@@ -48,6 +48,7 @@ from designspace.expr import (
     Min,
     Not,
     PositionOf,
+    Prop,
     Size,
     Sum,
     SumOver,
@@ -189,7 +190,12 @@ def encode_expr(node: Expr) -> dict[str, Any]:
     if isinstance(node, BoolLiteral):
         return {"kind": "literal", "bool": node.value}
     if isinstance(node, Literal):
-        return {"kind": "literal", "value": tag_value(node.value)}
+        # `encode_default_value`, not the scalar-only `tag_value`: every
+        # prior literal is scalar, so this is byte-identical for them, but
+        # it also supports a custom param's phenotype value (a JSON-shaped
+        # nested dict/list, e.g. a `.freeze()` pin's embedded literal —
+        # DECISIONS.md D-47) without a dedicated codec.
+        return {"kind": "literal", "value": encode_default_value(node.value)}
     if isinstance(node, ArithOp | Compare | BoolOp):
         return {"kind": node.kind, "children": _enc_children(node.children)}
     if isinstance(node, Not):
@@ -232,6 +238,8 @@ def encode_expr(node: Expr) -> dict[str, Any]:
         }
     if isinstance(node, Length):
         return {"kind": "length", "children": _enc_children(node.children)}
+    if isinstance(node, Prop):
+        return {"kind": "prop", "children": _enc_children(node.children), "name": node.name}
     if isinstance(node, Field):
         return {"kind": "field", "children": _enc_children(node.children), "name": node.name}
     if isinstance(node, Sum | Min | Max):
@@ -269,7 +277,7 @@ def decode_expr(tree: dict[str, Any]) -> Expr:
     if kind == "literal":
         if "bool" in tree:
             return BoolLiteral(tree["bool"])
-        return Literal(untag_value(tree["value"]))
+        return Literal(decode_default_value(tree["value"]))
     children = [decode_expr(c) for c in tree.get("children", ())]
     if kind in _ARITH_OPS:
         left, right = children
@@ -326,6 +334,10 @@ def decode_expr(tree: dict[str, Any]) -> Expr:
         (operand,) = children
         assert isinstance(operand, ArithExpr)
         return Length(operand)
+    if kind == "prop":
+        (operand,) = children
+        assert isinstance(operand, ArithExpr)
+        return Prop(operand, tree["name"])
     if kind == "field":
         (operand,) = children
         return Field(operand, tree["name"])

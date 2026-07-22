@@ -42,6 +42,7 @@ from designspace.expr import (
     Expr,
     Length,
     PositionOf,
+    Prop,
     Size,
     SumOver,
     VectorExpr,
@@ -67,6 +68,7 @@ _TYPE_METHOD_NAMES = frozenset(
         "permutation",
         "choice",
         "space",
+        "custom",
     }
 )
 _NUMERIC_ONLY_MODIFIERS = frozenset({"log_scale", "quantized"})
@@ -228,6 +230,9 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
 
     def position_of(self, item: Any) -> ArithExpr:
         return PositionOf(self, item)
+
+    def prop(self, name: str) -> Prop:
+        return Prop(self, name)
 
     # -- domain-level modifiers (last-write-wins) ----------------------------
 

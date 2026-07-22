@@ -36,6 +36,7 @@ from designspace.build._views import (
     BoolParamExpr,
     CategoricalParamExpr,
     ChoiceParamExpr,
+    CustomParamExpr,
     IntegerParamExpr,
     ListParamExpr,
     OrdinalParamExpr,
@@ -46,7 +47,7 @@ from designspace.build._views import (
 )
 from designspace.charts import build_chart, build_grid_shape, grid_membership
 from designspace.errors import ResolutionError
-from designspace.expr import ArithExpr, Compare, Literal
+from designspace.expr import ArithExpr, Compare, Expr, Literal, Prop
 from designspace.ir import (
     BoolDomain,
     CategoricalDomain,
@@ -54,6 +55,7 @@ from designspace.ir import (
     ChoiceDomain,
     Condition,
     Constraint,
+    CustomDomain,
     IntegerDomain,
     ListDomain,
     OrdinalDomain,
@@ -68,10 +70,10 @@ from designspace.ir import (
 )
 from designspace.resolve._bounds import bound_deps, check_bound_refs, compute_bound_envelopes
 from designspace.resolve._desugar import desugar_bool
-from designspace.resolve._expr_checks import check_expr_types, check_refs_declared, iter_nodes
+from designspace.resolve._expr_checks import check_expr_types, check_refs_declared, prop_type
 from designspace.resolve._relocate import and_, relocate_child
 
-_NON_CHART_KINDS = ("subset", "permutation", "choice", "space", "list")
+_NON_CHART_KINDS = ("subset", "permutation", "choice", "space", "custom", "list")
 
 
 def resolve_space(exprs: tuple[ParamExpr, ...]) -> Space:
@@ -174,6 +176,7 @@ _VIEW_BY_KIND: dict[str, type[ParamExpr]] = {
     "permutation": PermutationParamExpr,
     "choice": ChoiceParamExpr,
     "space": StructParamExpr,
+    "custom": CustomParamExpr,
 }
 
 
@@ -566,6 +569,33 @@ def _validate_domain(d: ParamExpr) -> None:
         _check_choice_variants(d.path, domain)
     elif isinstance(domain, StructDomain):
         pass
+    elif isinstance(domain, CustomDomain):
+        _check_custom_domain(d.path, domain)
+
+
+def _check_custom_domain(path: str, domain: CustomDomain) -> None:
+    """Row 2-adjacent construction check, not a numbered error row: the
+    `.custom()` two-form overload itself already rejects a malformed call
+    at the builder (`build/_views.py::FreshParamExpr.custom`) — this is a
+    final sanity check for a programmatically-built `CustomDomain` reaching
+    resolution some other way (`ds.param_from_def`, `space_from_ir`),
+    mirroring that same check exactly."""
+    full = domain.param_type is not None
+    shorthand = domain.sampler is not None or domain.validator is not None
+    if full and shorthand:
+        raise ResolutionError(
+            f"param {path!r}: custom domain sets both param_type and "
+            "sampler/validator — exactly one form is allowed"
+        )
+    if not full and not shorthand:
+        raise ResolutionError(
+            f"param {path!r}: custom domain must set param_type or "
+            "(sampler, validator)"
+        )
+    if shorthand and (domain.sampler is None or domain.validator is None):
+        raise ResolutionError(
+            f"param {path!r}: custom(sampler, validator) shorthand requires both"
+        )
 
 
 def _check_subset_size_bounds(path: str, domain: SubsetDomain) -> None:
@@ -771,6 +801,15 @@ def _validate_default(d: ParamExpr) -> None:
         ok = _default_is_valid_subset(value, domain)
     elif isinstance(domain, PermutationDomain):
         ok = _default_is_valid_permutation(value, domain)
+    elif isinstance(domain, CustomDomain):
+        # `value` is already phenotype form (DECISIONS.md D-46), matching
+        # every other public config-dict-shaped surface; bridge back to
+        # native only to call the type's own validate().
+        if domain.param_type is not None:
+            ok = domain.param_type.validate(domain.param_type.from_json(value))
+        else:
+            assert domain.validator is not None
+            ok = domain.validator(value)
     else:  # pragma: no cover - unreachable: every Domain variant handled above
         ok = True
     if not ok:
@@ -832,25 +871,43 @@ def _validate_lift(d: ParamExpr, defs_by_path: dict[str, ParamExpr]) -> None:
         )
 
 
+def _check_count_type_node(node: Expr, defs_by_path: dict[str, ParamExpr], context: str) -> None:
+    if isinstance(node, Literal):
+        if not isinstance(node.value, int) or isinstance(node.value, bool):
+            raise ResolutionError(
+                f"{context}: must be integer-typed, got literal {node.value!r} (row 12)"
+            )
+        return
+    if isinstance(node, Prop):
+        # A `.prop()`-driven count (API.md: `.repeat(ds.param("g").prop("n_edges"))`)
+        # — check the *declared property type* is int, and deliberately do
+        # NOT descend into its operand: the operand is the custom param
+        # itself (type_kind "custom"), which is correctly not integer-typed
+        # — only the extracted prop value needs to be.
+        if prop_type(node, defs_by_path, context=context) is not int:
+            raise ResolutionError(
+                f"{context}: prop({node.name!r}) is not integer-typed (row 12)"
+            )
+        return
+    if isinstance(node, ParamExpr):
+        kind = defs_by_path[node.path].type_kind
+        if kind != "integer":
+            raise ResolutionError(
+                f"{context}: references {node.path!r}, which is {kind!r}, "
+                "not integer (row 12)"
+            )
+        return
+    for child in node.children:
+        _check_count_type_node(child, defs_by_path, context)
+
+
 def _check_count_type(
     path: str, count: int | ArithExpr, defs_by_path: dict[str, ParamExpr]
 ) -> None:
     if isinstance(count, ArithExpr):
         context = f"param {path!r} repeat() count"
         check_refs_declared(count, defs_by_path, context=context)
-        for node in iter_nodes(count):
-            if isinstance(node, Literal):
-                if not isinstance(node.value, int) or isinstance(node.value, bool):
-                    raise ResolutionError(
-                        f"{context}: must be integer-typed, got literal {node.value!r} (row 12)"
-                    )
-            elif isinstance(node, ParamExpr):
-                kind = defs_by_path[node.path].type_kind
-                if kind != "integer":
-                    raise ResolutionError(
-                        f"{context}: references {node.path!r}, which is {kind!r}, "
-                        "not integer (row 12)"
-                    )
+        _check_count_type_node(count, defs_by_path, context)
         return
     if not isinstance(count, int) or isinstance(count, bool):
         raise ResolutionError(

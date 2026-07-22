@@ -17,6 +17,11 @@ ds.param("x").real(0.0, 1.0).bool()  # type: ignore[attr-defined]
 # `.log_scale()` attribute at all.
 ds.param("y").categorical("a", "b").log_scale()  # type: ignore[attr-defined]
 
+# Row 2, M9: `.custom()` narrows to CustomParamExpr, which has no `.real()`
+# (or any other type method) either.
+_w = ds.param("w").custom(sampler=lambda rng: 0.5, validator=lambda v: True)
+_w.real(0.0, 1.0)  # type: ignore[attr-defined]
+
 # Positive control: a legitimate chain interleaving a universal modifier
 # (`.tag()`) between numeric-only ones must still type-check as
 # RealParamExpr — the whole point of `_as()`/`Self` is that this stays

@@ -14,24 +14,36 @@ guarantee for additive fields), so every pre-M8 space is unaffected.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
 from designspace.build._paramexpr import ParamExpr
+from designspace.custom import has_cardinality, is_generative
 from designspace.expr import ArithExpr, BoolExpr
 from designspace.ir import (
+    BoolDomain,
+    CategoricalDomain,
+    ChoiceDomain,
     Condition,
     Constraint,
     ConstraintEval,
+    CustomDomain,
+    IntegerDomain,
     ListDomain,
+    OrdinalDomain,
     ParamDef,
     PartialEval,
+    PermutationDomain,
+    QuantizedSpec,
     RealDomain,
     RemainingDomain,
+    StructDomain,
+    SubsetDomain,
     SubspaceInfo,
     ValidationResult,
 )
@@ -84,6 +96,55 @@ class Space:
         is `.cardinality()`'s job, deferred past M8 (no enumeration/CSP
         machinery yet — DECISIONS.md D-43)."""
         return all(_is_finite_domain(pd) for pd in self.params.values())
+
+    @property
+    def has_nongenerative_params(self) -> bool:
+        """API.md, "Space — Introspection" — replaces `has_code_params`.
+        `True` iff any param is **non-generative**: through M9, that means a
+        full-protocol custom whose `ParamType` declares no `sample()`
+        (`.code()`/`.symbolic()` without `sampler=` join this at M12).
+        Every other kind, and a shorthand custom (always generative by
+        construction), is generative (DECISIONS.md D-46)."""
+        for pd in self.params.values():
+            if pd.type_kind == "custom":
+                domain = pd.domain
+                assert isinstance(domain, CustomDomain)
+                if domain.param_type is not None and not is_generative(domain.param_type):
+                    return True
+        return False
+
+    def cardinality(self) -> int | None:
+        """API.md, "Space — Introspection": finite-config count over the
+        structural product, or `None` if infinite/continuous/unquantized-real
+        or not enumerable. Recurses through each root param's own domain
+        shape (real/integer/quantized grid, categorical/ordinal/bool,
+        subset/permutation, choice/struct nesting, static-count list,
+        custom), never a flat scan of `.params` — a choice/struct's own
+        relocation-injected condition is therefore handled implicitly by
+        the variant-sum / field-product formula, needing no CSP/enumeration
+        machinery for the common (structural) case.
+
+        A param carrying its own **independent** condition — one that
+        references anything beyond what its struct/choice nesting alone
+        would inject — makes the whole result `None` (DECISIONS.md D-48):
+        general conditional enumeration ("sum over finite-discrete
+        condition-driving params... when tractable") is out of scope here;
+        this is sound (never over-counts), just conservative.
+        """
+        from designspace.resolve._pipeline import check_fully_resolved
+
+        check_fully_resolved(self)
+        roots = [p for p in self.params if "." not in p and "[" not in p]
+        total = 1
+        for path in roots:
+            pd = self.params[path]
+            if pd.condition is not None:
+                return None  # a root param's own .when() -- not structural injection
+            n = _param_cardinality(path, pd, self)
+            if n is None:
+                return None
+            total *= n
+        return total
 
     @property
     def subspaces(self) -> dict[str, SubspaceInfo]:
@@ -335,3 +396,131 @@ def _is_finite_list_domain(domain: ListDomain) -> bool:
         assert isinstance(domain.element_domain, RealDomain)
         return domain.element_quantized is not None
     return True
+
+
+# -- .cardinality() (M9) ------------------------------------------------------
+
+
+def _condition_matches_injection(actual: BoolExpr | None, expected: BoolExpr | None) -> bool:
+    """Whether `actual` (a struct-field/choice-variant descendant's stored,
+    folded `.condition`) is *exactly* what structural relocation alone
+    would inject — i.e. the field/variant carries no independent `.when()`
+    of its own. Structural (not identity) comparison via the canonical AST
+    encoder, since `relocate_child`'s choice-variant path builds a fresh
+    `and_(...)` composite rather than reusing an existing object."""
+    from designspace.identity._tags import encode_expr
+
+    if actual is None and expected is None:
+        return True
+    if actual is None or expected is None:
+        return False
+    return encode_expr(actual) == encode_expr(expected)
+
+
+def _grid_cardinality(lo: float, hi: float, quantized: QuantizedSpec) -> int:
+    from designspace.charts._grid import build_grid_shape
+
+    shape = build_grid_shape(lo, hi, quantized.step, quantized.factor, quantized.include_hi)
+    return shape.K + 1 + (1 if shape.has_extra_hi else 0)
+
+
+def _struct_cardinality(path: str, pd: ParamDef, space: Space) -> int | None:
+    from designspace.config._flatten import _direct_children
+
+    total = 1
+    for child_path in _direct_children(space, f"{path}."):
+        child_pd = space.params[child_path]
+        if not _condition_matches_injection(child_pd.condition, pd.condition):
+            return None  # an independent .when() on a struct field
+        n = _param_cardinality(child_path, child_pd, space)
+        if n is None:
+            return None
+        total *= n
+    return total
+
+
+def _choice_cardinality(path: str, domain: ChoiceDomain, pd: ParamDef, space: Space) -> int | None:
+    from designspace.config._flatten import _direct_children
+    from designspace.expr import Compare, Literal
+    from designspace.resolve._relocate import and_
+
+    total = 0
+    for variant in domain.variants:
+        if variant not in domain.has_payload:
+            total += 1
+            continue
+        prefix = f"{path}.{variant}."
+        discriminator_eq = Compare("eq", ParamExpr(path=path), Literal(variant))
+        expected = and_(pd.condition, discriminator_eq)
+        variant_total = 1
+        for child_path in _direct_children(space, prefix):
+            child_pd = space.params[child_path]
+            if not _condition_matches_injection(child_pd.condition, expected):
+                return None  # an independent .when() on a variant's own field
+            n = _param_cardinality(child_path, child_pd, space)
+            if n is None:
+                return None
+            variant_total *= n
+        total += variant_total
+    return total
+
+
+def _list_cardinality(path: str, domain: ListDomain, space: Space) -> int | None:
+    if isinstance(domain.count, ArithExpr):
+        return None  # dynamic (runtime-dependent) count -- not enumerable here
+    n = domain.count
+    if domain.element_kind == "list":
+        assert isinstance(domain.element_domain, ListDomain)
+        elem = _list_cardinality(f"{path}[]", domain.element_domain, space)
+    elif domain.element_kind in ("space", "choice"):
+        elem_pd = ParamDef(
+            path=f"{path}[]", type_kind=domain.element_kind, domain=domain.element_domain,
+            prior=None, periodic=False, default=None, condition=None, tags=frozenset(),
+            meta=MappingProxyType({}),
+        )
+        elem = _param_cardinality(f"{path}[]", elem_pd, space)
+    else:
+        elem_pd = ParamDef(
+            path=f"{path}[]", type_kind=domain.element_kind, domain=domain.element_domain,
+            prior=None, periodic=domain.element_periodic, default=None, condition=None,
+            tags=frozenset(), meta=MappingProxyType({}), quantized=domain.element_quantized,
+        )
+        elem = _param_cardinality(f"{path}[]", elem_pd, space)
+    if elem is None:
+        return None
+    return int(elem**n)
+
+
+def _param_cardinality(path: str, pd: ParamDef, space: Space) -> int | None:
+    domain = pd.domain
+    if isinstance(domain, RealDomain):
+        if pd.quantized is None:
+            return None
+        assert isinstance(domain.lo, int | float) and isinstance(domain.hi, int | float)
+        return _grid_cardinality(float(domain.lo), float(domain.hi), pd.quantized)
+    if isinstance(domain, IntegerDomain):
+        assert isinstance(domain.lo, int) and isinstance(domain.hi, int)
+        if pd.quantized is not None:
+            return _grid_cardinality(float(domain.lo), float(domain.hi), pd.quantized)
+        return domain.hi - domain.lo + 1
+    if isinstance(domain, CategoricalDomain | OrdinalDomain):
+        return len(domain.values)
+    if isinstance(domain, BoolDomain):
+        return 2
+    if isinstance(domain, SubsetDomain):
+        n_items = len(domain.items)
+        max_size = domain.max_size if domain.max_size is not None else n_items
+        return sum(math.comb(n_items, k) for k in range(domain.min_size, max_size + 1))
+    if isinstance(domain, PermutationDomain):
+        return math.factorial(len(domain.items))
+    if isinstance(domain, ChoiceDomain):
+        return _choice_cardinality(path, domain, pd, space)
+    if isinstance(domain, StructDomain):
+        return _struct_cardinality(path, pd, space)
+    if isinstance(domain, CustomDomain):
+        if domain.param_type is not None and has_cardinality(domain.param_type):
+            return cast("int | None", domain.param_type.cardinality())
+        return None
+    if isinstance(domain, ListDomain):
+        return _list_cardinality(path, domain, space)
+    return None  # pragma: no cover - unreachable: every Domain variant handled above

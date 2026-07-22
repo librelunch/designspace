@@ -405,6 +405,31 @@ class Length(ArithExpr):
         return (self.operand,)
 
 
+@dataclass(frozen=True, eq=False)
+class Prop(ArithExpr, BoolExpr):
+    """`ds.param("c").prop(name)`: a custom type's declared scalar
+    property (int/float/bool/str only). `operand` is the custom-typed
+    param reference; `name` is checked against the type's `properties()`
+    at resolution (row 16). Dual-typed like `ParamExpr` itself: a
+    bool-declared prop is usable directly as a condition (`.require(x.prop
+    ("ok"))`, `&`/`|`/`~`), not just inside a `Compare` — matching the same
+    "bare BoolExpr coerces via `bool(value)`" convention every param
+    reference already gets (no `type_kind`/declared-type gate on bare
+    boolean-position usage anywhere in the codebase; see row 16 for the
+    *declared + scalar* checks that do still apply uniformly here)."""
+
+    operand: ArithExpr
+    name: str
+
+    @property
+    def kind(self) -> str:
+        return "prop"
+
+    @property
+    def children(self) -> tuple[Expr, ...]:
+        return (self.operand,)
+
+
 class VectorExpr(Expr):
     """Mixin exposing the aggregate namespace (API.md, "Expressions" —
     "Vector expressions and aggregates"): "a scalar lift *is* a vector

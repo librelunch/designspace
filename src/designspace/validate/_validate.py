@@ -38,6 +38,7 @@ from designspace.ir import (
     CategoricalDomain,
     ChoiceDomain,
     ConstraintEval,
+    CustomDomain,
     IntegerDomain,
     ListDomain,
     OrdinalDomain,
@@ -130,6 +131,24 @@ def _domain_error_reason(pd: ParamDef, value: Any) -> str | None:
     if isinstance(domain, ListDomain):
         bad = not isinstance(value, int) or isinstance(value, bool) or value < 0
         return "wrong_type" if bad else None
+    if isinstance(domain, CustomDomain):
+        # `value` is already phenotype form (DECISIONS.md D-46) — bridge
+        # back to native only to call the type's own validate(). Every
+        # other branch above defensively type-checks a submitted value
+        # before trusting its shape; core cannot do that for an opaque
+        # custom, so it instead catches whatever `from_json`/`validate`
+        # (or the shorthand `validator`) raise on a structurally-wrong
+        # value and reports it the same way — "wrong_type", not a crash
+        # escaping through a public validate() call.
+        try:
+            if domain.param_type is not None:
+                ok = domain.param_type.validate(domain.param_type.from_json(value))
+            else:
+                assert domain.validator is not None
+                ok = domain.validator(value)
+        except Exception:
+            return "wrong_type"
+        return None if ok else "out_of_bounds"
     return None  # pragma: no cover - unreachable for M2 scalar kinds
 
 

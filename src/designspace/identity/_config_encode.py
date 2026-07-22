@@ -27,7 +27,7 @@ from designspace.build._space import Space
 from designspace.charts._grid import build_grid_shape, grid_membership
 from designspace.config._flatten import _direct_children, _split_choice_value
 from designspace.errors import SerializationError
-from designspace.identity._tags import sort_key, tag_value
+from designspace.identity._tags import encode_default_value, sort_key, tag_value
 from designspace.ir import (
     ChoiceDomain,
     Domain,
@@ -68,6 +68,12 @@ def _encode_scalar_value(
         return sorted((tag_value(v) for v in value), key=sort_key)
     if kind == "permutation":  # order is the payload — never sorted
         return [tag_value(v) for v in value]
+    if kind == "custom":
+        # A custom config leaf is already phenotype (to_json'd) form
+        # (DECISIONS.md D-46) — the same JSON-shaped dict/list/scalar tree
+        # every other Any-typed leaf value uses, so the generic recursive
+        # tagging codec applies uniformly with no per-type hook.
+        return encode_default_value(value)
     raise SerializationError(f"config encoding: unsupported scalar kind {kind!r}")
 
 

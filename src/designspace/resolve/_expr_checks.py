@@ -35,11 +35,14 @@ from designspace.expr import (
     Max,
     Min,
     PositionOf,
+    Prop,
     Size,
     Sum,
     SumOver,
 )
-from designspace.ir import ListDomain, OrdinalDomain, PermutationDomain, SubsetDomain
+from designspace.ir import CustomDomain, ListDomain, OrdinalDomain, PermutationDomain, SubsetDomain
+
+_SCALAR_PROP_TYPES = (int, float, bool, str)
 
 _INDEX_RE = re.compile(r"\[\d+\]")
 
@@ -160,6 +163,68 @@ def _require_lift_domain(
     return domain
 
 
+def prop_type(node: Prop, defs_by_path: Mapping[str, Any], *, context: str) -> type:
+    """Row 16: `.prop()` on undeclared property; non-scalar property type.
+    Queried live off the referenced param's `ParamType` instance (`core...
+    derive[s] all domain facts from it (describe, validate, extract) rather
+    than re-declaring", API.md "Solver Integration") — `properties()` is
+    itself an optional capability (DECISIONS.md D-45), absent iff a
+    shorthand custom or a full-protocol type that declares none."""
+    domain = _referenced_domain(node.operand, defs_by_path, context=context)
+    if not isinstance(domain, CustomDomain):
+        operand_path = cast(ParamExpr, node.operand).path
+        raise ResolutionError(
+            f"{context}: prop({node.name!r}) on {operand_path!r}, which is not a custom param"
+        )
+    props: dict[str, type] = {}
+    if domain.param_type is not None and hasattr(domain.param_type, "properties"):
+        props = domain.param_type.properties()
+    if node.name not in props:
+        operand_path = cast(ParamExpr, node.operand).path
+        raise ResolutionError(
+            f"{context}: prop({node.name!r}) on {operand_path!r} is not a "
+            "declared property (row 16)"
+        )
+    declared_type = props[node.name]
+    if declared_type not in _SCALAR_PROP_TYPES:
+        operand_path = cast(ParamExpr, node.operand).path
+        raise ResolutionError(
+            f"{context}: prop({node.name!r}) on {operand_path!r} declares "
+            f"non-scalar type {declared_type!r} — only int/float/bool/str "
+            "properties are expression-visible (row 16)"
+        )
+    return declared_type
+
+
+def _check_prop_compare_types(
+    node: Compare, defs_by_path: Mapping[str, Any], *, context: str
+) -> None:
+    """Row 16's third clause: type mismatch in comparison — a `.prop()`
+    compared against a literal of a different Python type, or against a
+    second `.prop()` of a different declared type. Strict type match, no
+    int/float leniency (DECISIONS.md D-34 precedent: type-tagged equality
+    throughout)."""
+    for prop_side, other_side in ((node.left, node.right), (node.right, node.left)):
+        if not isinstance(prop_side, Prop):
+            continue
+        declared_type = prop_type(prop_side, defs_by_path, context=context)
+        if isinstance(other_side, Literal):
+            if type(other_side.value) is not declared_type:
+                raise ResolutionError(
+                    f"{context}: prop({prop_side.name!r}) is "
+                    f"{declared_type.__name__!r}-typed, compared against "
+                    f"{other_side.value!r} ({type(other_side.value).__name__!r}) (row 16)"
+                )
+        elif isinstance(other_side, Prop):
+            other_type = prop_type(other_side, defs_by_path, context=context)
+            if other_type is not declared_type:
+                raise ResolutionError(
+                    f"{context}: prop({prop_side.name!r}) ({declared_type.__name__!r}) "
+                    f"compared against prop({other_side.name!r}) "
+                    f"({other_type.__name__!r}) (row 16)"
+                )
+
+
 def _check_field_declared(
     node: Field, defs_by_path: Mapping[str, Any], *, context: str
 ) -> None:
@@ -228,6 +293,8 @@ def check_expr_types(
                         f"{context}: performs arithmetic on {kind} "
                         f"param {path!r}, which supports comparison only"
                     )
+        elif isinstance(node, Prop):
+            prop_type(node, defs_by_path, context=context)
         elif isinstance(node, Compare):
             if node.op in ("gt", "lt", "ge", "le"):
                 for path in node.params:
@@ -237,6 +304,7 @@ def check_expr_types(
                             f"{context}: orders categorical param "
                             f"{path!r} (categoricals support only ==, !=, is_in)"
                         )
+            _check_prop_compare_types(node, defs_by_path, context=context)
             left, right = node.left, node.right
             if (
                 isinstance(left, ParamExpr)

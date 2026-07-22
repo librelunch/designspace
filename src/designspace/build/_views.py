@@ -46,18 +46,20 @@ accepts `type_kind` as an argument.
 from __future__ import annotations
 
 import builtins
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from types import MappingProxyType
 from typing import Any, ClassVar, Self
 
 from designspace.build._paramexpr import ParamExpr, _ElementSnapshot
+from designspace.custom import ParamType
 from designspace.errors import ResolutionError
 from designspace.expr import ArithExpr
 from designspace.ir import (
     BoolDomain,
     CategoricalDomain,
     ChoiceDomain,
+    CustomDomain,
     IntegerDomain,
     Log,
     OrdinalDomain,
@@ -124,6 +126,39 @@ class FreshParamExpr(ParamExpr):
             ChoiceParamExpr,
             domain=ChoiceDomain(tuple(names), frozenset(has_payload)),
             choice_payloads=MappingProxyType(payloads),
+        )
+
+    def custom(
+        self,
+        param_type: ParamType | None = None,
+        sampler: Callable[[Any], Any] | None = None,
+        validator: Callable[[Any], builtins.bool] | None = None,
+    ) -> CustomParamExpr:
+        """`.custom(param_type)` (full protocol) or `.custom(sampler,
+        validator)` (callback shorthand, not serializable) — API.md,
+        "Extension". Exactly one form; misuse is a path-named
+        `ResolutionError`, mirroring `.prior()`'s "exactly one of dist or
+        weights" pattern (`build/_paramexpr.py`)."""
+        full_form = param_type is not None
+        shorthand_form = sampler is not None or validator is not None
+        if full_form and shorthand_form:
+            raise ResolutionError(
+                f"param {self.path!r}: custom() takes either param_type= "
+                "(full protocol) or sampler=/validator= (shorthand), not both"
+            )
+        if not full_form and not shorthand_form:
+            raise ResolutionError(
+                f"param {self.path!r}: custom() requires either param_type= "
+                "or both sampler= and validator="
+            )
+        if shorthand_form and (sampler is None or validator is None):
+            raise ResolutionError(
+                f"param {self.path!r}: custom(sampler, validator) shorthand "
+                "requires both sampler and validator"
+            )
+        return self._as(
+            CustomParamExpr,
+            domain=CustomDomain(param_type=param_type, sampler=sampler, validator=validator),
         )
 
     def space(self, *exprs: Any) -> StructParamExpr:
@@ -252,6 +287,18 @@ class ChoiceParamExpr(TypedParamExpr):
 
 class StructParamExpr(TypedParamExpr):
     type_kind: ClassVar[str] = "space"
+
+
+class CustomParamExpr(TypedParamExpr):
+    """`.custom()`'s return type — a thin leaf view. A custom value is
+    opaque by design (API.md, "Solver Integration" — the open/closed-world
+    split): no domain-specific chainers exist here beyond the universal
+    modifiers (`.default()`, `.when()`, `.tag()`, `.meta()`) and `.repeat()`
+    (inherited from `TypedParamExpr`). Domain-specific, fluent config lives
+    on the author's own `ParamType` object, passed to `.custom()`
+    (DECISIONS.md D-45) — not on this view."""
+
+    type_kind: ClassVar[str] = "custom"
 
 
 class ListParamExpr(TypedParamExpr):

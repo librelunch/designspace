@@ -49,11 +49,12 @@ from designspace.expr import (
     Min,
     Not,
     PositionOf,
+    Prop,
     Size,
     Sum,
     SumOver,
 )
-from designspace.ir import ListDomain, OrdinalDomain
+from designspace.ir import CustomDomain, ListDomain, OrdinalDomain
 
 
 class Unknown:
@@ -255,6 +256,43 @@ def _ordinal_index(domain: OrdinalDomain, value: Any) -> int | Unknown:
     return UNKNOWN
 
 
+def _evaluate_prop(
+    expr: Prop,
+    config: dict[str, Any],
+    activity: dict[str, bool],
+    space: Space,
+    *,
+    status: Mapping[str, str] | None = None,
+) -> Any | Unknown:
+    """`.prop()`: the operand's own (phenotype-form, DECISIONS.md D-46)
+    value, bridged back to native via `from_json` and extracted. Contract
+    law (API.md, "Protocols"): `extract` is called only on a value that
+    passed `validate` — an invalid config value degrades to Unknown here
+    (the same defensive posture as an absent/inactive leaf, per this
+    module's docstring), never a crash; `validate()` itself is what must
+    still report it as a `ParamError`."""
+    value = evaluate_arith(expr.operand, config, activity, space, status=status)
+    if isinstance(value, Unknown):
+        return UNKNOWN
+    assert isinstance(expr.operand, ParamExpr)
+    domain = _resolve_param_domain(expr.operand.path, space)
+    assert isinstance(domain, CustomDomain)
+    assert domain.param_type is not None  # row 16 rejects .prop() on a shorthand custom
+    pt = domain.param_type
+    try:
+        native = pt.from_json(value)
+        if not pt.validate(native):
+            return UNKNOWN
+        return pt.extract(native, expr.name)
+    except Exception:
+        # A structurally-malformed config value: `from_json`/`validate`
+        # themselves may raise on it (core cannot type-check an opaque
+        # value in advance) — degrades to Unknown, same as any other
+        # malformed/absent leaf (this module's docstring); `validate()` is
+        # what must still report it as a `ParamError`.
+        return UNKNOWN
+
+
 def _apply_compare(op: str, left: Any, right: Any) -> bool:
     if op == "eq":
         return _values_equal(left, right)
@@ -361,6 +399,8 @@ def evaluate_arith(
         if not activity.get(path, True):
             return UNKNOWN
         return config.get(path, UNKNOWN)
+    if isinstance(expr, Prop):
+        return _evaluate_prop(expr, config, activity, space, status=status)
     if isinstance(expr, Sum):
         leaves = _aggregate_leaves(expr, config, activity, space)
         if isinstance(leaves, Unknown):
@@ -467,6 +507,12 @@ def evaluate_bool(
     if isinstance(expr, ParamExpr):
         v = _leaf_value(expr.path, config, activity)
         return UNKNOWN if isinstance(v, Unknown) else bool(v)
+    if isinstance(expr, Prop):
+        # A bool-declared prop used bare as a condition (not inside a
+        # Compare) — same "coerce via bool()" convention as a bare
+        # ParamExpr, above.
+        value = _evaluate_prop(expr, config, activity, space, status=status)
+        return UNKNOWN if isinstance(value, Unknown) else bool(value)
     if isinstance(expr, Compare):
         if isinstance(expr.left, Count) or isinstance(expr.right, Count):
             return _evaluate_count_compare(expr, config, activity, space, status=status)

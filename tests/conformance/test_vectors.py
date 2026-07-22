@@ -40,6 +40,7 @@ FIXTURES = [
     "firmware_buffers",
     "pump_configurator",
     "compiler_pipeline",
+    "vi_family",
 ]
 
 

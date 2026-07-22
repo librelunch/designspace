@@ -43,6 +43,7 @@ from designspace.expr import (
     Min,
     Not,
     PositionOf,
+    Prop,
     Size,
     Sum,
     SumOver,
@@ -51,6 +52,7 @@ from designspace.ir import (
     CategoricalDomain,
     Condition,
     Constraint,
+    CustomDomain,
     IntegerDomain,
     OrdinalDomain,
     ParamDef,
@@ -163,6 +165,8 @@ def substitute_expr(node: Expr, literals: dict[str, Literal | BoolLiteral]) -> E
         return PositionOf(cast_arith(substitute_expr(node.operand, literals)), node.item)
     if isinstance(node, Length):
         return Length(cast_arith(substitute_expr(node.operand, literals)))
+    if isinstance(node, Prop):
+        return Prop(cast_arith(substitute_expr(node.operand, literals)), node.name)
     if isinstance(node, Field):
         return Field(substitute_expr(node.operand, literals), node.name)
     if isinstance(node, Sum):
@@ -473,11 +477,47 @@ def _narrow_or_pin(pd: ParamDef, value: Any, *, call: str) -> tuple[ParamDef, Co
             meta=MappingProxyType({}), params=expr.params,
         )
         return replace(pd, default=value), constraint
+    if kind == "custom":
+        return _pin_custom(pd, value, call=call)
     raise ResolutionError(
         f"{call}: {pd.path!r} is a {kind!r} param — .freeze() supports real/"
-        "integer/categorical/ordinal/bool only in this milestone (M8); "
+        "integer/categorical/ordinal/bool/custom only in this milestone; "
         "choice/subset/permutation/struct/list are not yet supported"
     )
+
+
+def _pin_custom(pd: ParamDef, value: Any, *, call: str) -> tuple[ParamDef, Constraint | None]:
+    """Freeze-on-custom (DECISIONS.md D-47, generalizing D-44's bool-pin
+    mechanism): a `require(p == value)` hard pin — the *only* generically
+    available freeze mechanism for an opaque value, since a custom domain
+    has nothing to narrow. `value` is already phenotype form (D-46), so
+    equality compares structurally on the type's own `to_json()` shape —
+    every full-protocol type supports this "equality" for free, with no
+    `__eq__` requirement on the native value at all. **Full protocol
+    only**: the shorthand form has no `to_json`, hence no comparable,
+    serializable value to pin against.
+
+    Also sets `default = value` — unlike bool's pin (which never needs
+    this, since bool is always generative), a *non-generative* custom has
+    no other route to a value at sample() time; setting the default here
+    is what makes ".freeze() removes [the non-generative SamplingError]"
+    (API.md, "Sampling and Generativity") hold for custom, mirroring the
+    domain-narrowing kinds' `default = value` rather than bool's bare pin.
+    """
+    domain = pd.domain
+    assert isinstance(domain, CustomDomain)
+    if domain.param_type is None:
+        raise ResolutionError(
+            f"{call}: {pd.path!r} uses the .custom(sampler, validator) "
+            "shorthand — freeze requires the full ParamType protocol "
+            "(needs to_json() for a comparable, serializable pinned value)"
+        )
+    expr: BoolExpr = Compare("eq", ParamExpr(path=pd.path), Literal(value))
+    constraint = Constraint(
+        expr=expr, hard=True, origin="require", tags=frozenset(),
+        meta=MappingProxyType({}), params=expr.params,
+    )
+    return replace(pd, default=value), constraint
 
 
 def freeze(space: Space, to_fix: dict[str, Any]) -> Space:
@@ -511,6 +551,18 @@ def slice_space(space: Space, to_remove: dict[str, Any]) -> Space:
         path: _validate_fixed_value(space, path, value, call=".slice()")
         for path, value in to_remove.items()
     }
+    for path, pd in removed_defs.items():
+        if pd.type_kind == "custom":
+            # A custom value's only expression-visible surface is `.prop()`
+            # (a Prop node wrapping the param reference); substituting the
+            # whole param away would leave that Prop wrapping a bare
+            # Literal, which evaluate_arith's Prop handling does not
+            # support (DECISIONS.md D-47) — reject cleanly rather than
+            # producing a space that fails unpredictably at evaluation.
+            raise ResolutionError(
+                f".slice(): {path!r} is a custom param — .slice() does not "
+                "support removing/substituting custom-typed params"
+            )
     literals: dict[str, Literal | BoolLiteral] = {
         path: _literal_for(pd, to_remove[path]) for path, pd in removed_defs.items()
     }

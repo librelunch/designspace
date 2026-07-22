@@ -1,0 +1,77 @@
+{
+  "fingerprint_full": "1:full:0bffb85c80d6af50b18ca9e5d2b1fdd1c633f26cd6176f8cb0fc7b4533b08c12",
+  "fingerprint_sampling": "1:sampling:efe3b3a273137592ce4bd4bb6eec474b64ac4649ced1baae0c601f215427c939",
+  "to_json": {
+    "conditions": [],
+    "constraints": [
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "topology"
+            }
+          ],
+          "kind": "prop",
+          "name": "is_connected"
+        },
+        "hard": true,
+        "origin": "require"
+      }
+    ],
+    "params": [
+      {
+        "domain": {
+          "describe": {
+            "connected": {
+              "$t": "bool",
+              "v": true
+            },
+            "max_degree": {
+              "$t": "int",
+              "v": 3
+            },
+            "n_nodes": {
+              "$t": "int",
+              "v": 5
+            }
+          },
+          "kind": "custom",
+          "type_key": "graph_topology"
+        },
+        "kind": "custom",
+        "path": "topology",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "count": {
+            "expr": {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "topology"
+                }
+              ],
+              "kind": "prop",
+              "name": "n_edges"
+            },
+            "kind": "dynamic"
+          },
+          "element_domain": {
+            "hi": 1.0,
+            "kind": "real",
+            "lo": 0.0
+          },
+          "element_kind": "real",
+          "element_periodic": false,
+          "kind": "list"
+        },
+        "kind": "list",
+        "path": "edge_weight",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}

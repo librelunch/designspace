@@ -256,6 +256,8 @@ ds.param("c").prop(name)                # custom type property (scalar-typed)
 expr.if_inactive(fallback)              # inactive → fallback; unset stays pending
 ```
 
+`.prop()` is dual-typed like a bare param reference itself (see *Builder view types*, `BoolParamExpr`): a bool-declared prop is usable directly as a condition — `.require(ds.param("c").prop("ok"))`, `&`/`|`/`~`, `.implies()` — with no `== True` needed, coercing via `bool(value)` at evaluation exactly like any other bare `BoolExpr` leaf (row 16's undeclared-property/non-scalar-type checks still apply uniformly to this position; a non-bool-declared prop used bare is not separately rejected, matching the same convention).
+
 **Vector expressions and aggregates.** A scalar lift *is* a vector expression; `.field(name)` projects a struct lift into one. The aggregate namespace lives on vector expressions only:
 
 ```python
@@ -424,7 +426,7 @@ The reference sampler *may* recognize a bound-origin constraint whose referenced
 
 **Rejection hostility.** Dense combinatorial forbids (pairwise `distinct`, conflict sets near packing limits) collapse rejection acceptance. The remedy is constructive: enforce the invariant inside a `.custom()` sampler or reparameterize (see Solver Integration, tiers). The retry-exhaustion error links here.
 
-**Generative vs. non-generative.** Every param is generative except `.code()` and `.symbolic()` (without `sampler=`). `sample()` raises a `SamplingError` naming the offending params **iff** it must materialize a value for a non-generative param — a `.default()` satisfies it, `freeze`/`slice` removes it, and a param inactive for the draw in progress never triggers it.
+**Generative vs. non-generative.** Every param is generative except `.code()`/`.symbolic()` (without `sampler=`) and a full-protocol `.custom(param_type)` whose `param_type` declares no `sample()` (the shorthand `.custom(sampler, validator)` is always generative — a sampler is required). `sample()` raises a `SamplingError` naming the offending params **iff** it must materialize a value for a non-generative param — a `.default()` satisfies it, `freeze`/`slice` removes it, and a param inactive for the draw in progress never triggers it.
 
 Sampling always produces explicit values and **ignores defaults** — measure bias is the prior's job, not the default's.
 
@@ -517,6 +519,8 @@ Relations: `is_feasible(c) == validate(c).valid`, both defined by param errors p
 .capability_report(encodings=None) -> dict[str, Capabilities]
 ```
 
+`cardinality()` is the finite-config count over the structural product: closed-form per kind — integer range, quantized-real grid, categorical/ordinal/bool value count, subset (Σ over size bounds), permutation (`n!`), choice (Σ over variants — bare contributes 1, payload-bearing the product of the variant's own fields), struct (Π over fields), static-count list (`element_count ** count`), custom (the type's own `cardinality()` if it declares one, else `None`) — recursing through each param's own domain shape, never a flat scan, so a choice/struct's own relocation-injected activation condition is handled implicitly by the variant-sum/field-product formula, needing no CSP/enumeration machinery for that case. An **unquantized real, a dynamic-count list, or a custom with no declared `cardinality()`** makes the whole result `None`. A param carrying its own **independent** condition — one referencing anything beyond what its struct/choice nesting alone would inject, or any condition at all on a root (non-nested) param — also makes the result `None`: general conditional enumeration is out of scope; this is sound (never over-counts), just conservative.
+
 `dependency_graph` maps each definition path to the params it depends on via conditions, constraints, and repeat counts (bound-origin constraints and repeat counts included; only conditions, bound-origin constraints, and repeat counts impose assignment order — a runtime-evaluated count is not a bound, but it must still be assigned before its list). A plain constraint has no distinguished target, so it couples every param it mentions **symmetrically** — each mentioned path's entry gains every other mentioned path. Every key of `.params` gets an entry, lift-descendant templates (`"[]"`) included, matching `.params`'s own unfiltered transparency.
 
 `param_conditions(path)` returns the **union**: every condition whose `target == path`, plus every condition that merely *references* `path` in its expression. `param_constraints(path)` returns every constraint that references `path` (a constraint has no target to distinguish).
@@ -538,7 +542,7 @@ Each returns a new `Space`. Path arguments accept both keyword form and a positi
 
 **Anchors under structural operations:** `freeze`/`slice` re-validate anchors; a conflict with a frozen/sliced value is a resolution error. `select`/`filter` drop conflicting anchor keys with the same warning mechanism. `extend` keeps anchors and re-validates.
 
-**`.freeze`'s per-kind mechanism.** Real/integer/categorical/ordinal narrow the param's own domain to the single fixed value (`lo == hi` is already a legal degenerate domain — Degeneracy Table) and set `default` to it, dropping any prior. Bool has no domain to narrow, so it is pinned instead via a hard `require`/`require(~·)` constraint on the param — this is deliberately visible in `.constraints` and the fingerprint (fingerprint-equal to a hand-written `.require(b)`), not a silent domain fact. The container/combinatorial kinds — choice, subset, permutation, struct, list — are fixed by the same constraint-pin (and, for choice, structural-prune) principle, generalized.
+**`.freeze`'s per-kind mechanism.** Real/integer/categorical/ordinal narrow the param's own domain to the single fixed value (`lo == hi` is already a legal degenerate domain — Degeneracy Table) and set `default` to it, dropping any prior. Bool has no domain to narrow, so it is pinned instead via a hard `require`/`require(~·)` constraint on the param — this is deliberately visible in `.constraints` and the fingerprint (fingerprint-equal to a hand-written `.require(b)`), not a silent domain fact. A **custom** param is likewise opaque to domain-narrowing: a full-protocol `.custom(param_type)` is pinned via `require(p == value)` — comparing structurally on `to_json()` output, which every full-protocol type supports for free, needing no native `__eq__` — **and** `default` is set to the fixed (phenotype) value, so a non-generative custom's `sample()`-time `SamplingError` is satisfied too (real/integer/categorical/ordinal already get this from domain-narrowing alone; bool never needs it, being always generative). The `.custom(sampler, validator)` shorthand has no comparable, serializable value and is not freezable — a path-named resolution error. The container/combinatorial kinds — choice, subset, permutation, struct, list — are fixed by the same constraint-pin (and, for choice, structural-prune) principle, generalized. `.slice()` likewise does not support a custom param (no substitution target for a `.prop()` expression's operand) — a path-named resolution error.
 
 ---
 
@@ -706,14 +710,23 @@ Nested dicts are canonical phenotypes. Inactive params are **absent**.
 
 ```python
 class ParamType(Protocol):
-    def sample(self, rng) -> Any: ...
+    type_key: str                                 # required — identifies the type in serialization,
+                                                    #   the from_json registry, and Capabilities
     def validate(self, value) -> bool: ...
     def to_json(self, value) -> Any: ...
     def from_json(self, data) -> Any: ...
-    def describe(self) -> dict: ...              # MUST be JSON-serializable
+    def describe(self) -> dict: ...                # MUST be JSON-serializable
 
-    # Optional — enables .prop() in constraints
-    def properties(self) -> dict[str, type]: ...  # expression-visible props: int|float|bool|str only
+    # Optional capabilities — each checked structurally (hasattr), never
+    # required; a type declares only the ones it supports.
+    def sample(self, rng) -> Any: ...               # generative iff present (see Sampling and
+                                                      #   Generativity); the .custom(sampler, validator)
+                                                      #   shorthand is always generative
+    def cardinality(self) -> int | None: ...         # contributes a finite factor to
+                                                      #   Space.cardinality() iff present
+    def properties(self) -> dict[str, type]: ...     # enables .prop() in constraints, together with
+                                                      #   extract() below — expression-visible props:
+                                                      #   int|float|bool|str only
     def extract(self, value, prop: str) -> Any: ...
 
 
@@ -726,6 +739,8 @@ class Prior(Protocol):
     def ppf(self, q: float) -> float: ...      # required
     def cdf(self, value: float) -> float: ...  # optional; required when support exceeds bounds
 ```
+
+**Value convention.** `validate`/`sample`/`extract` operate on the type's own *native* representation. `to_json`/`from_json` are the only bridge between that native form and the JSON-safe **phenotype** form every public, config-dict-shaped surface holds instead — a config leaf, `sample_one()`'s return value, `.validate()`, `.freeze()`, `.default()`. Core calls `to_json` once, immediately after `sample()` produces a fresh native value; it calls `from_json` immediately before it needs to call `validate`/`extract` on a config-sourced value. The `.custom(sampler, validator)` shorthand has no `to_json`/`from_json` — native and phenotype coincide (`sampler(rng)`'s return value is used directly).
 
 **Custom-type contract laws:** `factory(x.describe()) ≡ x` (registry round-trip); `extract` is called only on values that passed `validate`; when payload lifts align to a custom value by index (`.repeat(ds.param("g").prop("n_edges"))`), the type must define a **canonical ordering** stable under JSON round-trips; a type embedding non-serializable content is responsible for raising in its own `to_json` — core cannot see inside `describe()` output beyond checking it is JSON-serializable.
 

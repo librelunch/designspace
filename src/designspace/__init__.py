@@ -8,6 +8,7 @@ from designspace.build import (
     BoolParamExpr,
     CategoricalParamExpr,
     ChoiceParamExpr,
+    CustomParamExpr,
     FreshParamExpr,
     IntegerParamExpr,
     ListParamExpr,
@@ -23,6 +24,7 @@ from designspace.build import (
     space,
 )
 from designspace.config import config_diff, destructure, flatten, payload, unflatten, variant
+from designspace.custom import ParamType
 from designspace.errors import DesignSpaceError, ResolutionError, SamplingError, SerializationError
 from designspace.expr import ArithExpr, BoolExpr, all_, any_, count
 from designspace.identity import config_hash
@@ -50,6 +52,7 @@ __all__ = [
     "BoolParamExpr",
     "CategoricalParamExpr",
     "ChoiceParamExpr",
+    "CustomParamExpr",
     "DesignSpaceError",
     "FreshParamExpr",
     "IntegerParamExpr",
@@ -60,6 +63,7 @@ __all__ = [
     "OrdinalParamExpr",
     "ParamDiff",
     "ParamExpr",
+    "ParamType",
     "PartialEval",
     "PermutationParamExpr",
     "PermutationRemaining",

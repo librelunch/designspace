@@ -25,6 +25,7 @@ import numpy as np
 from designspace.build._space import Space
 from designspace.charts import build_chart
 from designspace.config import unflatten
+from designspace.custom import is_generative
 from designspace.errors import SamplingError
 from designspace.eval import (
     Unknown,
@@ -41,6 +42,7 @@ from designspace.ir import (
     CategoricalDomain,
     ChoiceDomain,
     Constraint,
+    CustomDomain,
     IntegerDomain,
     ListDomain,
     Log,
@@ -129,6 +131,41 @@ def _draw_value(pd: ParamDef, rng: np.random.Generator) -> Any:
     )
 
 
+def _draw_custom(domain: CustomDomain, rng: np.random.Generator) -> Any:
+    """A generative custom's draw (caller has already confirmed
+    `is_generative`). Full protocol: `sample()` returns the type's native
+    value, immediately bridged to phenotype form via `to_json` — every
+    config-dict-shaped value is phenotype form (DECISIONS.md D-46).
+    Shorthand: no `to_json` exists, so `sampler(rng)`'s return value is
+    used directly (native and phenotype coincide)."""
+    if domain.param_type is not None:
+        pt = domain.param_type
+        return pt.to_json(pt.sample(rng))
+    assert domain.sampler is not None
+    return domain.sampler(rng)
+
+
+def _materialize_scalar(path: str, pd: ParamDef, rng: np.random.Generator) -> Any:
+    """Draws (or falls back to `.default()`) an active scalar-shaped leaf's
+    value. Every kind through M8 is generative; M9 adds the first
+    non-generative case: a full-protocol custom whose `ParamType` has no
+    `sample()` (API.md, "Sampling and Generativity"; DECISIONS.md D-46) —
+    `.default()` satisfies materialization (row 26's other half), absent
+    which sampling raises naming the param."""
+    if pd.type_kind == "custom":
+        assert isinstance(pd.domain, CustomDomain)
+        domain = pd.domain
+        if domain.param_type is not None and not is_generative(domain.param_type):
+            if pd.default is not None:
+                return pd.default
+            raise SamplingError(
+                f"param {path!r}: non-generative custom type has no sample() "
+                "and no .default() to materialize from (row 26)"
+            )
+        return _draw_custom(domain, rng)
+    return _draw_value(pd, rng)
+
+
 def _draw_lift(
     space: Space,
     path: str,
@@ -168,11 +205,11 @@ def _draw_lift_element(
         _draw_lift(space, inst_path, domain.element_domain, config, activity, rng)
         return
     if domain.element_kind not in ("space", "choice"):
-        config[inst_path] = _draw_value(element_paramdef(inst_path, domain), rng)
+        config[inst_path] = _materialize_scalar(inst_path, element_paramdef(inst_path, domain), rng)
         activity[inst_path] = True
         return
     if domain.element_kind == "choice":
-        config[inst_path] = _draw_value(element_paramdef(inst_path, domain), rng)
+        config[inst_path] = _materialize_scalar(inst_path, element_paramdef(inst_path, domain), rng)
         activity[inst_path] = True
     outer_path = inst_path[: inst_path.rindex("[")]
     template_prefix = f"{outer_path}[]."
@@ -189,7 +226,7 @@ def _draw_lift_element(
             assert isinstance(pd.domain, ListDomain)
             _draw_lift(space, local_path, pd.domain, config, activity, rng)
         else:
-            config[local_path] = _draw_value(pd, rng)
+            config[local_path] = _materialize_scalar(local_path, pd, rng)
 
 
 def _tightenable(pd: ParamDef) -> bool:
@@ -285,7 +322,7 @@ def _draw_config(
             bounds = bound_targets.get(path)
             if bounds is not None and _tightenable(pd):
                 pd = _tighten(pd, bounds, config, activity, space)
-            config[path] = _draw_value(pd, rng)
+            config[path] = _materialize_scalar(path, pd, rng)
     return config, activity
 
 

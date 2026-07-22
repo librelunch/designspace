@@ -222,7 +222,10 @@ def _base_descriptor(pd: ParamDef) -> RemainingDomain:
         )
     if isinstance(domain, PermutationDomain):
         return PermutationRemaining(items=domain.items)
-    raise TypeError(f"remaining_domain: unsupported domain {domain!r}")  # pragma: no cover
+    raise TypeError(
+        f"remaining_domain: {pd.path!r} is a {pd.type_kind!r} param — "
+        "remaining_domain does not support this kind"
+    )
 
 
 _NEGATE_OP = {"gt": "le", "lt": "ge", "ge": "lt", "le": "gt", "eq": "ne", "ne": "eq"}
