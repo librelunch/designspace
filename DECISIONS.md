@@ -220,4 +220,49 @@ Folded into API.md's ArithExpr section (`.prop()`'s line).
 
 ---
 
-_Ledger tail._ D-1 through D-44 were resolved into `API.md` on and their entries removed here (preserved in git history); continue with D-50.
+## D-50 — `.freeze()`'s remaining five kinds (M9.5), and the unified variant-pruning rule
+
+- Status: Resolved
+- Date: 2026-07-25
+- Spec section: API.md §Space — Structural Operations (`.freeze(values=None, **kw)`)
+- Decided by: User (per-kind mechanism, confirmed ahead of implementation) + Agent (pruning-rule generalization and implementation details)
+
+### Question
+
+D-44 scoped choice/subset/permutation/struct/list out of `.freeze()`, flagging choice's structural pruning as "materially larger... better left to a future milestone." M9.5 closes this gap. The one genuinely open design question is choice's pruning: how does it generalize to a *lifted* choice (`.repeat()` of a `.choice()`, e.g. `memetic_pipeline`'s `pipeline`), where every instance shares one relocated `"[]."`-prefixed descendant template rather than having its own?
+
+### Why the specification is insufficient
+
+API.md's `.freeze()` row named the five container kinds only as a forward reference ("fixed by the same constraint-pin ... principle, generalized"); it never specified what "generalized" means once more than one instance of a choice discriminator can independently select a variant.
+
+### Possibilities considered
+
+1. **Never prune inside a list** (a future instance could always select any variant in principle). Correct but useless — defeats the point of pruning at all.
+2. **Prune per-instance** (each frozen instance gets its own private view of reachable variants). Not implementable as stated: a lifted choice's variant descendants live at one shared `"[]."`-prefixed template (`resolve/_pipeline.py`'s list-handling branch calls `_relocate_choice_variants(f"{d.path}[]", f"{d.path}[].", ...)` once for the whole list, not once per instance) — there is no per-instance `ParamDef` to prune independently.
+3. **Prune a variant iff it is selected by zero of the instances actually being frozen in this one `.freeze()` call**, computed once per list (aggregating across every instance in the given value), reusing exactly the top-level choice's own rule (there, "zero instances" trivially means "the one instance didn't pick it").
+
+### Answer
+
+Possibility 3, for both the top-level and lifted case, via one shared rule: compute the set of variants selected by *any* frozen instance of a given choice-or-list-of-choice param; prune every relocated descendant whose variant is not in that set. For a plain top-level choice there is exactly one instance, so this degenerates to "prune every variant except the one selected" (D-44's originally anticipated top-level behavior) with no special case in the implementation. For a lifted choice, `.freeze()` always receives the *complete* element list in one call (there is no partial-list freeze), so "every instance" is naturally already available in one place before any pruning decision is made — no cross-call state or multi-pass aggregation is needed.
+
+`ChoiceDomain.variants` itself is left unnarrowed in both cases (nothing analogous to `lo == hi` exists for it — mirrors bool, which also has no domain-narrowing target); the semantic work is entirely carried by the `require` pin(s) plus the removal of now-permanently-unreachable descendant params. No `default` is set for choice: unlike custom (D-47), a choice param is always generative (weighted/chart-driven sampling), so no `SamplingError` guarantee is ever at stake, and a default would be a purely cosmetic addition with no corresponding need.
+
+**Subset and permutation, by contrast, do get `default` set** (`default = value`, the same fixed list) — checked directly against the shipped code rather than assumed: `_narrow_or_pin`'s bool branch already sets `default` too (`replace(pd, default=value)`), so "every kind also gets `default`" is the actual, broader precedent — not "bool never sets it," which was an incorrect premise floated during implementation planning. Subset/permutation's own `.default()` validation (`resolve/_pipeline.py::_default_is_valid_subset`/`_default_is_valid_permutation`) accepts exactly the same full-list value shape `.freeze()` already validates via `validate/_validate.py::_domain_error_reason`'s existing `SubsetDomain`/`PermutationDomain` branches, so setting it costs nothing and matches the broader pattern.
+
+**List sets `list_default` — except when its elements are choice-typed.** `list_default`'s own validation (`resolve/_pipeline.py::_validate_list_default_level`, run automatically during `space_from_ir`'s revalidation) treats it as a *complete nested-config value* — a payload-bearing variant there needs its full payload spelled out (`{"local_search": {"iters": 5}}`), not the bare discriminator string `.freeze()` itself accepts for a choice value (matching `_domain_error_reason`'s `ChoiceDomain` branch, which only ever checks the bare string). Since `.freeze()` on a list-of-choice is never given that payload, setting `list_default` to the bare-string sequence would fail this deeper validation — so it is left untouched for a choice-element list, mirroring choice's own no-`default` precedent one level up. Every other element kind's `list_default` is a complete, directly-checkable value (a flat scalar list, or a fully-specified struct/nested-list value), so it is set unconditionally there.
+
+**A pre-existing keep-set bug, found and fixed during implementation.** `ops/_structural.py::_prune_to`'s (now `_apply_keep_set`'s) constraint-filter compared a constraint's `.params` paths directly against the pruning keep-set, which holds only *definition* paths. A per-instance `require`-pin on a `.repeat()` instance path (`"pipeline[0]"`) was therefore always misclassified as "referencing an excluded param" and silently dropped whenever a freeze call *also* triggered pruning (any choice or list-of-choice freeze) — the discriminator pins vanished, and the sampler could still legally draw a pruned variant's discriminator value with nothing left to reject it. Fixed by resolving each path to its *owning* `space.params` key first (`_governing_definition_path`, mirroring `validate/_validate.py::_lookup_param_shape`'s own three-way fallback: bare path, then `"[]"`-templated struct-lift form, then the direct-lift base with its trailing bracket stripped entirely — `_definition_path_of`'s blanket `"[]"`-substitution alone is wrong for a *direct* lift element, since `"pipeline[]"` is never a real key, only `"pipeline"` is). Applied to both the constraint filter and `_strip_anchor_keys`'s identical anchor-key check, which had the same latent gap.
+
+The other four kinds' mechanisms: subset — a `require(contains(p,i))` / `require(~contains(p,i))` pin per declared item (reuses `Contains`); permutation — a `require(position_of(p,item)==k)` pin per position (reuses `PositionOf`); struct — pure fan-out, no new mechanism, recursing the same per-kind dispatch onto each given field's own path (subsumes nested struct/choice/list fields automatically); list — narrows `count` to the given value's literal length (raising if a pre-existing *literal* count doesn't match — the only place this is ever checked, since neither `validate()`'s lift-instance validation nor the list-default validator cross-check a literal count against a realized length) and (except for choice elements) sets `list_default`, then dispatches each element by `element_kind` — scalar/custom/bool via a per-instance `require(p[i]==v)` (uniform, including bool — no special-casing to avoid `Compare`; it is already proven safe via production use in choice-discriminator and custom pins), struct via the same fan-out rooted at the instance path, list via the same mechanism one level deeper (only the outermost `.repeat()` level's domain is ever narrowed; a nested level's own facts are a template shared across every outer row, not a per-instance fact).
+
+### Reasoning
+
+Possibility 3 is the only one of the three that is both implementable (no per-instance `ParamDef` exists to prune independently) and useful (it actually prunes dead structure whenever the given data supports it). It requires no new concept beyond what `.select()` already established for constraint/condition filtering and anchor strip/drop — `.freeze()`'s choice path reuses that machinery directly (factored out of `ops/_structural.py::_prune_to` into a shared `_apply_keep_set` helper) rather than reimplementing it, and it generalizes losslessly from the top-level case (one instance) to the lifted case (N instances) because both reduce to the identical "keep iff selected by at least one instance" test over the same relocated-path-prefix shape (a bare `"."`-prefix for a top-level choice, a `"[]."`-prefix for a lifted one — both produced by the same `resolve/_pipeline.py::_relocate_choice_variants`).
+
+### Specification update
+
+Folded into API.md's `.freeze` row (the `.freeze`'s per-kind mechanism paragraph, plus the anchors-under-structural-operations line noting choice's strip/drop exception), replacing the M9.5 forward reference.
+
+---
+
+_Ledger tail._ D-1 through D-44 were resolved into `API.md` on and their entries removed here (preserved in git history); continue with D-51.

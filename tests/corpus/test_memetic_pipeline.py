@@ -80,3 +80,34 @@ def test_round_trips():
     assert restored.fingerprint("sampling") == space.fingerprint("sampling")
     for cfg in restored.sample_dicts(50, seed=4):
         assert restored.validate(cfg).valid
+
+
+# -- freeze-ablation: list-of-choice, the union pruning rule (M9.5,
+# PLAN.md corpus table; DECISIONS.md D-50) -----------------------------------
+#
+# `build_space()` itself stays untouched -- these operate on a *derived*
+# frozen space in-test.
+
+
+def test_freeze_pipeline_prunes_the_variant_no_instance_selects():
+    space = build_space()
+    # Satisfies the fixture's own "at least one local_search" forbid.
+    frozen = space.freeze(pipeline=["shuffle", "local_search", "crossover"])
+    assert "pipeline[].mutation.rate" not in frozen.params
+    assert "pipeline[].local_search.iters" in frozen.params
+    assert frozen.params["pipeline"].domain.count == 3
+    # n_ops (the count's original driver) stays free, unpinned.
+    assert frozen.params["n_ops"].domain.lo == MIN_OPS
+    assert frozen.params["n_ops"].domain.hi == MAX_OPS
+
+
+def test_freeze_pipeline_union_rule_keeps_both_payload_variants_when_both_used():
+    space = build_space()
+    frozen = space.freeze(pipeline=["mutation", "local_search"])
+    # Each instance selects only one payload-bearing variant, but the
+    # union across the whole call uses both -- neither is pruned.
+    assert "pipeline[].mutation.rate" in frozen.params
+    assert "pipeline[].local_search.iters" in frozen.params
+    for cfg in frozen.sample_dicts(30, seed=10):
+        assert set(cfg["pipeline"][0]) == {"mutation"}
+        assert set(cfg["pipeline"][1]) == {"local_search"}

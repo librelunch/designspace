@@ -78,3 +78,27 @@ def test_freeze_verbosity_ablation_forces_long_timeout():
     for cfg in frozen.sample_dicts(100, seed=7):
         assert cfg["verbosity"] == "debug"
         assert cfg["timeout_s"] >= 60
+
+
+# -- freeze-ablation: choice (M9.5, PLAN.md corpus table; DECISIONS.md D-50) --
+#
+# `build_space()` itself stays untouched -- these operate on a *derived*
+# frozen space in-test (same D-40 discipline as the M8 freeze-ablation
+# tests above, extended to this milestone's container-freeze completion).
+
+
+def test_freeze_solver_to_bare_variant_prunes_cdcl_payload():
+    space = build_space()
+    frozen = space.freeze(solver="dpll")
+    assert "solver.cdcl.restart_strategy" not in frozen.params
+    assert frozen.n_params == 3  # solver, verbosity, timeout_s
+    assert all(cfg["solver"] == "dpll" for cfg in frozen.sample_dicts(50, seed=8))
+
+
+def test_freeze_solver_to_payload_variant_keeps_it_freely_sampled():
+    space = build_space()
+    frozen = space.freeze(solver="cdcl")
+    assert "solver.cdcl.restart_strategy" in frozen.params
+    configs = frozen.sample_dicts(50, seed=9)
+    strategies = {cfg["solver"]["cdcl"]["restart_strategy"] for cfg in configs}
+    assert strategies == {"luby", "geometric"}

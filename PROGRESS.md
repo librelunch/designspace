@@ -1,6 +1,6 @@
 # Progress
 
-Current milestone: **M9.5 — Container freeze completion** (not started)
+Current milestone: **none — M9.5 shipped** (see `PLAN.md` for the next open milestone, M10)
 
 | Milestone | Completed | Tests | DECISIONS entries |
 |---|---|---|---|
@@ -18,6 +18,7 @@ Current milestone: **M9.5 — Container freeze completion** (not started)
 | M7.6 — Constraint API symmetrization (`encourage`/`discourage`, polarity accessors) | 2026-07-21 | 813 | D-39 |
 | M8 — Structural operations and metaprogramming | 2026-07-22 | 925 | D-40, D-41, D-42, D-43, D-44 |
 | M9 — Custom types (`.custom()`, `.prop()`, `from_json` registry, `.has_nongenerative_params`, `.cardinality()`) | 2026-07-22 | 975 | D-45, D-46, D-47, D-48, D-49 |
+| M9.5 — Container freeze completion (`.freeze()` for choice/subset/permutation/struct/list) | 2026-07-25 | 1017 | D-50 |
 
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
 

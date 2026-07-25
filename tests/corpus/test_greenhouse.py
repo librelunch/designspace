@@ -81,3 +81,23 @@ def test_round_trips():
     assert restored.fingerprint("sampling") == space.fingerprint("sampling")
     for cfg in restored.sample_dicts(50, seed=3):
         assert restored.validate(cfg).valid
+
+
+# -- freeze-ablation: struct (M9.5, PLAN.md corpus table; DECISIONS.md D-50) --
+#
+# `build_space()` itself stays untouched -- these operate on a *derived*
+# frozen space in-test (D-40's discipline, extended to container freeze).
+
+
+def test_freeze_zone_struct_fans_out_to_per_field_freeze():
+    space = build_space()
+    frozen = space.freeze(zone={"area_m2": 500.0, "shade_cloth": True})
+    for cfg in frozen.sample_dicts(50, seed=4):
+        assert cfg["zone"] == {"area_m2": 500.0, "shade_cloth": True}
+
+
+def test_freeze_zone_partial_dict_leaves_other_field_free():
+    space = build_space()
+    frozen = space.freeze(zone={"area_m2": 500.0})
+    values = {cfg["zone"]["shade_cloth"] for cfg in frozen.sample_dicts(50, seed=5)}
+    assert values == {True, False}

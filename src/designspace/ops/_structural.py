@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 import warnings
 from collections.abc import Mapping
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Any
 
@@ -50,13 +50,18 @@ from designspace.expr import (
 )
 from designspace.ir import (
     CategoricalDomain,
+    ChoiceDomain,
     Condition,
     Constraint,
     CustomDomain,
     IntegerDomain,
+    ListDomain,
     OrdinalDomain,
     ParamDef,
+    PermutationDomain,
     RealDomain,
+    StructDomain,
+    SubsetDomain,
 )
 from designspace.resolve._bounds import bound_origin_targets, hull
 
@@ -208,6 +213,29 @@ def _definition_path_of(concrete_path: str) -> str:
     return _INDEX_RE.sub("[]", concrete_path)
 
 
+def _governing_definition_path(space: Space, path: str) -> str:
+    """The `space.params` key that actually owns `path`, mirroring
+    `validate/_validate.py::_lookup_param_shape`'s own fallback chain
+    (D-50): a bare definition path is its own owner; a struct-lift
+    descendant instance path (`"stops[2].location"`) is owned by its
+    `"[]"`-templated form (`"stops[].location"`, a real relocated
+    `ParamDef`); a *direct* lift element instance path (`"pipeline[0]"`,
+    `"dropout[3]"`) has no such template key at all — only the base list
+    param (`"pipeline"`) is real — so `_definition_path_of`'s blanket
+    `"[]"`-substitution is wrong for it specifically (`"pipeline[]"` is
+    never a key). Used wherever a path from a `Constraint.params`/anchor
+    flat key needs to be checked against a keep-set of `space.params` keys.
+    """
+    if path in space.params:
+        return path
+    templated = _definition_path_of(path)
+    if templated in space.params:
+        return templated
+    if "[" in path:
+        return path[: path.rindex("[")]
+    return path
+
+
 def _values_equal(a: Any, b: Any) -> bool:
     """Strict membership-style equality (DECISIONS.md D-34 precedent):
     `1 == 1.0` under Python's `==` but must not count as "the same value"
@@ -333,19 +361,43 @@ def _close_over_structure(space: Space, keep: set[str]) -> set[str]:
     return closed
 
 
-def _prune_to(space: Space, keep: set[str], *, strict: bool, call: str) -> Space:
+def _apply_keep_set(space: Space, keep: set[str], *, strict: bool, call: str) -> Space:
+    """The exact-keep-set half of `.select()`'s pruning (`_prune_to` closes
+    `keep` over ancestor/descendant structure first, then delegates here):
+    filter params/conditions/constraints to `keep` (warn, or raise if
+    `strict`, on a dropped constraint), strip/drop anchors, rebuild via
+    `space_from_ir`. Also used directly by choice-freeze's structural
+    pruning (DECISIONS.md D-50), which already knows its exact keep-set
+    (every variant-descendant path it's removing) and has no ancestor/
+    descendant closure to compute.
+
+    `keep` holds only *definition* paths (`space.params`' own keys are
+    never instance-path-shaped), so a constraint's `.params` must be
+    compared through `_governing_definition_path` — otherwise a
+    require-pin on a `.repeat()` instance path (`"pipeline[0]"`, D-50's own
+    per-element choice/list pins) would always look "excluded" and be
+    dropped, even though its owning param survives. Mirrors
+    `_strip_anchor_keys`'s identical normalization for anchor config keys.
+    """
     from designspace.meta import space_from_ir
 
-    keep = _close_over_structure(space, keep)
     new_params = {p: pd for p, pd in space.params.items() if p in keep}
     new_conditions = [c for c in space.conditions if c.target in keep]
 
     new_constraints: list[Constraint] = []
     dropped_constraints: list[Constraint] = []
     for c in space.constraints:
-        (new_constraints if c.params <= keep else dropped_constraints).append(c)
+        kept = all(_governing_definition_path(space, p) in keep for p in c.params)
+        (new_constraints if kept else dropped_constraints).append(c)
     if dropped_constraints:
-        excluded = sorted({p for c in dropped_constraints for p in c.params if p not in keep})
+        excluded = sorted(
+            {
+                p
+                for c in dropped_constraints
+                for p in c.params
+                if _governing_definition_path(space, p) not in keep
+            }
+        )
         if strict:
             raise ResolutionError(
                 f"{call}: constraint(s) reference excluded param(s) {excluded} "
@@ -371,6 +423,11 @@ def _prune_to(space: Space, keep: set[str], *, strict: bool, call: str) -> Space
         anchors=stripped_anchors, meta=dict(space.meta_map),
     )
     return _drop_invalid_anchors(result, call=call)
+
+
+def _prune_to(space: Space, keep: set[str], *, strict: bool, call: str) -> Space:
+    keep = _close_over_structure(space, keep)
+    return _apply_keep_set(space, keep, strict=strict, call=call)
 
 
 def select(space: Space, paths: tuple[str, ...], *, strict: bool) -> Space:
@@ -417,7 +474,9 @@ def _strip_anchor_keys(
     any_dropped = False
     for name, config in old_space.anchors.items():
         flat = flatten(config, old_space)
-        stripped = {p: v for p, v in flat.items() if _definition_path_of(p) in keep}
+        stripped = {
+            p: v for p, v in flat.items() if _governing_definition_path(old_space, p) in keep
+        }
         if len(stripped) != len(flat):
             any_dropped = True
         result[name] = unflatten(stripped, skeleton)
@@ -445,15 +504,356 @@ def _drop_invalid_anchors(space: Space, *, call: str) -> Space:
 # -- freeze --------------------------------------------------------------------
 
 
+def _require_pin(expr: BoolExpr) -> Constraint:
+    """The hard `require`-pin `Constraint` shape every freeze mechanism
+    that isn't a domain-narrow uses (bool, custom, and — from M9.5 —
+    subset/permutation/choice/list-element pins), built directly rather
+    than through `Space.require()`/`add_constraints`: the param is already
+    declared and resolved, so none of `check_refs_declared`/
+    `check_expr_types`/`desugar_bool` has anything left to check.
+    """
+    return Constraint(
+        expr=expr, hard=True, origin="require", tags=frozenset(),
+        meta=MappingProxyType({}), params=expr.params,
+    )
+
+
+def _validate_leaf(space: Space, path: str, value: Any, *, call: str) -> None:
+    """Choice/subset/permutation's own value-shape check — `validate_param`
+    already fully validates these via `_domain_error_reason`'s existing
+    `ChoiceDomain`/`SubsetDomain`/`PermutationDomain` branches (unchanged),
+    whether `path` is a bare definition path or a `.repeat()` instance path
+    (resolved via `element_paramdef` synthesis)."""
+    result = space.validate_param(path, value)
+    if not result.valid:
+        reasons = "; ".join(f"{e.reason}" for e in result.param_errors) or "invalid value"
+        raise ResolutionError(f"{call}: {path!r} = {value!r} is invalid ({reasons})")
+
+
+@dataclass(frozen=True)
+class _FreezeExpansion:
+    """One `.freeze()` target's full expansion (DECISIONS.md D-50): the
+    `ParamDef`s it replaces (domain-narrow/default-set kinds), the paths it
+    removes entirely (choice's structural pruning), and the extra hard
+    `require` constraints it pins. Struct fan-out and list per-element
+    pinning merge sub-expansions from recursive calls; a plain scalar/bool/
+    custom target and subset/permutation/choice's own per-path expansion
+    are each already a complete, non-recursive one."""
+
+    param_updates: dict[str, ParamDef]
+    removed_paths: frozenset[str]
+    constraints: tuple[Constraint, ...]
+
+
+def _expand_subset(path: str, pd: ParamDef, value: list[Any]) -> _FreezeExpansion:
+    """subset (D-50): a per-item `require(contains(p, i))` /
+    `require(~contains(p, i))` pin for every declared item — no domain to
+    narrow (`SubsetDomain` has no single-value shape). Sets `default =
+    value` at a genuine per-occurrence path (matches `_default_is_valid_subset`'s
+    identical value shape) — but *not* at a `.repeat()` instance path
+    (`_INDEX_RE.search(path)`), where `pd` is the shared element template,
+    not a dedicated `ParamDef` for this one instance."""
+    domain = pd.domain
+    assert isinstance(domain, SubsetDomain)
+    constraints = tuple(
+        _require_pin(
+            Contains(ParamExpr(path=path), item)
+            if any(_values_equal(v, item) for v in value)
+            else Not(Contains(ParamExpr(path=path), item))
+        )
+        for item in domain.items
+    )
+    if _INDEX_RE.search(path):
+        return _FreezeExpansion({}, frozenset(), constraints)
+    return _FreezeExpansion({path: replace(pd, default=value)}, frozenset(), constraints)
+
+
+def _expand_permutation(path: str, pd: ParamDef, value: list[Any]) -> _FreezeExpansion:
+    """permutation (D-50): a per-position `require(position_of(p, item) ==
+    k)` pin for each index. No domain to narrow; `default = value` at a
+    per-occurrence path only (mirrors `_expand_subset`)."""
+    assert isinstance(pd.domain, PermutationDomain)
+    constraints = tuple(
+        _require_pin(Compare("eq", PositionOf(ParamExpr(path=path), item), Literal(k)))
+        for k, item in enumerate(value)
+    )
+    if _INDEX_RE.search(path):
+        return _FreezeExpansion({}, frozenset(), constraints)
+    return _FreezeExpansion({path: replace(pd, default=value)}, frozenset(), constraints)
+
+
+def _expand_choice(space: Space, path: str, domain: ChoiceDomain, value: str) -> _FreezeExpansion:
+    """choice (D-50): a discriminator pin `require(c == variant)`, plus the
+    **unified pruning rule** — a variant's relocated descendants (paths
+    under `f"{template}.{variant}."`) are pruned iff *no* instance being
+    frozen in this call selects it. A plain (non-lifted) choice has exactly
+    one instance, so this reduces to "prune every variant but the chosen
+    one" (D-44's originally anticipated behavior). `ChoiceDomain.variants`
+    itself is never narrowed (nothing analogous to `lo == hi` exists for
+    it — mirrors bool) and no `default` is set (choice sampling is always
+    generative; the pin alone fully determines it).
+
+    A choice reached at a `.repeat()` instance path (`stops[2].category` —
+    a choice-typed *field* of a struct-in-list element, not a direct
+    list-of-choice element) shares its relocated descendants with every
+    *other* instance's own struct fan-out call: pruning from only this
+    one instance's selection would be unsound (a sibling instance's own
+    freeze call may still need the variant this one doesn't select). A
+    direct list-of-choice element never reaches this function at all —
+    `_expand_list_body` aggregates over every instance inline, first —
+    so this is a narrow, deliberately conservative (unpruned, still
+    correctly pinned) fallback for the nested-struct-field composition
+    only.
+    """
+    pin = _require_pin(Compare("eq", ParamExpr(path=path), Literal(value)))
+    if _INDEX_RE.search(path):
+        return _FreezeExpansion({}, frozenset(), (pin,))
+    template = _definition_path_of(path)
+    removed_prefixes = tuple(f"{template}.{v}." for v in domain.variants if v != value)
+    removed_paths = frozenset(
+        p for p in space.params if any(p.startswith(pre) for pre in removed_prefixes)
+    )
+    return _FreezeExpansion({}, removed_paths, (pin,))
+
+
+def _expand_struct(
+    space: Space, struct_path: str, value: dict[str, Any], *, call: str
+) -> _FreezeExpansion:
+    """struct (D-50): no value of its own (`StructDomain` — "a pure
+    namespace"; `.default()` on a struct is already row 21's resolution
+    error) — fans out to the *same* per-kind dispatch at each given field's
+    fully-qualified path. A partial dict fixes only the given fields; a
+    field that is itself a struct/choice/subset/permutation/list recurses
+    with no extra code. Works identically whether `struct_path` is a plain
+    definition path or a `.repeat()` instance path (`stops[2]`) — the field
+    lookup goes through the definition-path template either way."""
+    template_base = _definition_path_of(struct_path)
+    param_updates: dict[str, ParamDef] = {}
+    removed_paths: set[str] = set()
+    constraints: list[Constraint] = []
+    for field, subvalue in value.items():
+        field_path = f"{struct_path}.{field}"
+        field_pd = space.params.get(f"{template_base}.{field}")
+        if field_pd is None:
+            raise ResolutionError(f"{call}: no such param {field_path!r}")
+        expansion = _expand_leaf_or_container(space, field_path, field_pd, subvalue, call=call)
+        param_updates.update(expansion.param_updates)
+        removed_paths.update(expansion.removed_paths)
+        constraints.extend(expansion.constraints)
+    return _FreezeExpansion(param_updates, frozenset(removed_paths), tuple(constraints))
+
+
+def _expand_list_body(
+    space: Space, path: str, domain: ListDomain, value: list[Any], *, call: str
+) -> tuple[dict[str, ParamDef], frozenset[str], tuple[Constraint, ...], ListDomain]:
+    """list (D-50), shared between the outermost `.repeat()` level and a
+    nested `.repeat().repeat()` recursive call: narrows `count` to the
+    literal `len(value)` (dropping whatever `int | ArithExpr` governed it
+    before, mirroring real/integer's "drop any prior" narrowing) and sets
+    `list_default = value` (mirrors custom's D-47 rationale — inert when
+    elements are generative, satisfies the non-generative-element
+    `SamplingError` guarantee when they aren't). A pre-existing *literal*
+    `count` that doesn't match `len(value)` is a resolution error, checked
+    here — the only place a literal count is ever cross-checked against a
+    realized length (neither `validate/_validate.py::_validate_lift_instances`
+    nor `resolve/_pipeline.py::_validate_list_default_level` do this for a
+    literal count). Each element is then pinned per `element_kind`: scalar/
+    custom/bool via a per-instance `require(p[i] == value[i])`; struct via
+    the same field fan-out rooted at the instance path; a lifted choice via
+    a per-instance discriminator pin plus the unified pruning rule,
+    aggregated once over every element (not per-instance — a variant
+    chosen by even one element keeps its shared `"[]."` template
+    descendants for every element); a nested list via this same function
+    one level deeper — only the *outermost* level's own domain is ever
+    narrowed, since a nested level's `element_domain` is a template shared
+    across every outer row (confirmed via `_validate_list_default_level`'s
+    treatment of a nested `list_default` as one shared value applied
+    identically to every outer row), not a per-instance fact.
+
+    **`list_default` is skipped for a choice-kind list.** `list_default`'s
+    own validation (`resolve/_pipeline.py::_validate_list_default_level`,
+    run automatically by `space_from_ir`'s revalidation) treats it as a
+    *complete nested-config value* — a payload-bearing variant there needs
+    its full payload spelled out (`{"local_search": {"iters": 5}}`), not
+    the bare discriminator string `.freeze()` accepts (matching the same
+    bare-string convention `_domain_error_reason`'s `ChoiceDomain` branch
+    already uses for the discriminator alone). Since freeze is never given
+    that payload, `list_default` is left untouched (mirrors top-level
+    choice-freeze setting no `default` at all) — choice is always
+    generative, so this loses no `SamplingError`-avoidance guarantee.
+
+    **Per-element validation only at the outermost, non-nested level.**
+    `space.validate_param` (`_validate_leaf`) resolves a single-bracket
+    instance path (`"xs[0]"`, `"pipeline[1]"`) via `element_paramdef`
+    synthesis, but `validate/_validate.py::_lookup_param_shape` has no
+    resolution path for a *doubly*-bracketed one (`"m[0][0]"` — a nested
+    `.repeat().repeat()` element) — a pre-existing scope limit of
+    `validate_param` itself, unrelated to freeze. A nested recursive call
+    (`_INDEX_RE.search(path)` true on the *incoming* `path`) therefore
+    skips the pre-check and relies entirely on the outer level's
+    `list_default`-triggered automatic deep revalidation to catch a
+    malformed nested value instead.
+    """
+    if isinstance(domain.count, int) and domain.count != len(value):
+        raise ResolutionError(
+            f"{call}: {path!r} has a fixed count of {domain.count}, but the "
+            f"given list has {len(value)} element(s)"
+        )
+    already_nested = bool(_INDEX_RE.search(path))
+    new_domain = (
+        replace(domain, count=len(value))
+        if domain.element_kind == "choice"
+        else replace(domain, count=len(value), list_default=value)
+    )
+    param_updates: dict[str, ParamDef] = {}
+    removed_paths: set[str] = set()
+    constraints: list[Constraint] = []
+
+    if domain.element_kind == "choice":
+        assert isinstance(domain.element_domain, ChoiceDomain)
+        el_domain = domain.element_domain
+        for i, elem_value in enumerate(value):
+            inst_path = f"{path}[{i}]"
+            if not already_nested:
+                _validate_leaf(space, inst_path, elem_value, call=call)
+            constraints.append(
+                _require_pin(Compare("eq", ParamExpr(path=inst_path), Literal(elem_value)))
+            )
+        selected = set(value)
+        removed_prefixes = tuple(
+            f"{path}[].{v}." for v in el_domain.variants if v not in selected
+        )
+        removed_paths = {
+            p for p in space.params if any(p.startswith(pre) for pre in removed_prefixes)
+        }
+        return param_updates, frozenset(removed_paths), tuple(constraints), new_domain
+
+    for i, elem_value in enumerate(value):
+        inst_path = f"{path}[{i}]"
+        sub: _FreezeExpansion
+        if domain.element_kind == "space":
+            if not isinstance(elem_value, dict):
+                raise ResolutionError(
+                    f"{call}: {inst_path!r} is a struct element — expected a dict"
+                )
+            sub = _expand_struct(space, inst_path, elem_value, call=call)
+        elif domain.element_kind == "list":
+            assert isinstance(domain.element_domain, ListDomain)
+            if not isinstance(elem_value, list):
+                raise ResolutionError(
+                    f"{call}: {inst_path!r} is a nested list element — expected a list"
+                )
+            inner_updates, inner_removed, inner_constraints, _inner_domain = _expand_list_body(
+                space, inst_path, domain.element_domain, elem_value, call=call
+            )
+            sub = _FreezeExpansion(inner_updates, inner_removed, inner_constraints)
+        else:
+            if not already_nested:
+                _validate_leaf(space, inst_path, elem_value, call=call)
+            sub = _FreezeExpansion(
+                {},
+                frozenset(),
+                (_require_pin(Compare("eq", ParamExpr(path=inst_path), Literal(elem_value))),),
+            )
+        param_updates.update(sub.param_updates)
+        removed_paths.update(sub.removed_paths)
+        constraints.extend(sub.constraints)
+    return param_updates, frozenset(removed_paths), tuple(constraints), new_domain
+
+
+def _expand_list(
+    space: Space, path: str, list_pd: ParamDef, value: list[Any], *, call: str
+) -> _FreezeExpansion:
+    if _INDEX_RE.search(path):
+        # A list reached at a `.repeat()` instance path (a list-typed field
+        # of a struct-in-list element) shares its `ListDomain` across every
+        # instance the same way a scalar/subset/permutation field would —
+        # there is no per-instance count/list_default to narrow. Direct
+        # `.repeat().repeat()` nesting never reaches this function (handled
+        # entirely inside `_expand_list_body`'s own nested-list branch).
+        raise ResolutionError(
+            f"{call}: {path!r} is a list nested inside another list's element "
+            "— not yet supported by .freeze()"
+        )
+    domain = list_pd.domain
+    assert isinstance(domain, ListDomain)
+    param_updates, removed_paths, constraints, new_domain = _expand_list_body(
+        space, path, domain, value, call=call
+    )
+    param_updates = {path: replace(list_pd, domain=new_domain), **param_updates}
+    return _FreezeExpansion(param_updates, removed_paths, constraints)
+
+
+def _expand_leaf_or_container(
+    space: Space, path: str, pd: ParamDef, value: Any, *, call: str
+) -> _FreezeExpansion:
+    """The single recursive dispatcher every `.freeze()` target and every
+    struct-fan-out/list-per-element recursive call goes through (D-50) —
+    reused identically at a top-level `to_fix` path, a struct field's own
+    path, and a list element's instance path, which is what makes nested
+    struct-of-struct, a struct field that is itself a subset/choice/list,
+    list-of-struct, etc. fall out with no per-shape special casing beyond
+    the dispatch branches here."""
+    kind = pd.type_kind
+    if kind == "space":
+        assert isinstance(pd.domain, StructDomain)
+        if not isinstance(value, dict):
+            raise ResolutionError(
+                f"{call}: {path!r} is a struct — expected a dict of field values"
+            )
+        return _expand_struct(space, path, value, call=call)
+    if kind == "list":
+        assert isinstance(pd.domain, ListDomain)
+        if not isinstance(value, list):
+            raise ResolutionError(f"{call}: {path!r} is a list param — expected a list value")
+        return _expand_list(space, path, pd, value, call=call)
+    if kind == "choice":
+        assert isinstance(pd.domain, ChoiceDomain)
+        _validate_leaf(space, path, value, call=call)
+        return _expand_choice(space, path, pd.domain, value)
+    if kind == "subset":
+        _validate_leaf(space, path, value, call=call)
+        return _expand_subset(path, pd, value)
+    if kind == "permutation":
+        _validate_leaf(space, path, value, call=call)
+        return _expand_permutation(path, pd, value)
+    if _INDEX_RE.search(path):
+        # A scalar/custom leaf inside a `.repeat()` (`dropout[3]`, or a
+        # scalar/custom *field* of a struct-in-list element,
+        # `stops[2].dwell_min`): the enclosing `ParamDef` is a template
+        # shared by every instance, so there is no single-occurrence domain
+        # to narrow — pin this one instance via a hard equality constraint
+        # instead (D-50), the same mechanism `_expand_list_body` uses for
+        # its own direct per-element pins.
+        _validate_leaf(space, path, value, call=call)
+        return _FreezeExpansion(
+            {},
+            frozenset(),
+            (_require_pin(Compare("eq", ParamExpr(path=path), Literal(value))),),
+        )
+    validated_pd = _validate_fixed_value(space, path, value, call=call)
+    new_pd, extra = _narrow_or_pin(validated_pd, value, call=call)
+    return _FreezeExpansion({path: new_pd}, frozenset(), (extra,) if extra is not None else ())
+
+
+def _expand_freeze_target(space: Space, path: str, value: Any, *, call: str) -> _FreezeExpansion:
+    if path not in space.params:
+        raise ResolutionError(f"{call}: no such param {path!r}")
+    return _expand_leaf_or_container(space, path, space.params[path], value, call=call)
+
+
 def _narrow_or_pin(pd: ParamDef, value: Any, *, call: str) -> tuple[ParamDef, Constraint | None]:
-    """`.freeze()`'s per-kind mechanism (DECISIONS.md D-44): real/integer/
-    categorical/ordinal narrow their domain to the single fixed value
-    (Degeneracy Table: `lo == hi` is already legal); bool has no domain to
-    narrow, so it's pinned via a hard `require`/`require(~.)` constraint
-    instead. Every kind also gets `default = value`. Choice/subset/
-    permutation/struct/list are out of scope for `.freeze()` in M8 (D-44)
-    — pinning them would need to prune non-selected structure, which is
-    `.select()`'s job, not a value-fixing one.
+    """`.freeze()`'s per-kind mechanism for the six kinds with a genuine,
+    dedicated per-occurrence `ParamDef` (DECISIONS.md D-44/D-47): real/
+    integer/categorical/ordinal narrow their domain to the single fixed
+    value (Degeneracy Table: `lo == hi` is already legal); bool has no
+    domain to narrow, so it's pinned via a hard `require`/`require(~.)`
+    constraint instead; custom delegates to `_pin_custom`. Every kind also
+    gets `default = value`. Choice/subset/permutation/struct/list (M9.5,
+    DECISIONS.md D-50), and any bracket-containing `.repeat()` instance
+    path (which shares its `ParamDef` across every instance, so has nothing
+    of its own to narrow), are dispatched by `_expand_leaf_or_container`
+    before ever reaching this function.
     """
     kind = pd.type_kind
     if kind == "real":
@@ -479,11 +879,7 @@ def _narrow_or_pin(pd: ParamDef, value: Any, *, call: str) -> tuple[ParamDef, Co
         return replace(pd, default=value), constraint
     if kind == "custom":
         return _pin_custom(pd, value, call=call)
-    raise ResolutionError(
-        f"{call}: {pd.path!r} is a {kind!r} param — .freeze() supports real/"
-        "integer/categorical/ordinal/bool/custom only in this milestone; "
-        "choice/subset/permutation/struct/list are not yet supported"
-    )
+    raise AssertionError(f"unreachable: {kind!r} is dispatched before _narrow_or_pin (D-50)")
 
 
 def _pin_custom(pd: ParamDef, value: Any, *, call: str) -> tuple[ParamDef, Constraint | None]:
@@ -521,24 +917,52 @@ def _pin_custom(pd: ParamDef, value: Any, *, call: str) -> tuple[ParamDef, Const
 
 
 def freeze(space: Space, to_fix: dict[str, Any]) -> Space:
-    from designspace.meta import space_from_ir
-
-    new_params = dict(space.params)
+    """`.freeze(values=None, **kw)` (API.md, "Space — Structural
+    Operations"): fix values, keep params in output, conditions resolve
+    statically. Each top-level path expands (D-50) into a set of `ParamDef`
+    replacements (domain-narrow/default-set), removed paths (choice's
+    structural pruning, the only kind that drops params), and extra hard
+    `require` constraints. Choice pruning is the only reason the two final
+    branches diverge: with no removed params, every already-shipped kind
+    (real/integer/categorical/ordinal/bool/custom) gets the exact same
+    `space_from_ir` + hard-fail anchor re-validation as before M9.5; with
+    removed params, the result instead goes through `.select()`'s anchor
+    strip/drop machinery (`_apply_keep_set`), since params were genuinely
+    removed and a hard-fail re-validation would wrongly assume none were.
+    """
+    param_updates: dict[str, ParamDef] = {}
+    removed_paths: set[str] = set()
     extra_constraints: list[Constraint] = []
     for path, value in to_fix.items():
-        pd = _validate_fixed_value(space, path, value, call=".freeze()")
-        new_pd, extra = _narrow_or_pin(pd, value, call=".freeze()")
-        new_params[path] = new_pd
-        if extra is not None:
-            extra_constraints.append(extra)
-    result = space_from_ir(
-        new_params,
-        space.conditions,
-        tuple(space.constraints) + tuple(extra_constraints),
-        anchors=dict(space.anchors),
-        meta=dict(space.meta_map),
+        expansion = _expand_freeze_target(space, path, value, call=".freeze()")
+        param_updates.update(expansion.param_updates)
+        removed_paths.update(expansion.removed_paths)
+        extra_constraints.extend(expansion.constraints)
+
+    merged_params: dict[str, ParamDef] = {**space.params, **param_updates}
+    merged_constraints = tuple(space.constraints) + tuple(extra_constraints)
+
+    if not removed_paths:
+        from designspace.meta import space_from_ir
+
+        result = space_from_ir(
+            merged_params,
+            space.conditions,
+            merged_constraints,
+            anchors=dict(space.anchors),
+            meta=dict(space.meta_map),
+        )
+        return _revalidate_anchors_unchanged_shape(result, call=".freeze()")
+
+    pre_prune = Space(
+        params=MappingProxyType(merged_params),
+        conditions=space.conditions,
+        constraints=merged_constraints,
+        anchors=space.anchors,
+        meta_map=space.meta_map,
     )
-    return _revalidate_anchors_unchanged_shape(result, call=".freeze()")
+    keep = set(merged_params) - removed_paths
+    return _apply_keep_set(pre_prune, keep, strict=False, call=".freeze()")
 
 
 # -- slice ---------------------------------------------------------------------

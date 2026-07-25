@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
 from flow_chemistry import build_space
 
 from designspace.build._space import Space
+from designspace.errors import ResolutionError
 
 
 def test_resolves():
@@ -63,3 +65,26 @@ def test_round_trips():
     assert restored.fingerprint("sampling") == space.fingerprint("sampling")
     for cfg in restored.sample_dicts(50, seed=5):
         assert restored.validate(cfg).valid
+
+
+# -- freeze-ablation (M9.5, PLAN.md corpus table; DECISIONS.md D-50) --------
+#
+# `build_space()` itself stays untouched (byte-identical known-answer
+# vector) — these operate on a *derived* frozen space in-test.
+
+
+def test_freeze_reagents_to_a_fixed_membership():
+    space = build_space()
+    frozen = space.freeze(reagents=["acid", "oxidizer"])
+    for cfg in frozen.sample_dicts(100, seed=6):
+        assert sorted(cfg["reagents"]) == ["acid", "oxidizer"]
+
+
+def test_freeze_reagents_without_acid_raises():
+    # "oxidizer implies acid" is a hard forbid referencing only "reagents"
+    # -- validate_param (reused by freeze's own value check) already
+    # catches this at freeze time, the same way an out-of-bounds real/
+    # integer freeze value already does (TestFreeze.test_invalid_value_raises).
+    space = build_space()
+    with pytest.raises(ResolutionError):
+        space.freeze(reagents=["oxidizer"])

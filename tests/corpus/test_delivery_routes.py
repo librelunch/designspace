@@ -88,3 +88,35 @@ def test_round_trips():
     assert restored.fingerprint("sampling") == space.fingerprint("sampling")
     for cfg in restored.sample_dicts(50, seed=5):
         assert restored.validate(cfg).valid
+
+
+# -- freeze-ablation: list-of-struct, dynamic count (M9.5, PLAN.md corpus
+# table; DECISIONS.md D-50) --------------------------------------------------
+#
+# `build_space()` itself stays untouched -- these operate on a *derived*
+# frozen space in-test. Wide integer ranges (location 0-9, dwell_min 5-30)
+# make naive-rejection sampling of an exact multi-field pin unreliable
+# within the sampler's fixed retry budget, so these check structure and a
+# single deterministic `.validate()` call rather than `sample_dicts()`.
+
+
+def test_freeze_stops_to_a_concrete_route():
+    space = build_space()
+    fixed = [{"location": 0, "dwell_min": 5}, {"location": 3, "dwell_min": 20}]
+    frozen = space.freeze(stops=fixed)
+    domain = frozen.params["stops"].domain
+    assert domain.count == 2
+    assert domain.list_default == fixed
+    # "n_stops" drove "stops"'s count before freezing; freeze narrows only
+    # the list it's given, leaving n_stops itself free and unpinned.
+    assert frozen.params["n_stops"].domain.lo == 1
+    assert frozen.params["n_stops"].domain.hi == 5
+    assert frozen.validate({"n_stops": 2, "stops": fixed}).valid
+
+
+def test_freeze_stops_rejects_a_config_violating_the_fixed_route():
+    space = build_space()
+    fixed = [{"location": 0, "dwell_min": 5}, {"location": 3, "dwell_min": 20}]
+    frozen = space.freeze(stops=fixed)
+    other = [{"location": 0, "dwell_min": 9}, {"location": 3, "dwell_min": 20}]
+    assert not frozen.validate({"n_stops": 2, "stops": other}).valid

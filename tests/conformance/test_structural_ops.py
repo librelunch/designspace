@@ -14,7 +14,7 @@ import pytest
 
 import designspace as ds
 from designspace.errors import ResolutionError
-from designspace.ir import IntegerDomain, RealDomain
+from designspace.ir import IntegerDomain, ListDomain, RealDomain
 
 # -- slice --------------------------------------------------------------------
 
@@ -201,11 +201,6 @@ class TestFreeze:
         frozen = space.freeze(x=8)
         assert frozen.is_feasible({"x": 8, "y": 0.5})
 
-    def test_struct_param_unsupported(self):
-        space = ds.space(ds.param("s").space(ds.param("inner").integer(0, 5)))
-        with pytest.raises(ResolutionError):
-            space.freeze(s={"inner": 1})
-
     def test_invalid_value_raises(self):
         space = ds.space(ds.param("x").real(0.0, 1.0))
         with pytest.raises(ResolutionError):
@@ -222,6 +217,304 @@ class TestFreezeAnchors:
         space = ds.space(ds.param("x").integer(0, 10)).anchor({"a": {"x": 5}})
         frozen = space.freeze(x=5)
         assert frozen.anchors == {"a": {"x": 5}}
+
+
+# -- freeze: subset / permutation / struct / choice / list (M9.5, DECISIONS.md D-50) --
+
+
+class TestFreezeSubset:
+    def test_fingerprint_equal_to_hand_written_pins(self):
+        items = ("a", "b", "c", "d")
+
+        def build():
+            return ds.space(ds.param("s").subset(items, min_size=1, max_size=3))
+
+        frozen = build().freeze(s=["a", "c"])
+        hand_built = ds.space(
+            ds.param("s").subset(items, min_size=1, max_size=3).default(["a", "c"]),
+        ).require(
+            ds.param("s").contains("a"),
+            ~ds.param("s").contains("b"),
+            ds.param("s").contains("c"),
+            ~ds.param("s").contains("d"),
+        )
+        assert frozen.fingerprint("full") == hand_built.fingerprint("full")
+
+    def test_samples_and_validates_only_the_fixed_membership(self):
+        space = ds.space(ds.param("s").subset(("a", "b", "c"), min_size=1))
+        frozen = space.freeze(s=["a", "c"])
+        for cfg in frozen.sample_dicts(20, seed=0):
+            assert sorted(cfg["s"]) == ["a", "c"]
+        assert frozen.validate({"s": ["a", "c"]}).valid
+        assert not frozen.validate({"s": ["a", "b"]}).valid
+
+    def test_wrong_item_raises(self):
+        space = ds.space(ds.param("s").subset(("a", "b", "c")))
+        with pytest.raises(ResolutionError):
+            space.freeze(s=["a", "z"])
+
+    def test_out_of_size_bounds_raises(self):
+        space = ds.space(ds.param("s").subset(("a", "b", "c"), max_size=2))
+        with pytest.raises(ResolutionError):
+            space.freeze(s=["a", "b", "c"])
+
+
+class TestFreezePermutation:
+    def test_fingerprint_equal_to_hand_written_pins(self):
+        items = ("a", "b", "c")
+
+        def build():
+            return ds.space(ds.param("p").permutation(items))
+
+        order = ["c", "a", "b"]
+        frozen = build().freeze(p=order)
+        hand_built = ds.space(
+            ds.param("p").permutation(items).default(order),
+        ).require(
+            ds.param("p").position_of("c") == 0,
+            ds.param("p").position_of("a") == 1,
+            ds.param("p").position_of("b") == 2,
+        )
+        assert frozen.fingerprint("full") == hand_built.fingerprint("full")
+
+    def test_samples_and_validates_only_the_fixed_order(self):
+        space = ds.space(ds.param("p").permutation(("a", "b", "c")))
+        frozen = space.freeze(p=["c", "a", "b"])
+        for cfg in frozen.sample_dicts(20, seed=0):
+            assert cfg["p"] == ["c", "a", "b"]
+        assert frozen.validate({"p": ["c", "a", "b"]}).valid
+        assert not frozen.validate({"p": ["a", "b", "c"]}).valid
+
+    def test_wrong_length_raises(self):
+        space = ds.space(ds.param("p").permutation(("a", "b", "c")))
+        with pytest.raises(ResolutionError):
+            space.freeze(p=["a", "b"])
+
+
+class TestFreezeChoice:
+    def _build(self):
+        return ds.space(
+            ds.param("algo").choice(
+                "linear",
+                svm=ds.space(ds.param("gamma").real(1e-5, 10.0)),
+            ),
+        )
+
+    def test_fingerprint_equal_to_hand_written_pin_and_prune_for_payload_variant(self):
+        # ".select()" brings a *whole* choice's variants (API.md), so it can
+        # only stand in for freeze's own pruning when the surviving variant
+        # is the payload-bearing one being kept, not the bare one (whose
+        # hand-written equivalent would need `ChoiceDomain` itself to omit
+        # "svm" — which freeze deliberately never does; see
+        # test_bare_variant_prunes_payload_descendants below instead).
+        space = self._build()
+        frozen = space.freeze(algo="svm")
+        hand_built = self._build().select("algo.svm.gamma").require(ds.param("algo") == "svm")
+        assert frozen.fingerprint("full") == hand_built.fingerprint("full")
+
+    def test_bare_variant_prunes_payload_descendants(self):
+        space = self._build()
+        frozen = space.freeze(algo="linear")
+        assert "algo.svm.gamma" not in frozen.params
+        assert frozen.n_params == 1
+
+    def test_samples_only_the_fixed_variant(self):
+        space = self._build()
+        frozen = space.freeze(algo="linear")
+        assert all(cfg["algo"] == "linear" for cfg in frozen.sample_dicts(20, seed=0))
+
+    def test_payload_field_still_freely_sampled_unless_also_frozen(self):
+        space = self._build()
+        frozen = space.freeze(algo="svm")
+        values = {cfg["algo"]["svm"]["gamma"] for cfg in frozen.sample_dicts(20, seed=0)}
+        assert len(values) > 1
+
+    def test_can_also_pin_a_payload_field_in_the_same_call(self):
+        space = self._build()
+        frozen = space.freeze(algo="svm", **{"algo.svm.gamma": 1.0})
+        for cfg in frozen.sample_dicts(10, seed=0):
+            assert cfg["algo"] == {"svm": {"gamma": 1.0}}
+
+    def test_bad_variant_name_raises(self):
+        space = self._build()
+        with pytest.raises(ResolutionError):
+            space.freeze(algo="not-a-variant")
+
+    def test_conflicting_anchor_dropped_with_warning_not_hard_fail(self):
+        # Choice is the only kind that removes params, so it uses
+        # .select()'s strip/drop anchor machinery, not the hard-fail
+        # _revalidate_anchors_unchanged_shape every other kind still uses.
+        space = self._build().anchor({"a": {"algo": {"svm": {"gamma": 1.0}}}})
+        with pytest.warns(UserWarning):
+            frozen = space.freeze(algo="linear")
+        assert "a" not in frozen.anchors
+
+    def test_matching_anchor_survives_pruning(self):
+        space = self._build().anchor({"a": {"algo": "linear"}})
+        frozen = space.freeze(algo="linear")
+        assert frozen.anchors == {"a": {"algo": "linear"}}
+
+
+class TestFreezeStruct:
+    def _build(self):
+        return ds.space(
+            ds.param("zone").space(
+                ds.param("area_m2").real(1.0, 1000.0),
+                ds.param("shade_cloth").bool(),
+            ),
+        )
+
+    def test_fans_out_to_per_field_freeze(self):
+        space = self._build()
+        frozen = space.freeze(zone={"area_m2": 500.0, "shade_cloth": True})
+        for cfg in frozen.sample_dicts(20, seed=0):
+            assert cfg["zone"] == {"area_m2": 500.0, "shade_cloth": True}
+
+    def test_fingerprint_equal_to_hand_written_per_field_freeze(self):
+        space = self._build()
+        frozen = space.freeze(zone={"area_m2": 500.0, "shade_cloth": True})
+        hand_built = self._build().freeze(**{"zone.area_m2": 500.0, "zone.shade_cloth": True})
+        assert frozen.fingerprint("full") == hand_built.fingerprint("full")
+
+    def test_partial_dict_leaves_other_field_free(self):
+        space = self._build()
+        frozen = space.freeze(zone={"area_m2": 500.0})
+        values = {cfg["zone"]["shade_cloth"] for cfg in frozen.sample_dicts(20, seed=0)}
+        assert values == {True, False}
+
+    def test_foreign_field_name_raises(self):
+        space = self._build()
+        with pytest.raises(ResolutionError):
+            space.freeze(zone={"not_a_field": 1})
+
+    def test_nested_struct_of_struct(self):
+        space = ds.space(
+            ds.param("outer").space(
+                ds.param("inner").space(ds.param("v").integer(0, 10)),
+            ),
+        )
+        frozen = space.freeze(outer={"inner": {"v": 7}})
+        assert all(cfg["outer"]["inner"]["v"] == 7 for cfg in frozen.sample_dicts(10, seed=0))
+
+
+class TestFreezeList:
+    def test_count_and_list_default_set(self):
+        frozen = ds.space(ds.param("xs").real(0.0, 1.0).repeat(3)).freeze(xs=[0.1, 0.2, 0.3])
+        domain = frozen.params["xs"].domain
+        assert isinstance(domain, ListDomain)
+        assert domain.count == 3
+        assert domain.list_default == [0.1, 0.2, 0.3]
+
+    def test_literal_count_mismatch_raises(self):
+        space = ds.space(ds.param("xs").real(0.0, 1.0).repeat(4))
+        with pytest.raises(ResolutionError):
+            space.freeze(xs=[0.1, 0.2])
+
+    def test_scalar_elements_pinned(self):
+        # A discrete (categorical) domain, not real: an exact-equality pin
+        # over a continuous domain is measure-zero under rejection sampling
+        # (API.md, "Continuous-equality warning") — orthogonal to freeze
+        # itself (any hand-written `require(x == v)` over a continuous
+        # param has the same property); a small discrete domain keeps this
+        # test's sampling reliable.
+        frozen = ds.space(ds.param("xs").categorical("a", "b", "c").repeat(4)).freeze(
+            xs=["a", "b", "c", "a"]
+        )
+        for cfg in frozen.sample_dicts(10, seed=0):
+            assert cfg["xs"] == ["a", "b", "c", "a"]
+
+    def test_element_pins_are_separate_require_constraints(self):
+        # Each element is its own hard `require` pin (mirroring
+        # `_require_pin`'s uniform shape across every freeze kind) rather
+        # than one combined expression — matching subset/permutation/
+        # choice's own per-item/per-position/per-instance pin shape.
+        frozen = ds.space(ds.param("xs").categorical("a", "b", "c").repeat(3)).freeze(
+            xs=["a", "b", "c"]
+        )
+        assert len(frozen.constraints) == 3
+        for c in frozen.constraints:
+            assert c.kind == "require"
+            assert c.hard is True
+
+    def test_dynamic_count_narrows_and_leaves_driver_param_free(self):
+        space = ds.space(
+            ds.param("n").integer(1, 5),
+            ds.param("xs").real(0.0, 1.0).repeat(ds.param("n")),
+        )
+        frozen = space.freeze(xs=[0.5, 0.5])
+        domain = frozen.params["xs"].domain
+        assert isinstance(domain, ListDomain)
+        assert domain.count == 2
+        int_domain = frozen.params["n"].domain
+        assert isinstance(int_domain, IntegerDomain)
+        assert (int_domain.lo, int_domain.hi) == (1, 5)
+
+    def test_list_of_struct_elements(self):
+        # Small discrete ranges (not delivery_routes-shaped 0-9/5-30): four
+        # independent per-field equality pins under naive rejection sampling
+        # need a high enough per-pin match probability to be reliable within
+        # the sampler's fixed retry budget (`sample/_sample.py::_MAX_RETRIES`).
+        stop = ds.space(ds.param("location").integer(0, 2), ds.param("dwell_min").integer(0, 2))
+        space = ds.space(ds.param("stops").space(stop).repeat(2))
+        frozen = space.freeze(
+            stops=[{"location": 0, "dwell_min": 1}, {"location": 2, "dwell_min": 0}]
+        )
+        for cfg in frozen.sample_dicts(10, seed=0):
+            assert cfg["stops"] == [
+                {"location": 0, "dwell_min": 1},
+                {"location": 2, "dwell_min": 0},
+            ]
+
+    def _pipeline_space(self, count: int):
+        return ds.space(
+            ds.param("pipeline")
+            .choice(
+                "shuffle",
+                "crossover",
+                mutation=ds.space(ds.param("rate").real(0.01, 0.5)),
+                local_search=ds.space(ds.param("iters").integer(1, 100)),
+            )
+            .repeat(count),
+        )
+
+    def test_list_of_choice_prunes_variant_selected_by_no_instance(self):
+        space = self._pipeline_space(3)
+        frozen = space.freeze(pipeline=["shuffle", "local_search", "crossover"])
+        assert "pipeline[].mutation.rate" not in frozen.params
+        assert "pipeline[].local_search.iters" in frozen.params
+
+    def test_list_of_choice_union_rule_keeps_variant_used_by_any_instance(self):
+        space = self._pipeline_space(2)
+        frozen = space.freeze(pipeline=["mutation", "local_search"])
+        # Each instance uses only one of the two payload-bearing variants,
+        # but the union across both instances uses both — neither is
+        # pruned (the aggregation is over the whole call, not per-instance).
+        assert "pipeline[].mutation.rate" in frozen.params
+        assert "pipeline[].local_search.iters" in frozen.params
+
+    def test_list_of_choice_prunes_even_when_uniformly_selected(self):
+        # Every instance picks the same variant — proving the union is
+        # computed once over the whole call: the pruning of "mutation"
+        # doesn't depend on any single instance "driving" it alone.
+        space = self._pipeline_space(2)
+        frozen = space.freeze(pipeline=["local_search", "local_search"])
+        assert "pipeline[].mutation.rate" not in frozen.params
+        assert "pipeline[].local_search.iters" in frozen.params
+
+    def test_list_of_choice_samples_only_the_fixed_sequence(self):
+        space = self._pipeline_space(3)
+        frozen = space.freeze(pipeline=["shuffle", "local_search", "crossover"])
+        for cfg in frozen.sample_dicts(10, seed=0):
+            variants = [next(iter(op)) if isinstance(op, dict) else op for op in cfg["pipeline"]]
+            assert variants == ["shuffle", "local_search", "crossover"]
+
+    def test_nested_list_of_list(self):
+        # Discrete (integer), not real -- same measure-zero-under-rejection
+        # reasoning as test_scalar_elements_pinned above.
+        space = ds.space(ds.param("m").integer(0, 2).repeat(2).repeat(2))
+        frozen = space.freeze(m=[[0, 1], [2, 0]])
+        for cfg in frozen.sample_dicts(10, seed=0):
+            assert cfg["m"] == [[0, 1], [2, 0]]
 
 
 # -- active_subspace --------------------------------------------------------

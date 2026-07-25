@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
 from job_shop import JOBS, build_space
 
 from designspace.build._space import Space
+from designspace.errors import ResolutionError
 
 
 def test_resolves():
@@ -41,3 +43,27 @@ def test_round_trips():
     assert restored.fingerprint("sampling") == space.fingerprint("sampling")
     for cfg in restored.sample_dicts(50, seed=3):
         assert restored.validate(cfg).valid
+
+
+# -- freeze-ablation (M9.5, PLAN.md corpus table; DECISIONS.md D-50) --------
+#
+# `build_space()` itself stays untouched (byte-identical known-answer
+# vector) — these operate on a *derived* frozen space in-test.
+
+
+def test_freeze_schedule_to_a_fixed_deadline_satisfying_order():
+    space = build_space()
+    order = list(JOBS)  # job_a first, job_e last -- satisfies the deadline forbid
+    frozen = space.freeze(schedule=order)
+    for cfg in frozen.sample_dicts(50, seed=4):
+        assert cfg["schedule"] == order
+
+
+def test_freeze_schedule_to_a_deadline_violating_order_raises():
+    # The deadline forbid references only "schedule" -- validate_param
+    # (reused by freeze's own value check) already catches this at freeze
+    # time, the same way an out-of-bounds real/integer freeze value does.
+    violating = ["job_e", "job_a", "job_b", "job_c", "job_d"]  # job_a after job_e
+    space = build_space()
+    with pytest.raises(ResolutionError):
+        space.freeze(schedule=violating)
