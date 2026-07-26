@@ -111,3 +111,41 @@ def test_freeze_pipeline_union_rule_keeps_both_payload_variants_when_both_used()
     for cfg in frozen.sample_dicts(30, seed=10):
         assert set(cfg["pipeline"][0]) == {"mutation"}
         assert set(cfg["pipeline"][1]) == {"local_search"}
+
+
+# -- DataFrame output (M10): lifted choice -> List(Struct{variant, ...}) -----
+
+
+def test_dataframe_pipeline_is_list_of_variant_struct():
+    import polars as pl
+
+    space = build_space()
+    df = space.sample(40, seed=8)
+    dt = df.schema["pipeline"]
+    assert isinstance(dt, pl.List)
+    inner = dt.inner
+    assert isinstance(inner, pl.Struct)
+    assert {f.name for f in inner.fields} == {"variant", "mutation", "local_search"}
+
+    dicts = space.sample_dicts(40, seed=8)
+    saw_bare = False
+    saw_parameterized = False
+    for i in range(40):
+        row_ops = df["pipeline"][i].to_list()
+        dict_ops = dicts[i]["pipeline"]
+        assert len(row_ops) == len(dict_ops)
+        for row_op, dict_op in zip(row_ops, dict_ops, strict=True):
+            if isinstance(dict_op, str):
+                saw_bare = True
+                assert row_op["variant"] == dict_op
+                assert row_op["mutation"] is None
+                assert row_op["local_search"] is None
+            else:
+                saw_parameterized = True
+                (variant_name, payload) = next(iter(dict_op.items()))
+                assert row_op["variant"] == variant_name
+                assert row_op[variant_name] == payload
+                other = "mutation" if variant_name == "local_search" else "local_search"
+                assert row_op[other] is None
+    assert saw_bare
+    assert saw_parameterized

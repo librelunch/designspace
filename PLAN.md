@@ -343,8 +343,8 @@ Completes `.freeze()` for the five kinds D-44 scoped out of M8 (choice, subset, 
 
 ### M10 — DataFrame output
 **Spec:** Config Representation §DataFrame table incl. `Array`-per-static-level and lifted-choice encoding.
-**Build:** `frame/`; `polars` becomes a core dependency here and not earlier; `sample(n)` return type switches to `pl.DataFrame` (`sample_dicts` retained as the M2 path).
-**Gate:** dtype table asserted per corpus fixture; null-for-inactive; column names == path grammar. **Exit:** internal pre-release checkpoint — **no public tag** (v0.1 ships at M13; an internal alpha such as `0.1.0aN` is optional, not required).
+**Build:** `frame/`; `space.sample(n) -> pl.DataFrame` is new, gated behind the optional `designspace[polars]` extra rather than a core dependency (D-51 — a user-directed scope change from the milestone's original plan) — `polars` is imported lazily inside `Space.sample()` alone, raising a plain `ImportError` naming the extra when absent; `sample_dicts`/`sample_one` need no extra and are unaffected.
+**Gate:** dtype table asserted per corpus fixture; null-for-inactive; column names == path grammar; a missing-polars `ImportError` naming the extra. **Exit:** internal pre-release checkpoint — **no public tag** (v0.1 ships at M13; an internal alpha such as `0.1.0aN` is optional, not required).
 
 ### M11 — Representation layer
 **Spec:** Transforms and Encodings (entire section); `capability_report`.

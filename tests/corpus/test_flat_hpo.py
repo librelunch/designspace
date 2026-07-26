@@ -54,3 +54,20 @@ def test_round_trips():
     assert restored.fingerprint("sampling") == space.fingerprint("sampling")
     for cfg in restored.sample_dicts(50, seed=4):
         assert restored.validate(cfg).valid
+
+
+# -- DataFrame output (M10) ---------------------------------------------------
+
+
+def test_dataframe_dtypes_per_kind():
+    import polars as pl
+
+    space = build_space()
+    df = space.sample(20, seed=5)
+    assert df.schema["lr"] == pl.Float64
+    assert df.schema["momentum"] == pl.Float64
+    assert df.schema["weight_decay"] == pl.Float64
+    assert df.schema["n_layers"] == pl.Int64
+    assert df.schema["batch_size"] == pl.Int64
+    assert df.schema["optimizer"] == pl.Utf8
+    assert df.schema["nesterov"] == pl.Boolean

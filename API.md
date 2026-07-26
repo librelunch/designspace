@@ -418,7 +418,7 @@ The reference sampler *may* recognize a bound-origin constraint whose referenced
 ## Sampling and Generativity
 
 ```python
-.sample(n, seed=None, reject_soft=False) -> pl.DataFrame
+.sample(n, seed=None, reject_soft=False) -> pl.DataFrame   # requires the `polars` extra
 .sample_one(seed=None, reject_soft=False) -> dict
 ```
 
@@ -1027,7 +1027,7 @@ All public objects — expressions, spaces, IR dataclasses, charts — are immut
 
 ## Dependencies
 
-Core: `numpy` (RNG), `polars` (`sample()` output), and `rfc8785==0.1.4` (pure-Python, `py.typed`, no transitive dependencies) for the RFC 8785 (JCS) number/byte canonicalization behind `fingerprint`/`config_hash`. `rfc8785` is pinned **exactly**, not `>=`: an already-frozen digest format wants its number-formatting library pin-stable, since a transitive bump could silently shift every committed known-answer vector — bumping the pin is a deliberate act under the format-version protocol. Built-in priors are implemented internally — no distribution-library dependency; any `Prior`-satisfying object (scipy frozen distributions, preliz) plugs in. Extras: `designspace[pydantic]` for model export.
+Core: `numpy` (RNG) and `rfc8785==0.1.4` (pure-Python, `py.typed`, no transitive dependencies) for the RFC 8785 (JCS) number/byte canonicalization behind `fingerprint`/`config_hash`. `rfc8785` is pinned **exactly**, not `>=`: an already-frozen digest format wants its number-formatting library pin-stable, since a transitive bump could silently shift every committed known-answer vector — bumping the pin is a deliberate act under the format-version protocol. Built-in priors are implemented internally — no distribution-library dependency; any `Prior`-satisfying object (scipy frozen distributions, preliz) plugs in. Extras: `designspace[polars]` for `space.sample()`'s DataFrame output (`sample_dicts()`/`sample_one()` need no extra); `designspace[pydantic]` for model export.
 
 ---
 

@@ -265,4 +265,39 @@ Folded into API.md's `.freeze` row (the `.freeze`'s per-kind mechanism paragraph
 
 ---
 
-_Ledger tail._ D-1 through D-44 were resolved into `API.md` on and their entries removed here (preserved in git history); continue with D-51.
+## D-51 — `polars` as an optional extra (M10), and the missing-dependency error contract
+
+- Status: Resolved
+- Date: 2026-07-26
+- Spec section: API.md §Dependencies; §Sampling and Generativity (`.sample()` signature)
+- Decided by: User
+
+### Question
+
+Should `polars` be a hard core runtime dependency of `designspace` (as API.md's Dependencies section stated — "Core: `numpy`... `polars`..."), or an optional extra that only users of `.sample()`'s DataFrame output must install? If optional, what should `.sample()` do, and raise, when polars isn't installed?
+
+### Why the specification is insufficient
+
+This is not an ambiguity in API.md's text — the Dependencies section was unambiguous that polars was core. It is a deliberate, user-directed scope change to that already-clear text, recorded here per CLAUDE.md's rule that a decision changing the public dependency contract must be recorded even when directly instructed by the user, since it is not a routine implementation detail.
+
+### Possibilities considered
+
+1. **Keep polars core**, per the pre-M10 text. Simplest, but forces every consumer of `designspace` — including those who only need `sample_dicts()`/`sample_one()`/validation/serialization/structural ops — to install polars transitively, even though `sample_dicts` already exists specifically as a permanent, fully-functional no-polars sampling path (predates this milestone). Rejected per explicit user instruction.
+2. **Optional `designspace[polars]` extra; `Space.sample()` lazily imports polars and raises a bare `ImportError` naming the extra when it's absent** — mirrors the Python ecosystem's own convention for optional dependencies (e.g. pandas' optional-engine imports) and the "name what's missing + name the remedy" messaging style API.md already uses for `capability_report()` ("param `topology`... has no unit embedding — register an adapter or use a sampling-based solver"). `sample_dicts`/`sample_one` are untouched — zero functional loss.
+3. **Optional extra, but a new `DesignSpaceError` subclass** (e.g. `MissingDependencyError`) for the missing-polars case, keeping every raised error inside the library's own taxonomy. Rejected: the taxonomy (`ResolutionError`/`SamplingError`/`SerializationError`) is reserved for semantic findings about a *design space* — a missing package is an environment/packaging concern, not a design-space error, and inventing a subclass with exactly one call site and no reuse elsewhere in the error table adds public surface for no benefit over the standard-library convention.
+
+### Answer
+
+Possibility 2. `polars` moves from `Core:` to `Extras:` in API.md's Dependencies section (`designspace[polars]`, alongside the existing `designspace[pydantic]`). `Space.sample(n, seed=None, reject_soft=False)` is the only function in the library that imports polars, and it does so lazily inside the method body (`TYPE_CHECKING`-guarded at the module level so `mypy --strict` still checks the `pl.DataFrame` return type); a missing polars raises a plain `ImportError` reading `"space.sample() requires polars; install with `pip install designspace[polars]` (sample_dicts()/sample_one() work without it)"`.
+
+### Reasoning
+
+`sample_dicts`/`sample_one` already cover every sampling need without polars (a decision made before this milestone, not revisited here), so making polars optional costs the library nothing in capability — it only removes a forced transitive dependency for the (likely common) case of a consumer who never calls `.sample()`. A bare `ImportError` is the least-surprising choice for a Python user hitting a missing optional dependency and needs no addition to the exception taxonomy, which stays reserved for semantic design-space errors.
+
+### Specification update
+
+API.md's "Dependencies" section (moved `polars` from `Core:` to `Extras:`) and the `.sample()` signature line (parenthetical noting the extra); PLAN.md's M10 section (`**Build:**` line reworded from "polars becomes a core dependency" to describe the optional-extra wiring).
+
+---
+
+_Ledger tail._ D-1 through D-44 were resolved into `API.md` on and their entries removed here (preserved in git history); continue with D-52.

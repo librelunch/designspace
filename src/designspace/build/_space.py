@@ -49,6 +49,8 @@ from designspace.ir import (
 )
 
 if TYPE_CHECKING:
+    import polars as pl
+
     from designspace.identity._fingerprint import FingerprintScope, FingerprintUnserializable
     from designspace.identity._ir_codec import OnUnserializable
 
@@ -299,6 +301,11 @@ class Space:
         from designspace.sample import sample_dicts as _sample_dicts
 
         return _sample_dicts(self, n, seed=seed, reject_soft=reject_soft)
+
+    def sample(self, n: int, seed: Seed = None, reject_soft: bool = False) -> pl.DataFrame:
+        from designspace.frame import sample_frame as _sample_frame
+
+        return _sample_frame(self, n, seed=seed, reject_soft=reject_soft)
 
     def apply_defaults(self, config: dict[str, Any]) -> dict[str, Any]:
         from designspace.defaults import apply_defaults as _apply_defaults

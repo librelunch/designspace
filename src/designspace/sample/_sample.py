@@ -347,10 +347,20 @@ def _violations(
 
 def sample_one(space: Space, seed: Seed = None, reject_soft: bool = False) -> dict[str, Any]:
     check_fully_resolved(space)
-    return _draw_one(space, _rng_from_seed(seed), reject_soft)
+    config, _activity = _draw_one(space, _rng_from_seed(seed), reject_soft)
+    return unflatten(config, space)
 
 
-def _draw_one(space: Space, rng: np.random.Generator, reject_soft: bool) -> dict[str, Any]:
+def _draw_one(
+    space: Space, rng: np.random.Generator, reject_soft: bool
+) -> tuple[dict[str, Any], dict[str, bool]]:
+    """One retried draw, returned **flat** (path-grammar keyed `config` +
+    parallel `activity`) — the shape shared by every sampling entry point.
+    `sample_one`/`sample_dicts` nest it via `unflatten`; `sample_flat`/the
+    DataFrame path (`frame/`) need the flat form directly, since `null`
+    placement in a DataFrame column requires the activity a nested dict's
+    "absent key" convention would otherwise discard.
+    """
     constraints = (
         list(space.constraints) if reject_soft else [c for c in space.constraints if c.hard]
     )
@@ -365,7 +375,7 @@ def _draw_one(space: Space, rng: np.random.Generator, reject_soft: bool) -> dict
         config, activity = _draw_config(space, rng, bound_targets)
         violated = _violations(constraints, config, activity, space, reject_soft=reject_soft)
         if not violated:
-            return unflatten(config, space)
+            return config, activity
         for c in violated:
             key = id(c)
             violation_counts[key] = violation_counts.get(key, 0) + 1
@@ -384,4 +394,23 @@ def sample_dicts(
 ) -> list[dict[str, Any]]:
     check_fully_resolved(space)  # once, not per draw
     rng = _rng_from_seed(seed)
+    return [unflatten(config, space) for config, _activity in _n_draws(space, n, rng, reject_soft)]
+
+
+def sample_flat(
+    space: Space, n: int, seed: Seed = None, reject_soft: bool = False
+) -> list[tuple[dict[str, Any], dict[str, bool]]]:
+    """`n` flat `(config, activity)` draws — the primitive `frame/` builds
+    the DataFrame path on. Same shared-`rng`-across-`n`-draws structure as
+    `sample_dicts`, so `sample_flat(space, n, seed=s)` and
+    `sample_dicts(space, n, seed=s)` describe the same `n` draws.
+    """
+    check_fully_resolved(space)
+    rng = _rng_from_seed(seed)
+    return _n_draws(space, n, rng, reject_soft)
+
+
+def _n_draws(
+    space: Space, n: int, rng: np.random.Generator, reject_soft: bool
+) -> list[tuple[dict[str, Any], dict[str, bool]]]:
     return [_draw_one(space, rng, reject_soft) for _ in range(n)]

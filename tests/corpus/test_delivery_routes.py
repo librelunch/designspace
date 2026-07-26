@@ -120,3 +120,27 @@ def test_freeze_stops_rejects_a_config_violating_the_fixed_route():
     frozen = space.freeze(stops=fixed)
     other = [{"location": 0, "dwell_min": 9}, {"location": 3, "dwell_min": 20}]
     assert not frozen.validate({"n_stops": 2, "stops": other}).valid
+
+
+# -- DataFrame output (M10): dynamic-count struct lift -> List(Struct) -------
+
+
+def test_dataframe_stops_is_dynamic_list_of_struct():
+    import polars as pl
+
+    space = build_space()
+    df = space.sample(30, seed=7)
+    dt = df.schema["stops"]
+    assert isinstance(dt, pl.List)
+    inner = dt.inner
+    assert isinstance(inner, pl.Struct)
+    assert {f.name for f in inner.fields} == {"location", "dwell_min"}
+
+    dicts = space.sample_dicts(30, seed=7)
+    for i in range(30):
+        row_stops = df["stops"][i].to_list()
+        dict_stops = dicts[i]["stops"]
+        assert len(row_stops) == len(dict_stops) == df["n_stops"][i]
+        for row_stop, dict_stop in zip(row_stops, dict_stops, strict=True):
+            assert row_stop["location"] == dict_stop["location"]
+            assert row_stop["dwell_min"] == dict_stop["dwell_min"]

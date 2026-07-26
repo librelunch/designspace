@@ -9,12 +9,16 @@ dependencies = [
     "rfc8785==0.1.4",
 ]
 
+[project.optional-dependencies]
+polars = ["polars>=1.0"]
+
 [dependency-groups]
 dev = [
     "pytest>=8",
     "hypothesis>=6",
     "mypy>=1.10",
     "ruff>=0.5",
+    "polars>=1.0",
 ]
 
 [build-system]
