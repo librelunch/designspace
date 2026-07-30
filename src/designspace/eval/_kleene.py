@@ -1,11 +1,23 @@
 """Kleene evaluation (API.md, "Expressions" > "Three-valued semantics").
 
-`Unknown` arises only from inactivity (rule 1) — M2 has no partial-config
-API yet (M6), so there is no separate "pending" state to confuse it with
-(rule 5 becomes meaningful only once one exists); an "active but missing
-from config" leaf is a caller bug, not a spec state, and is treated the same
-as inactive here defensively so evaluation degrades rather than crashes —
-`validate()` is what must still report it as a `ParamError("missing")`.
+`Unknown` carries a **provenance** (rule 5, M10.5/D-71): `"inactive"` (rule
+1 — the only one `.if_inactive()` coalesces), `"pending"` (an operand not
+yet present in a *partial* config — never coalesced, since eating it would
+make a driver loop conclude a constraint is satisfied while the value that
+will violate it is still unassigned), or `"permanent"` (rule 6 emptiness —
+`min`/`max` of an active empty lift — or a structurally malformed leaf;
+never coalesced either, since the method's own name disclaims an *active*
+empty lift). `_leaf_value`'s "active but missing from config" branch used
+to be a defensive M2-era catch-all (no partial-config API existed yet to
+give it meaning); it is now exactly the "pending" case Partial Configs (M6)
+defines. Three singletons — `UNKNOWN_INACTIVE`/`UNKNOWN_PENDING`/
+`UNKNOWN_PERMANENT` — are joined by `_join_unknown` (max over
+`INACTIVE < PENDING < PERMANENT`) wherever a node combines more than one
+Unknown-valued operand, so a mixed node never under-reports how resolvable
+it is. `UNKNOWN` stays bound to the `"permanent"` singleton for sites that
+only ever produce that provenance (rule-6 emptiness, a malformed value);
+`isinstance(x, Unknown)` still matches all three, unchanged for every
+existing caller outside this module.
 
 Every evaluator here takes `space` (not just `config`/`activity`), because
 ordinal ordering compares by *declaration position*, not by the raw value
@@ -19,10 +31,9 @@ Internal to the library: not part of the public surface (mirrors how
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from itertools import pairwise
-from typing import Any, NamedTuple
+from typing import Any, ClassVar, NamedTuple
 
 from designspace.build._paramexpr import ParamExpr
 from designspace.build._space import Space
@@ -55,33 +66,114 @@ from designspace.expr import (
     SumOver,
 )
 from designspace.ir import CustomDomain, ListDomain, OrdinalDomain
+from designspace.paths._grammar import parse_path, split_instance_path
+
+_PROVENANCE_RANK = {"inactive": 0, "pending": 1, "permanent": 2}
 
 
 class Unknown:
-    """Kleene's third truth value. A singleton; compare with `is`."""
+    """Kleene's third truth value, carrying a provenance (rule 5). One
+    singleton per provenance — compare with `isinstance`, or `is
+    UNKNOWN_INACTIVE` where the provenance itself matters (as
+    `IfInactive` does)."""
 
-    _instance: Unknown | None = None
+    _instances: ClassVar[dict[str, Unknown]] = {}
 
-    def __new__(cls) -> Unknown:
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
+    provenance: str
+
+    def __new__(cls, provenance: str = "permanent") -> Unknown:
+        if provenance not in _PROVENANCE_RANK:
+            raise ValueError(f"unknown provenance {provenance!r}")
+        if provenance not in cls._instances:
+            inst = super().__new__(cls)
+            inst.provenance = provenance
+            cls._instances[provenance] = inst
+        return cls._instances[provenance]
 
     def __repr__(self) -> str:
-        return "Unknown"
+        return f"Unknown({self.provenance!r})"
 
 
-UNKNOWN = Unknown()
+UNKNOWN_INACTIVE = Unknown("inactive")
+UNKNOWN_PENDING = Unknown("pending")
+UNKNOWN_PERMANENT = Unknown("permanent")
+UNKNOWN = UNKNOWN_PERMANENT
 
 Kleene = bool | Unknown
 
 
+def _join_unknown(*values: Any) -> Unknown:
+    """The strongest (least-resolvable) provenance among the Unknown-valued
+    arguments — rule 5's max-join, `INACTIVE < PENDING < PERMANENT`. A node
+    with one coalescible operand and one pending/permanent one must still
+    block `.if_inactive()` from coalescing, so the join always keeps the
+    stronger side. Callers only invoke this once they already know at least
+    one argument is `Unknown`."""
+    best: Unknown | None = None
+    best_rank = -1
+    for v in values:
+        if isinstance(v, Unknown):
+            rank = _PROVENANCE_RANK[v.provenance]
+            if rank > best_rank:
+                best_rank = rank
+                best = v
+    assert best is not None
+    return best
+
+
+def _resolve_negative_indices(path: str, config: dict[str, Any]) -> str | Unknown:
+    """Resolves every negative bracket index in `path` against its lift's
+    realized length, read progressively from `config` (API.md,
+    "Expressions": negative indices are "resolved against the lift's own
+    realized length"). Each nesting level's own count is already a flat
+    `config` key at exactly the prefix built so far — `config["g"]` (outer
+    count), `config["g[0]"]` (inner count for outer-instance 0), etc.,
+    mirroring `_gather_instance_paths`'s own key convention — so no
+    `space`/`ListDomain` lookup is needed here, just the flat config.
+
+    Returns the fully-resolved (all-positive) concrete path, or an
+    `Unknown`: `UNKNOWN_PENDING` if a governing count is not yet present
+    in `config` (partial eval — the count itself is still unassigned);
+    `UNKNOWN_INACTIVE` if a (positive or resolved-negative) index is out
+    of range against an already-known count — the *dynamic* out-of-range
+    rule (item 2's static case is rejected at resolution, row 29, and
+    never reaches evaluation). A path with no brackets at all resolves to
+    itself unchanged (the common scalar case, checked first to skip the
+    parse)."""
+    if "[" not in path:
+        return path
+    segments = parse_path(path)
+    prefix = ""
+    for seg in segments:
+        prefix = f"{prefix}.{seg.name}" if prefix else seg.name
+        for idx in seg.brackets:
+            if idx is None:
+                # A bare "[]" virtual template marker (D-18) evaluated
+                # unsubstituted -- e.g. a lifted choice's own discriminator
+                # condition, checked generically (not per real instance) by
+                # list-default validation. Never a literal `config` key
+                # (that branch below would have caught it too); matches
+                # this path's pre-M10.5 undifferentiated Unknown.
+                return UNKNOWN_PENDING
+            count = config.get(prefix)
+            if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+                return UNKNOWN_PENDING
+            resolved = idx if idx >= 0 else idx + count
+            if not (0 <= resolved < count):
+                return UNKNOWN_INACTIVE
+            prefix = f"{prefix}[{resolved}]"
+    return prefix
+
+
 def _leaf_value(path: str, config: dict[str, Any], activity: dict[str, bool]) -> Any | Unknown:
-    if not activity.get(path, True):
-        return UNKNOWN
-    if path not in config:
-        return UNKNOWN
-    return config[path]
+    resolved = _resolve_negative_indices(path, config)
+    if isinstance(resolved, Unknown):
+        return resolved
+    if not activity.get(resolved, True):
+        return UNKNOWN_INACTIVE
+    if resolved not in config:
+        return UNKNOWN_PENDING
+    return config[resolved]
 
 
 # -- vector expressions and aggregates (M4; DECISIONS.md D-18/D-19) ----------
@@ -131,14 +223,14 @@ def _vector_paths(
     if isinstance(expr, Field):
         base = _vector_paths(expr.operand, config, activity, space)
         if isinstance(base, Unknown):
-            return UNKNOWN
+            return base  # propagate the base lift's own provenance
         return _map_leaves(base, lambda p: f"{p}.{expr.name}")
     assert isinstance(expr, ParamExpr)
     path = expr.path
     if not activity.get(path, True):
-        return UNKNOWN
+        return UNKNOWN_INACTIVE
     if path not in config:
-        return UNKNOWN
+        return UNKNOWN_PENDING  # the lift's own count is still unset (partial eval)
     return _gather_instance_paths(path, space.params[path].domain, config)
 
 
@@ -147,7 +239,7 @@ def _vector_values(
 ) -> Any | Unknown:
     paths = _vector_paths(expr, config, activity, space)
     if isinstance(paths, Unknown):
-        return UNKNOWN
+        return paths
     return _map_leaves(paths, lambda p: _leaf_value(p, config, activity))
 
 
@@ -163,7 +255,7 @@ def _aggregate_leaves(
     the empty/non-empty/Unknown-element handling differs per aggregate."""
     values = _vector_values(expr.operand, config, activity, space)
     if isinstance(values, Unknown):
-        return UNKNOWN
+        return values
     return _flatten_leaves(values)
 
 
@@ -181,7 +273,7 @@ def _distinct_tuples(
 ) -> list[tuple[Any, ...]] | Unknown:
     paths = _vector_paths(expr.operand, config, activity, space)
     if isinstance(paths, Unknown):
-        return UNKNOWN
+        return paths
     flat_paths = _flatten_leaves(paths)
     return [
         tuple(_leaf_value(f"{p}.{f}", config, activity) for f in expr.fields) for p in flat_paths
@@ -213,29 +305,32 @@ def _values_equal(a: Any, b: Any) -> bool:
     return bool(a == b)
 
 
-_INDEX_RE = re.compile(r"\[\d+\]")
-
-
 def _resolve_param_domain(path: str, space: Space) -> Any:
     """`path` may be an ordinary definition path, a struct/choice lift
     instance path (`"stops[0].dwell"` — its `"[]"`-bracketed template
     carries the real domain), or a direct scalar/choice lift element
-    (`"dropout[3]"` — no template, but the element domain lives on the
-    owning list's `ListDomain`). Mirrors resolve/_expr_checks.py's
-    `_resolve_entry`, at evaluation time (`space.params` is always the
-    resolved `ParamDef` dict here, never a builder-time one)."""
+    nested to any depth (`"dropout[3]"`, `"g[0][1]"` — no template of its
+    own, but the element domain lives on the owning list's chained
+    `ListDomain`). Mirrors resolve/_expr_checks.py's `_resolve_entry` via
+    the shared `paths._grammar.split_instance_path` walk, at evaluation
+    time (`space.params` is always the resolved `ParamDef` dict here,
+    never a builder-time one, so there is no "not yet built" fallback to
+    preserve)."""
     if path in space.params:
         return space.params[path].domain
     if "[" not in path:
         return None
-    template = _INDEX_RE.sub("[]", path)
-    if template in space.params:
-        return space.params[template].domain
-    base = path[: path.rindex("[")]
-    if base in space.params:
-        domain = space.params[base].domain
-        if isinstance(domain, ListDomain):
-            return domain.element_domain
+    split = split_instance_path(path)
+    if split is None:
+        return None
+    base_key, brackets = split
+    if base_key not in space.params:
+        return None
+    domain = space.params[base_key].domain
+    for _ in brackets:
+        if not isinstance(domain, ListDomain):
+            return None
+        domain = domain.element_domain
     return None
 
 
@@ -267,13 +362,14 @@ def _evaluate_prop(
     """`.prop()`: the operand's own (phenotype-form, DECISIONS.md D-46)
     value, bridged back to native via `from_json` and extracted. Contract
     law (API.md, "Protocols"): `extract` is called only on a value that
-    passed `validate` — an invalid config value degrades to Unknown here
-    (the same defensive posture as an absent/inactive leaf, per this
-    module's docstring), never a crash; `validate()` itself is what must
-    still report it as a `ParamError`."""
+    passed `validate` — an invalid config value degrades to a *permanent*
+    Unknown here (never a crash; distinct from the operand's own
+    inactive/pending state propagated just above, which is coalescible or
+    resolvable respectively); `validate()` itself is what must still report
+    it as a `ParamError`."""
     value = evaluate_arith(expr.operand, config, activity, space, status=status)
     if isinstance(value, Unknown):
-        return UNKNOWN
+        return value  # propagate the custom param's own inactive/pending state
     assert isinstance(expr.operand, ParamExpr)
     domain = _resolve_param_domain(expr.operand.path, space)
     assert isinstance(domain, CustomDomain)
@@ -282,15 +378,15 @@ def _evaluate_prop(
     try:
         native = pt.from_json(value)
         if not pt.validate(native):
-            return UNKNOWN
+            return UNKNOWN_PERMANENT
         return pt.extract(native, expr.name)
     except Exception:
         # A structurally-malformed config value: `from_json`/`validate`
         # themselves may raise on it (core cannot type-check an opaque
-        # value in advance) — degrades to Unknown, same as any other
-        # malformed/absent leaf (this module's docstring); `validate()` is
-        # what must still report it as a `ParamError`.
-        return UNKNOWN
+        # value in advance) — degrades to a permanent Unknown, same as any
+        # other malformed leaf; `validate()` is what must still report it
+        # as a `ParamError`.
+        return UNKNOWN_PERMANENT
 
 
 def _apply_compare(op: str, left: Any, right: Any) -> bool:
@@ -323,34 +419,39 @@ def _count_range(
     activity: dict[str, bool],
     space: Space,
     status: Mapping[str, str] | None = None,
-) -> tuple[int, int]:
-    """`(true_count, unknown_count)` — API.md: `ds.count` tracks `[t, t + u]`."""
+) -> tuple[int, int, Unknown]:
+    """`(true_count, unknown_count, joined_unknown)` — API.md: `ds.count`
+    tracks `[t, t + u]`. `joined_unknown` is the strongest provenance among
+    the operands that came back Unknown (rule 5); meaningful only when
+    `u > 0` and the caller ends up reporting Unknown."""
     t = 0
     u = 0
+    joined = UNKNOWN_INACTIVE
     for operand in node.operands:
         v = evaluate_bool(operand, config, activity, space, status=status)
         if isinstance(v, Unknown):
             u += 1
+            joined = _join_unknown(joined, v)
         elif v:
             t += 1
-    return t, u
+    return t, u, joined
 
 
-def _count_vs_threshold(op: str, t: int, u: int, threshold: Any) -> Kleene:
+def _count_vs_threshold(op: str, t: int, u: int, threshold: Any, unknown: Unknown) -> Kleene:
     hi = t + u
     achievable = _is_integer_valued(threshold) and t <= threshold <= hi
     if op in ("lt", "le", "gt", "ge"):
         lo_result = _apply_compare(op, t, threshold)
         hi_result = _apply_compare(op, hi, threshold)
-        return lo_result if lo_result == hi_result else UNKNOWN
+        return lo_result if lo_result == hi_result else unknown
     if op == "eq":
         if not achievable:
             return False
-        return UNKNOWN if u > 0 else True
+        return unknown if u > 0 else True
     if op == "ne":
         if not achievable:
             return True
-        return UNKNOWN if u > 0 else False
+        return unknown if u > 0 else False
     raise ValueError(f"unknown compare op {op!r}")
 
 
@@ -370,16 +471,18 @@ def evaluate_arith(
         left = evaluate_arith(expr.left, config, activity, space, status=status)
         right = evaluate_arith(expr.right, config, activity, space, status=status)
         if isinstance(left, Unknown) or isinstance(right, Unknown):
-            return UNKNOWN
+            return _join_unknown(left, right)
         return _apply_arith(expr.op, left, right)
     if isinstance(expr, IfInactive):
         operand_val = evaluate_arith(expr.operand, config, activity, space, status=status)
         if isinstance(operand_val, Unknown):
-            return evaluate_arith(expr.fallback, config, activity, space, status=status)
+            if operand_val is UNKNOWN_INACTIVE:
+                return evaluate_arith(expr.fallback, config, activity, space, status=status)
+            return operand_val  # rule 5: never coalesce pending or permanent
         return operand_val
     if isinstance(expr, Count):
-        t, u = _count_range(expr, config, activity, space, status=status)
-        return t if u == 0 else UNKNOWN
+        t, u, joined = _count_range(expr, config, activity, space, status=status)
+        return t if u == 0 else joined
     if isinstance(expr, Size):
         value = evaluate_arith(expr.operand, config, activity, space)
         return UNKNOWN if isinstance(value, Unknown) else len(value)
@@ -404,38 +507,38 @@ def evaluate_arith(
     if isinstance(expr, Sum):
         leaves = _aggregate_leaves(expr, config, activity, space)
         if isinstance(leaves, Unknown):
-            return UNKNOWN
+            return leaves
         if len(leaves) == 0:
             return 0  # rule 6: empty aggregate
         if any(isinstance(v, Unknown) for v in leaves):
-            return UNKNOWN  # D-19: interior Unknown -> aggregate Unknown
+            return _join_unknown(*leaves)  # D-19: interior Unknown -> aggregate Unknown
         return sum(leaves)
     if isinstance(expr, Min):
         leaves = _aggregate_leaves(expr, config, activity, space)
         if isinstance(leaves, Unknown):
-            return UNKNOWN
+            return leaves
         if len(leaves) == 0:
-            return UNKNOWN  # rule 6: min/max of empty -> Unknown
+            return UNKNOWN_PERMANENT  # rule 6: min/max of empty -> Unknown
         if any(isinstance(v, Unknown) for v in leaves):
-            return UNKNOWN
+            return _join_unknown(*leaves)
         return min(leaves)
     if isinstance(expr, Max):
         leaves = _aggregate_leaves(expr, config, activity, space)
         if isinstance(leaves, Unknown):
-            return UNKNOWN
+            return leaves
         if len(leaves) == 0:
-            return UNKNOWN
+            return UNKNOWN_PERMANENT
         if any(isinstance(v, Unknown) for v in leaves):
-            return UNKNOWN
+            return _join_unknown(*leaves)
         return max(leaves)
     if isinstance(expr, CountOf):
         leaves = _aggregate_leaves(expr, config, activity, space)
         if isinstance(leaves, Unknown):
-            return UNKNOWN
+            return leaves
         if len(leaves) == 0:
             return 0
         if any(isinstance(v, Unknown) for v in leaves):
-            return UNKNOWN
+            return _join_unknown(*leaves)
         return sum(1 for v in leaves if any(_values_equal(v, target) for target in expr.values))
     raise TypeError(f"cannot evaluate arith expr kind {expr.kind!r}")
 
@@ -460,7 +563,7 @@ def _kleene_and(a: Kleene, b: Kleene) -> Kleene:
     if a is False or b is False:
         return False
     if isinstance(a, Unknown) or isinstance(b, Unknown):
-        return UNKNOWN
+        return _join_unknown(a, b)
     return True
 
 
@@ -468,7 +571,7 @@ def _kleene_or(a: Kleene, b: Kleene) -> Kleene:
     if a is True or b is True:
         return True
     if isinstance(a, Unknown) or isinstance(b, Unknown):
-        return UNKNOWN
+        return _join_unknown(a, b)
     return False
 
 
@@ -490,7 +593,7 @@ def _evaluate_is_active(
         if s == "inactive":
             return False  # Kleene AND: False dominates regardless of order
         if s == "unknown":
-            result = UNKNOWN
+            result = UNKNOWN_PENDING
     return result
 
 
@@ -506,20 +609,20 @@ def evaluate_bool(
         return expr.value
     if isinstance(expr, ParamExpr):
         v = _leaf_value(expr.path, config, activity)
-        return UNKNOWN if isinstance(v, Unknown) else bool(v)
+        return v if isinstance(v, Unknown) else bool(v)
     if isinstance(expr, Prop):
         # A bool-declared prop used bare as a condition (not inside a
         # Compare) — same "coerce via bool()" convention as a bare
         # ParamExpr, above.
         value = _evaluate_prop(expr, config, activity, space, status=status)
-        return UNKNOWN if isinstance(value, Unknown) else bool(value)
+        return value if isinstance(value, Unknown) else bool(value)
     if isinstance(expr, Compare):
         if isinstance(expr.left, Count) or isinstance(expr.right, Count):
             return _evaluate_count_compare(expr, config, activity, space, status=status)
         left = evaluate_arith(expr.left, config, activity, space, status=status)
         right = evaluate_arith(expr.right, config, activity, space, status=status)
         if isinstance(left, Unknown) or isinstance(right, Unknown):
-            return UNKNOWN
+            return _join_unknown(left, right)
         if expr.op in ("gt", "lt", "ge", "le"):
             ordinal_domain = _ordinal_domain_of(expr.left, space) or _ordinal_domain_of(
                 expr.right, space
@@ -528,7 +631,8 @@ def evaluate_bool(
                 left = _ordinal_index(ordinal_domain, left)
                 right = _ordinal_index(ordinal_domain, right)
                 if isinstance(left, Unknown) or isinstance(right, Unknown):
-                    return UNKNOWN
+                    # a non-member literal: malformed, not inactive/pending
+                    return UNKNOWN_PERMANENT
         return _apply_compare(expr.op, left, right)
     if isinstance(expr, BoolOp):
         left_v = evaluate_bool(expr.left, config, activity, space, status=status)
@@ -536,25 +640,25 @@ def evaluate_bool(
         return _kleene_and(left_v, right_v) if expr.op == "and" else _kleene_or(left_v, right_v)
     if isinstance(expr, Not):
         v = evaluate_bool(expr.operand, config, activity, space, status=status)
-        return UNKNOWN if isinstance(v, Unknown) else (not v)
+        return v if isinstance(v, Unknown) else (not v)
     if isinstance(expr, IsIn):
         operand = evaluate_arith(expr.operand, config, activity, space, status=status)
         if isinstance(operand, Unknown):
-            return UNKNOWN
+            return operand
         return any(_values_equal(operand, v) for v in expr.values)
     if isinstance(expr, IsActive):
         return _evaluate_is_active(expr, activity, status)
     if isinstance(expr, Contains):
         value = evaluate_arith(expr.operand, config, activity, space)
-        return UNKNOWN if isinstance(value, Unknown) else expr.item in value
+        return value if isinstance(value, Unknown) else expr.item in value
     if isinstance(expr, IsSorted):
         leaves = _aggregate_leaves(expr, config, activity, space)
         if isinstance(leaves, Unknown):
-            return UNKNOWN
+            return leaves
         if len(leaves) == 0:
             return True  # rule 6
         if any(isinstance(v, Unknown) for v in leaves):
-            return UNKNOWN
+            return _join_unknown(*leaves)
         pairs = list(pairwise(leaves))
         if expr.descending:
             return all(a >= b for a, b in pairs)
@@ -563,11 +667,11 @@ def evaluate_bool(
         if expr.fields:
             tuples = _distinct_tuples(expr, config, activity, space)
             if isinstance(tuples, Unknown):
-                return UNKNOWN
+                return tuples
             if len(tuples) == 0:
                 return True
             if any(any(isinstance(x, Unknown) for x in t) for t in tuples):
-                return UNKNOWN
+                return _join_unknown(*(x for t in tuples for x in t))
             seen: list[tuple[Any, ...]] = []
             for t in tuples:
                 if any(_tuple_equal(t, s) for s in seen):
@@ -576,11 +680,11 @@ def evaluate_bool(
             return True
         leaves = _aggregate_leaves(expr, config, activity, space)
         if isinstance(leaves, Unknown):
-            return UNKNOWN
+            return leaves
         if len(leaves) == 0:
             return True
         if any(isinstance(v, Unknown) for v in leaves):
-            return UNKNOWN
+            return _join_unknown(*leaves)
         return _all_distinct(leaves)
     raise TypeError(f"cannot evaluate bool expr kind {expr.kind!r}")
 
@@ -599,12 +703,12 @@ def _evaluate_count_compare(
         count_node, other_side, count_is_left = expr.right, expr.left, False
     other_val = evaluate_arith(other_side, config, activity, space, status=status)
     if isinstance(other_val, Unknown):
-        return UNKNOWN
-    t, u = _count_range(count_node, config, activity, space, status=status)
+        return other_val
+    t, u, joined = _count_range(count_node, config, activity, space, status=status)
     op = expr.op
     if not count_is_left:
         op = {"lt": "gt", "gt": "lt", "le": "ge", "ge": "le"}.get(op, op)
-    return _count_vs_threshold(op, t, u, other_val)
+    return _count_vs_threshold(op, t, u, other_val, joined)
 
 
 def compute_activity(space: Space, config: dict[str, Any]) -> dict[str, bool]:

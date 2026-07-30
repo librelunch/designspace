@@ -47,7 +47,24 @@ from designspace.build._views import (
 )
 from designspace.charts import build_chart, build_grid_shape, grid_membership
 from designspace.errors import ResolutionError
-from designspace.expr import ArithExpr, Compare, Expr, Literal, Prop
+from designspace.expr import (
+    ArithExpr,
+    ArithOp,
+    Compare,
+    Count,
+    CountOf,
+    Expr,
+    IfInactive,
+    Length,
+    Literal,
+    Max,
+    Min,
+    PositionOf,
+    Prop,
+    Size,
+    Sum,
+    SumOver,
+)
 from designspace.ir import (
     BoolDomain,
     CategoricalDomain,
@@ -121,6 +138,14 @@ def check_fully_resolved(space: Space) -> None:
       a matching down-reference) is caught here — per-scope cycle detection
       never sees both edges.
 
+    Also re-checks `space.constraints` (M10.5 — the metaprogramming hole):
+    a builder-built space's constraints are already strict at
+    `add_constraints`, so this is a confirming no-op for it, but a raw-IR
+    constraint arriving through `meta/_meta.py::space_from_ir` was never
+    expression-checked at all otherwise — which would let a row-6/12/14/18/29
+    violation (an out-of-range static index, a lift-valued boolean operand,
+    …) reach `sample`/`validate`/`fingerprint` silently through that path.
+
     A space with only local references reaches this function already fully
     checked; every clause below is then a confirming no-op.
     """
@@ -129,6 +154,10 @@ def check_fully_resolved(space: Space) -> None:
         context = f"param {cond.target!r}"
         check_refs_declared(cond.expr, defs_by_path, context=context)
         check_expr_types(cond.expr, defs_by_path, context=context)
+    for c in space.constraints:
+        context = f"{c.kind}() constraint"
+        check_refs_declared(c.expr, defs_by_path, context=context)
+        check_expr_types(c.expr, defs_by_path, context=context)
     _check_merged_cycles(space)
 
 
@@ -871,11 +900,52 @@ def _validate_lift(d: ParamExpr, defs_by_path: dict[str, ParamExpr]) -> None:
         )
 
 
+def _innermost_lift_element_kind(pd: ParamExpr) -> str | None:
+    """The leaf `type_kind` a `Sum`/`Min`/`Max` over `pd` flattens to,
+    read from the builder-time `_ElementSnapshot` chain (`.lift`) rather
+    than `.domain` — `_check_count_type_node` runs before
+    `_build_list_domains` (a later pipeline step), so a sibling param's
+    `ListDomain` may not exist yet, but `.lift` is a build-time artifact,
+    populated the moment `.repeat()` was called, regardless of resolution
+    order. Mirrors `_validate_lift`'s own descent through chained/nested
+    repeat levels. `None` if `pd` is not `.repeat()`-closed at all (a
+    plain scalar `.sum()`'d by mistake — row 12 covers it as "not
+    integer-typed" either way)."""
+    if pd.lift is None:
+        return None
+    inner = pd.lift.element
+    assert inner is not None
+    while inner.element_class is ListParamExpr:
+        inner = inner.element
+        assert inner is not None
+    return inner.element_class.type_kind
+
+
 def _check_count_type_node(node: Expr, defs_by_path: dict[str, ParamExpr], context: str) -> None:
+    """The M10.5/D-72 integer-valued calculus for repeat() counts (row
+    12): int literals, integer params, `Count`/`Size`/`Length`/
+    `PositionOf`/`CountOf` (always int by construction), a declared-int
+    `Prop`, `Sum` over an integer- *or* bool-leaved lift
+    (`sum([True, False])` is `int`), `Min`/`Max` over an *integer*-leaved
+    lift only (`min([True, False])` is `bool`, not `int` — the one
+    deliberate asymmetry), a literal-valued `SumOver` mapping, `+ - * %`
+    over two int-valued operands, `**` with a non-negative literal
+    integer exponent, and `IfInactive` when both branches are int-valued.
+    Division and anything else outside this closed set is row 12 —
+    mirrors the bounds engine's own minimal computable op set (API.md,
+    "Expression bounds are sugar")."""
     if isinstance(node, Literal):
         if not isinstance(node.value, int) or isinstance(node.value, bool):
             raise ResolutionError(
                 f"{context}: must be integer-typed, got literal {node.value!r} (row 12)"
+            )
+        return
+    if isinstance(node, ParamExpr):
+        kind = defs_by_path[node.path].type_kind
+        if kind != "integer":
+            raise ResolutionError(
+                f"{context}: references {node.path!r}, which is {kind!r}, "
+                "not integer (row 12)"
             )
         return
     if isinstance(node, Prop):
@@ -889,16 +959,49 @@ def _check_count_type_node(node: Expr, defs_by_path: dict[str, ParamExpr], conte
                 f"{context}: prop({node.name!r}) is not integer-typed (row 12)"
             )
         return
-    if isinstance(node, ParamExpr):
-        kind = defs_by_path[node.path].type_kind
-        if kind != "integer":
+    if isinstance(node, Count | Size | Length | PositionOf | CountOf):
+        return  # always int-valued by construction -- no leaf to check
+    if isinstance(node, SumOver):
+        if not all(
+            isinstance(v, int) and not isinstance(v, bool) for v in node.mapping.values()
+        ):
+            raise ResolutionError(f"{context}: sum_over() has a non-integer value (row 12)")
+        return
+    if isinstance(node, Sum | Min | Max):
+        if not isinstance(node.operand, ParamExpr):
             raise ResolutionError(
-                f"{context}: references {node.path!r}, which is {kind!r}, "
-                "not integer (row 12)"
+                f"{context}: {node.kind}() over a .field() projection is not "
+                "supported as a repeat() count (row 12)"
+            )
+        elem_kind = _innermost_lift_element_kind(defs_by_path[node.operand.path])
+        allowed = ("integer", "bool") if isinstance(node, Sum) else ("integer",)
+        if elem_kind not in allowed:
+            raise ResolutionError(
+                f"{context}: {node.kind}() over a {elem_kind!r}-leaved lift is not "
+                "integer-typed (row 12)"
             )
         return
-    for child in node.children:
-        _check_count_type_node(child, defs_by_path, context)
+    if isinstance(node, ArithOp):
+        if node.op == "div":
+            raise ResolutionError(f"{context}: division is not integer-typed (row 12)")
+        if node.op == "pow" and not (
+            isinstance(node.right, Literal)
+            and isinstance(node.right.value, int)
+            and not isinstance(node.right.value, bool)
+            and node.right.value >= 0
+        ):
+            raise ResolutionError(
+                f"{context}: ** requires a non-negative literal integer exponent to "
+                "stay integer-typed (row 12)"
+            )
+        _check_count_type_node(node.left, defs_by_path, context)
+        _check_count_type_node(node.right, defs_by_path, context)
+        return
+    if isinstance(node, IfInactive):
+        _check_count_type_node(node.operand, defs_by_path, context)
+        _check_count_type_node(node.fallback, defs_by_path, context)
+        return
+    raise ResolutionError(f"{context}: must be integer-typed (row 12)")
 
 
 def _check_count_type(
@@ -1043,6 +1146,16 @@ def _relocate_choice_variants(
         payload = choice_payloads.get(variant_name)
         if payload is None:
             continue
+        if not isinstance(payload, Space):
+            # Row 29 (M10.5 item 7): a bare ParamExpr (or anything else that
+            # isn't a Space) as a payload used to reach `relocate_child`
+            # below and raise an opaque AttributeError from `child.params`
+            # (a Space's Mapping vs. an Expr's frozenset).
+            raise ResolutionError(
+                f"param {discriminator_path!r}: choice() payload for variant "
+                f"{variant_name!r} must be a Space (from ds.space(...)), got "
+                f"{type(payload).__name__} (row 29)"
+            )
         discriminator_eq = Compare("eq", ParamExpr(path=discriminator_path), Literal(variant_name))
         injected = and_(condition, discriminator_eq)
         child_params, child_conditions, child_constraints = relocate_child(

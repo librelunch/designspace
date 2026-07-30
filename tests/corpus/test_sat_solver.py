@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
 from sat_solver import build_space
 
 from designspace.build._space import Space
+from designspace.errors import ResolutionError
 
 
 def test_resolves():
@@ -73,8 +75,22 @@ def test_freeze_short_timeout_ablates_debug_verbosity():
 
 
 def test_freeze_verbosity_ablation_forces_long_timeout():
+    # M10.5 closed the "metaprogramming hole" (check_fully_resolved now also
+    # re-checks space.constraints, not just conditions, over the space
+    # .freeze() rebuilds via space_from_ir). Freezing "verbosity" narrows its
+    # OrdinalDomain to the single fixed value (ops/_structural.py's ordinal
+    # freeze mechanism), which drops "silent" from the declared values the
+    # fixture's own `.encourage(verbosity > "silent", tags=("observability",))`
+    # references -- row 18 ("ordinal comparison against a literal that is not
+    # a declared value") now correctly catches it, where it used to pass
+    # through silently. That encourage constraint is unrelated to what this
+    # test checks (the forbid-driven timeout escalation), so it is dropped
+    # by tag before freezing, exactly as `.without_constraints()` exists for.
     space = build_space()
-    frozen = space.freeze(verbosity="debug")
+    with pytest.raises(ResolutionError, match=r"not a declared value"):
+        space.freeze(verbosity="debug")
+    stripped = space.without_constraints(tags=("observability",))
+    frozen = stripped.freeze(verbosity="debug")
     for cfg in frozen.sample_dicts(100, seed=7):
         assert cfg["verbosity"] == "debug"
         assert cfg["timeout_s"] >= 60

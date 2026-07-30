@@ -13,6 +13,9 @@ from designspace.eval._constraint_eval import (
 )
 from designspace.eval._kleene import (
     UNKNOWN,
+    UNKNOWN_INACTIVE,
+    UNKNOWN_PENDING,
+    UNKNOWN_PERMANENT,
     Kleene,
     PartialActivity,
     Unknown,
@@ -29,6 +32,9 @@ from designspace.eval._margins import margin
 
 __all__ = [
     "UNKNOWN",
+    "UNKNOWN_INACTIVE",
+    "UNKNOWN_PENDING",
+    "UNKNOWN_PERMANENT",
     "Kleene",
     "PartialActivity",
     "Unknown",

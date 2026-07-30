@@ -15,7 +15,6 @@ feasibility constraint — prefixed onto each message.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterator, Mapping
 from typing import Any, cast
 
@@ -23,6 +22,7 @@ from designspace.build._paramexpr import ParamExpr
 from designspace.errors import ResolutionError
 from designspace.expr import (
     ArithOp,
+    BoolOp,
     Compare,
     Contains,
     CountOf,
@@ -34,6 +34,7 @@ from designspace.expr import (
     Literal,
     Max,
     Min,
+    Not,
     PositionOf,
     Prop,
     Size,
@@ -41,10 +42,9 @@ from designspace.expr import (
     SumOver,
 )
 from designspace.ir import CustomDomain, ListDomain, OrdinalDomain, PermutationDomain, SubsetDomain
+from designspace.paths._grammar import split_instance_path
 
 _SCALAR_PROP_TYPES = (int, float, bool, str)
-
-_INDEX_RE = re.compile(r"\[\d+\]")
 
 
 def iter_nodes(node: Expr) -> Iterator[Expr]:
@@ -56,50 +56,113 @@ def iter_nodes(node: Expr) -> Iterator[Expr]:
 def _is_declared(path: str, defs_by_path: Mapping[str, Any]) -> bool:
     """`path` may be an ordinary definition path, an instance path into a
     struct/choice lift element (`"stops[0].dwell"` — its `"[]"`-bracketed
-    *template* is a declared def) or a direct scalar/choice lift element
-    (`"dropout[3]"` — no template of its own, but its owning list param
-    is declared). API.md, "Expressions": "Instance paths are legal in
-    expressions... An out-of-range index makes the leaf inactive" — the
-    out-of-range half is an evaluation-time concern (`_leaf_value`
-    already handles it for free); this is the resolution-time half (row 6):
-    the *lift itself* still has to be a declared param.
+    *template* is a declared def), a direct scalar/choice lift element
+    (`"dropout[3]"` — no template of its own, but its owning list param is
+    declared), or any deeper/mixed nesting the grammar admits (`g[0][1]`,
+    `layers[2].act[1]`) — see `paths._grammar.split_instance_path`. API.md,
+    "Expressions": "Instance paths are legal in expressions... An
+    out-of-range index makes the leaf inactive" — the out-of-range half is
+    an evaluation-time concern (`_leaf_value` already handles it for free,
+    M10.5); this is the resolution-time half (row 6): the *lift itself*
+    still has to be a declared param.
     """
     if path in defs_by_path:
         return True
     if "[" not in path:
         return False
-    template = _INDEX_RE.sub("[]", path)
-    if template in defs_by_path:
-        return True
-    base = path[: path.rindex("[")]
-    return base in defs_by_path
+    split = split_instance_path(path)
+    if split is None:
+        return False
+    base_key, _brackets = split
+    return base_key in defs_by_path
 
 
 def _resolve_entry(path: str, defs_by_path: Mapping[str, Any]) -> Any:
     """The declared shape backing `path` (see `_is_declared`) — a direct
     scalar/choice lift element resolves to a synthetic element view
-    (`resolve/_relocate.py`'s `element_paramdef`) so type checks see the
-    *element's* type_kind/domain, not the enclosing list's; only possible
-    once `ListDomain` is actually built (the constraint-on-resolved-Space
-    path), so a `.when()` condition's instance reference to a not-yet-
-    lifted element falls back to the outer entry unchanged (best effort).
-    Callers that tolerate up-references (D-26) never reach here for a
-    non-local path — they skip it before resolving — so this only ever
-    sees a path already known to be declared somewhere in `defs_by_path`.
+    (`resolve/_relocate.py`'s `element_paramdef`), consumed one bracket at a
+    time so a chained/nested scalar lift (`g[0][1]`) resolves all the way to
+    its leaf, so type checks see the *element's* type_kind/domain, not the
+    enclosing list's. Only possible once `ListDomain` is actually built (the
+    constraint-on-resolved-Space path), so a `.when()` condition's instance
+    reference to a not-yet-lifted element falls back to the outer entry
+    unchanged (best effort) — the finalization pass (`check_fully_resolved`)
+    re-checks once every lift is built. Callers that tolerate up-references
+    (D-26) never reach here for a non-local path — they skip it before
+    resolving — so this only ever sees a path already known to be declared
+    somewhere in `defs_by_path`.
     """
     if path in defs_by_path:
         return defs_by_path[path]
-    template = _INDEX_RE.sub("[]", path)
-    if template in defs_by_path:
-        return defs_by_path[template]
-    base = path[: path.rindex("[")]
-    entry = defs_by_path[base]
-    domain = getattr(entry, "domain", None)
-    if isinstance(domain, ListDomain):
+    split = split_instance_path(path)
+    assert split is not None  # only ever called on an already-declared path
+    base_key, brackets = split
+    entry = defs_by_path[base_key]
+    for _ in brackets:
+        domain = getattr(entry, "domain", None)
+        if not isinstance(domain, ListDomain):
+            return entry  # not yet built (per-scope timing, D-26) -- best effort
         from designspace.resolve._relocate import element_paramdef
 
-        return element_paramdef(path, domain)
+        entry = element_paramdef(path, domain)
     return entry
+
+
+def _check_static_index_range(path: str, defs_by_path: Mapping[str, Any], *, context: str) -> None:
+    """Row 29: a bracket index against a *static* (literal-int) count is a
+    resolution error — API.md, "Expressions": "against a static count the
+    length is known at resolution, so an out-of-range index... is a
+    resolution error." A *dynamic* count keeps the runtime Unknown rule
+    (this no-ops for it, deferring to `eval/_kleene.py`'s evaluation-time
+    handling); so does a not-yet-built `ListDomain` (per-scope timing,
+    D-26) — `check_fully_resolved`'s finalization pass re-runs this once
+    every lift is built."""
+    if "[" not in path:
+        return
+    split = split_instance_path(path)
+    if split is None:
+        return
+    base_key, brackets = split
+    entry = defs_by_path.get(base_key)
+    if entry is None:
+        return
+    for idx in brackets:
+        domain = getattr(entry, "domain", None)
+        if not isinstance(domain, ListDomain):
+            return
+        count = domain.count
+        if (
+            idx is not None  # a bare "[]" virtual template marker (D-18) -- nothing to range-check
+            and isinstance(count, int)
+            and not isinstance(count, bool)
+            and not (-count <= idx < count)
+        ):
+            raise ResolutionError(
+                f"{context}: instance index {idx} on {path!r} is out of range for "
+                f"a static repeat() count of {count} (row 29)"
+            )
+        from designspace.resolve._relocate import element_paramdef
+
+        entry = element_paramdef(path, domain)
+
+
+def _reject_lift_valued_bool_operand(
+    operand: Expr, defs_by_path: Mapping[str, Any], *, context: str
+) -> None:
+    """Row 29: a boolean operator (`~`, `&`, `|`, or a bare condition/
+    constraint) applied to an operand that is still list-typed — e.g.
+    `~ds.param("g[0]")` on a `repeat(4, 4)` bool lift, where `g[0]` is the
+    *inner* list, not yet a scalar bool. Silently coerced by truthiness
+    (a `bool()` of the inner list's own count) before this check existed."""
+    if not isinstance(operand, ParamExpr):
+        return
+    if not _is_declared(operand.path, defs_by_path):
+        return  # an up-reference (D-26) or genuinely undeclared -- other checks own this
+    if _resolve_entry(operand.path, defs_by_path).type_kind == "list":
+        raise ResolutionError(
+            f"{context}: boolean operator applied to {operand.path!r}, which is "
+            "still a lift (repeat()), not a scalar bool (row 29)"
+        )
 
 
 def _referenced_domain(node: Any, defs_by_path: Mapping[str, Any], *, context: str) -> Any:
@@ -277,6 +340,14 @@ def check_expr_types(
     context: str,
     tolerate_undeclared: bool = False,
 ) -> None:
+    if isinstance(expr, ParamExpr):
+        # Row 29 (item 6): a bare bool leaf used directly as the *whole*
+        # condition/constraint (no wrapping `Not`/`BoolOp`) -- the third
+        # named boolean position, checked once here since `iter_nodes`
+        # yielding it as an ordinary node would otherwise conflate it with
+        # a bare ParamExpr in a vector-aggregate operand position (which
+        # is fine list-typed and must not raise).
+        _reject_lift_valued_bool_operand(expr, defs_by_path, context=context)
     for node in iter_nodes(expr):
         if tolerate_undeclared and any(
             not _is_declared(p, defs_by_path) for p in node.params
@@ -379,3 +450,17 @@ def check_expr_types(
             _require_lift_domain(
                 node.operand, defs_by_path, context=context, what=f"{node.kind}()"
             )
+        elif isinstance(node, ParamExpr):
+            # Row 29: a static out-of-range instance index (item 2, M10.5).
+            # Runs for *every* bare ParamExpr regardless of its surrounding
+            # node -- an out-of-range index is wrong wherever it appears,
+            # unlike the lift-valued-bool check below, which only applies at
+            # specific boolean-operator positions.
+            _check_static_index_range(node.path, defs_by_path, context=context)
+        elif isinstance(node, Not):
+            # Row 29: `~` applied to a still-list-typed operand (item 6).
+            _reject_lift_valued_bool_operand(node.operand, defs_by_path, context=context)
+        elif isinstance(node, BoolOp):
+            # Row 29: `&`/`|` applied to a still-list-typed operand (item 6).
+            _reject_lift_valued_bool_operand(node.left, defs_by_path, context=context)
+            _reject_lift_valued_bool_operand(node.right, defs_by_path, context=context)

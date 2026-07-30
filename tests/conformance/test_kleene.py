@@ -7,6 +7,13 @@
   `[t, t + u]`.
 - Rule 1: any predicate over an inactive param is Unknown; `is_active()` is
   total.
+- Rule 3: `.when()` coerces Unknown to False, cascading deactivation.
+- Rule 4: the constraint verbs coerce Unknown to inapplicable
+  (`margin=None`).
+- Rule 5 (M10.5/D-71): `.if_inactive()` discriminates Unknown's provenance —
+  coalesces inactivity alone, propagates a *pending* (partial-eval, unset)
+  operand and a *permanent* (rule-6 emptiness) one untouched.
+- Rule 7: bound-origin couplings follow rule 4 (inapplicable, not an error).
 """
 
 from __future__ import annotations
@@ -17,7 +24,7 @@ import pytest
 
 import designspace as ds
 from designspace.build._space import Space
-from designspace.eval import Unknown, compute_activity, evaluate_bool
+from designspace.eval import Unknown, compute_activity, evaluate_arith, evaluate_bool
 
 T, F, U = True, False, "U"
 
@@ -146,6 +153,142 @@ class TestRule1InactiveIsUnknown:
         activity = compute_activity(space, config)
         expr = ds.param("x").if_inactive(0.0) < 0.5
         assert evaluate_bool(expr, config, activity, space) is False
+
+
+class TestRule5UnknownProvenance:
+    """M10.5/D-71: Unknown has a provenance, and `.if_inactive()`
+    discriminates on it — coalescing inactivity alone, never eating a
+    pending (partial-eval) operand or a permanent (rule-6 emptiness) one.
+    Each of the three is tested against the *other* two, per the
+    conformance-law wording (API.md §Conformance Laws > Kleene)."""
+
+    def test_coalesces_inactivity(self):
+        # Already covered by TestRule1InactiveIsUnknown; repeated here so
+        # all three provenances live in one place, side by side.
+        space = ds.space(
+            ds.param("flag").bool(),
+            ds.param("x").real(0.0, 1.0).when(ds.param("flag")),
+        )
+        config = {"flag": False}
+        activity = compute_activity(space, config)
+        result = evaluate_bool(ds.param("x").if_inactive(0.0) < 5.0, config, activity, space)
+        assert result is True
+
+    def test_never_coalesces_pending(self):
+        """The M10.5 headline bug: a lift that is *active* with its
+        elements merely unset must stay `pending` through `.if_inactive()`
+        — coalescing it would make a driver loop conclude a constraint is
+        satisfied while the deciding values are still unassigned."""
+        space = ds.space(
+            ds.param("n").integer(1, 4),
+            ds.param("bufs").integer(0, 100).repeat(ds.param("n")),
+        ).require(ds.param("bufs").sum().if_inactive(0) <= 10)
+        pe = space.evaluate_partial({"n": 3})
+        assert pe.evaluable_constraints == ()
+        assert len(pe.pending_constraints) == 1
+
+    def test_never_coalesces_emptiness(self):
+        """Rule 6: `min`/`max` of an *active* empty lift is Unknown, and
+        `.if_inactive()` must not swallow it — an author wanting an empty
+        lift to contribute a value writes it explicitly (API.md rule 5)."""
+        space = ds.space(ds.param("xs").real(0.0, 1.0).repeat(0))
+        config = {"xs": 0}
+        activity = compute_activity(space, config)
+        guarded = evaluate_arith(
+            ds.param("xs").min().if_inactive(-999.0), config, activity, space
+        )
+        assert isinstance(guarded, Unknown)
+
+
+class TestRule3WhenCoercesUnknownToFalse:
+    """Rule 3: `.when()` coerces Unknown to False, cascading deactivation
+    along `topological_order` — a param gated on an *inactive* upstream
+    param is itself inactive, not merely Unknown."""
+
+    def test_cascading_deactivation(self):
+        space = ds.space(
+            ds.param("a").bool(),
+            ds.param("b").real(0.0, 1.0).when(ds.param("a")),
+            ds.param("c").real(0.0, 1.0).when(ds.param("b") > 0.5),
+        )
+        activity = compute_activity(space, {"a": False})
+        assert activity["b"] is False
+        assert activity["c"] is False  # cascaded from b's Unknown condition
+
+
+class TestRule4ConstraintVerbsCoerceUnknownToInapplicable:
+    """Rule 4: Unknown at a constraint verb is *inapplicable* — not
+    violated, `margin=None`, `ConstraintEval.applicable=False`."""
+
+    def test_inactive_operand_makes_constraint_inapplicable(self):
+        space = ds.space(
+            ds.param("flag").bool(),
+            ds.param("x").real(0.0, 1.0).when(ds.param("flag")),
+        ).require(ds.param("x") > 0.5)
+        result = space.validate({"flag": False})
+        (ce,) = result.constraint_evals
+        assert ce.applicable is False
+        assert ce.satisfied is None
+        assert ce.margin is None
+
+
+class TestRule7BoundCouplingsFollowRule4:
+    """Rule 7: expression bounds desugar to bound-origin constraints, so an
+    inactive referenced param makes the coupling inapplicable — the target
+    ranges over its own envelope rather than raising."""
+
+    def test_inactive_bound_reference_is_inapplicable(self):
+        space = ds.space(
+            ds.param("flag").bool(),
+            ds.param("lo").real(0.0, 1.0).when(ds.param("flag")),
+            ds.param("y").real(ds.param("lo"), 10.0),
+        )
+        result = space.validate({"flag": False, "y": 3.0})
+        assert result.valid
+        bound_evals = [
+            ce for ce in result.constraint_evals if ce.constraint.origin == "bound"
+        ]
+        assert bound_evals and all(ce.applicable is False for ce in bound_evals)
+
+
+class TestRuntimeEqualityTypeTagging:
+    """API.md, "Runtime equality": `==`/`!=`/`.is_in()` compare `bool` by
+    type-tagged identity (`True ≠ 1` — bool is strict), `int`/`float`
+    numerically (`1 == 1.0`), and every other pair by exact type match —
+    deliberately distinct from Identity's declaration-time/fingerprint
+    tagging, which tags uniformly. M10.5's audit: stated in the
+    Expressions prose but never named in §Conformance Laws, and had no
+    test at all."""
+
+    def test_bool_is_type_tagged_against_int(self):
+        space = ds.space(ds.param("x").integer(0, 10))
+        activity = compute_activity(space, {"x": 1})
+        assert evaluate_bool(ds.param("x") == True, {"x": 1}, activity, space) is False  # noqa: E712
+        assert evaluate_bool(ds.param("x") == 1, {"x": 1}, activity, space) is True
+
+    def test_int_and_float_compare_numerically(self):
+        space = ds.space(ds.param("x").real(0.0, 10.0))
+        activity = compute_activity(space, {"x": 1.0})
+        assert evaluate_bool(ds.param("x") == 1, {"x": 1.0}, activity, space) is True
+
+    def test_strings_require_exact_type_match(self):
+        # A categorical may not *declare* both "1" and 1 (row 4: shared
+        # string image) -- but `==`/`.is_in()` place no membership
+        # requirement on the literal side (unlike row 18's ordinals), so
+        # this exercises `_values_equal`'s "everything else" bucket
+        # directly rather than going through a Space at all.
+        from designspace.eval._kleene import _values_equal
+
+        assert _values_equal("1", 1) is False
+        assert _values_equal("1", "1") is True
+        assert _values_equal("a", "a") is True
+        assert _values_equal("a", "b") is False
+
+    def test_is_in_uses_the_same_convention(self):
+        space = ds.space(ds.param("x").integer(0, 10))
+        activity = compute_activity(space, {"x": 1})
+        assert evaluate_bool(ds.param("x").is_in(True, 2, 3), {"x": 1}, activity, space) is False
+        assert evaluate_bool(ds.param("x").is_in(1, 2, 3), {"x": 1}, activity, space) is True
 
 
 class TestOrdinalOrderingByDeclarationPosition:

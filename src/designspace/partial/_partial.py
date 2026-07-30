@@ -143,7 +143,7 @@ def _classify_constraint(
 ) -> None:
     value = evaluate_bool(c.expr, flat, activity, space, status=status)
     if isinstance(value, Unknown):
-        if any(status.get(d) in _PENDING_STATUSES for d in c.params):
+        if value.provenance == "pending":
             pending.append(c)
         else:
             evaluable.append(

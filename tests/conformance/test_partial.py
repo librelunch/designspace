@@ -228,6 +228,24 @@ class TestPartialEvalPartition:
         assert len(pe.pending_constraints) == 1
         assert len(pe.evaluable_constraints) == 0
 
+    def test_pending_over_a_lift_aggregate_with_unset_instances(self):
+        """M10.5/D-71: a constraint aggregating over an *active* lift whose
+        own count is determined but whose instance leaves are still unset
+        must land in `pending_constraints`, not `evaluable_constraints`
+        with `applicable=False`. `c.params` for `bufs.sum() <= 10` holds
+        only the *definition* path `"bufs"` (status `"set"` once the count
+        is known) — never the `active_unset` instance paths — so the old
+        syntactic `status.get(d) in _PENDING_STATUSES for d in c.params`
+        scan could never see this case; Unknown's own provenance (rule 5)
+        now carries the signal directly."""
+        space = ds.space(
+            ds.param("n").integer(1, 4),
+            ds.param("bufs").integer(0, 100).repeat(ds.param("n")),
+        ).require(ds.param("bufs").sum() <= 10)
+        pe = space.evaluate_partial({"n": 3})
+        assert pe.evaluable_constraints == ()
+        assert len(pe.pending_constraints) == 1
+
     def test_determined_constraint_reports_margin(self):
         space = ds.space(ds.param("x").real(0.0, 1.0)).encourage(ds.param("x") <= 0.5)
         pe = space.evaluate_partial({"x": 0.3})

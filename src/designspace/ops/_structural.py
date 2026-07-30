@@ -379,7 +379,7 @@ def _apply_keep_set(space: Space, keep: set[str], *, strict: bool, call: str) ->
     dropped, even though its owning param survives. Mirrors
     `_strip_anchor_keys`'s identical normalization for anchor config keys.
     """
-    from designspace.meta import space_from_ir
+    from designspace.meta._meta import _build_space_from_ir
 
     new_params = {p: pd for p, pd in space.params.items() if p in keep}
     new_conditions = [c for c in space.conditions if c.target in keep]
@@ -418,7 +418,7 @@ def _apply_keep_set(space: Space, keep: set[str], *, strict: bool, call: str) ->
             stacklevel=4,
         )
 
-    result = space_from_ir(
+    result = _build_space_from_ir(
         new_params, new_conditions, new_constraints,
         anchors=stripped_anchors, meta=dict(space.meta_map),
     )

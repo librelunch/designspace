@@ -33,6 +33,7 @@ from designspace.build._views import TypedParamExpr
 from designspace.errors import ResolutionError
 from designspace.ir import Condition, Constraint, ListDomain, ParamDef
 from designspace.resolve import param_def_to_view, rebuild_charts, revalidate_space
+from designspace.resolve._anchors import add_anchors
 
 _NO_SINGLE_DEF_INVERSE = (
     "param_from_def(): {path!r} {detail} — its descendants live as separate "
@@ -67,13 +68,21 @@ def _innermost_element_kind(domain: ListDomain) -> str:
     return domain.element_kind
 
 
-def space_from_ir(
+def _build_space_from_ir(
     params: Mapping[str, ParamDef] | Iterable[ParamDef],
     conditions: Iterable[Condition],
     constraints: Iterable[Constraint],
     anchors: dict[str, dict[str, Any]] | None = None,
     meta: dict[str, Any] | None = None,
 ) -> Space:
+    """The un-validated-anchors core of `space_from_ir` — accepts `anchors`
+    as-is, with no row-22 check. `space_from_ir` (below) is the public,
+    strict entry point for a caller with no anchor-validation strategy of
+    its own; `ops/_structural.py`'s `.select()`/`.freeze()`/`.slice()` call
+    *this* instead, since each already applies its own — hard-fail
+    (`_revalidate_anchors_unchanged_shape`) or warn-and-drop
+    (`_drop_invalid_anchors`) — immediately afterward, and a validating
+    rebuild here would raise before either gets the chance to run."""
     pd_list = list(params.values()) if isinstance(params, Mapping) else list(params)
     rebuilt: dict[str, ParamDef] = {}
     for pd in pd_list:
@@ -88,3 +97,21 @@ def space_from_ir(
         meta_map=MappingProxyType(dict(meta or {})),
     )
     return revalidate_space(space)
+
+
+def space_from_ir(
+    params: Mapping[str, ParamDef] | Iterable[ParamDef],
+    conditions: Iterable[Condition],
+    constraints: Iterable[Constraint],
+    anchors: dict[str, dict[str, Any]] | None = None,
+    meta: dict[str, Any] | None = None,
+) -> Space:
+    space = _build_space_from_ir(params, conditions, constraints, meta=meta)
+    if anchors:
+        # M10.5 item 8: routed through the same `add_anchors` a builder's
+        # `.anchor()` uses, so an anchor invalid against the space raises
+        # row 22 here too — this path used to accept it silently, since
+        # neither `revalidate_space` nor `_build_space_from_ir` above checks
+        # anchors at all (deliberately, for the internal callers above).
+        space = add_anchors(space, anchors)
+    return space

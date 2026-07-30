@@ -85,3 +85,43 @@ def join_path(segments: tuple[Segment, ...]) -> str:
 
 def is_definition_path(path: str) -> bool:
     return any(seg.is_definition for seg in parse_path(path))
+
+
+def split_instance_path(path: str) -> tuple[str, tuple[int | None, ...]] | None:
+    """Splits a path into `(base_key, trailing_brackets)` — the general
+    form of the "peel one trailing bracket group" resolution a
+    single-level lift reference used to need (M10.5/D-72): `base_key` is
+    the definition-form path backing the *final* dotted segment, and
+    `trailing_brackets` is that segment's own bracket groups (possibly
+    many, possibly negative concrete indices, or a bare `None` "`[]`"
+    template marker — the virtual per-instance discriminator placeholder a
+    lifted choice's variant-equality condition folds in, e.g. `"pipeline[]"`,
+    DECISIONS.md D-18), meant to be consumed one at a time against that
+    entry's own (possibly chained) lift domain by the caller — a caller
+    that needs a *concrete* index (evaluation-time negative-index
+    resolution) asserts none are `None`; one that only needs the *count*
+    of brackets (declared-ness/type checks) does not care about the value.
+
+    Every *earlier* segment contributes at most one bracket to `base_key`,
+    collapsed to `"[]"` — a struct/choice lift crossing is capped at repeat
+    depth 1 (API.md, M4.5), so only the *final* segment's own bracket chain
+    can run arbitrarily deep (a scalar/subset/permutation nested lift, e.g.
+    `g[0][1]`). `None` if an earlier segment carries more than one bracket
+    group — no legally-resolved space can produce that, so it can only be a
+    malformed reference (never silently mis-resolved).
+
+    Shared by `resolve/_expr_checks.py` (declared-ness/type checks, row 6/12/
+    14/18/29) and `eval/_kleene.py` (ordinal domain lookup, negative-index
+    resolution) — the one walk both used to duplicate with a single-bracket
+    assumption baked in.
+    """
+    segments = parse_path(path)
+    if not segments:
+        return None
+    prefix_parts: list[str] = []
+    for seg in segments[:-1]:
+        if len(seg.brackets) > 1:
+            return None
+        prefix_parts.append(f"{seg.name}{'[]' if seg.brackets else ''}.")
+    last = segments[-1]
+    return "".join(prefix_parts) + last.name, last.brackets
