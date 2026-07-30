@@ -402,7 +402,10 @@ exists", M6 shipped that API, nobody returned.
 
 **Gate:** a conformance law per item, each asserting the *silent* pre-fix behavior (none of these
 crashed); Kleene rule 5 gets the test it never had; all prior laws, corpus, and known-answer vectors
-byte-identical; **no format bump**.
+byte-identical; **no format bump**. **Plus one audit, which is why item 1 was reachable at all:**
+rule 5 was stated in the Kleene prose but never named in §Conformance Laws, and laws-first testing
+follows that list — so sweep the list against the Expressions/Kleene prose for other
+stated-but-unnamed laws and name them.
 
 ### M10.6 — Sampling diagnostics
 **Spec:** *Sampling diagnostics* beside the reference sampler; `SamplingReport`/`ConstraintReport` in

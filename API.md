@@ -204,7 +204,7 @@ segment  := name ("[" i "]")*        # instance path
           | name ("[]")*             # definition path
 ```
 
-Segments are param names, variant names, and struct-param names. `name[i]` addresses a repeat element (**instance path**), with one index per lift level for nested lifts (`mask[2][3]`); `name[]` denotes the element schema (**definition path** — used by introspection; illegal in expressions), likewise repeated per level (`mask[][]`).
+Segments are param names, variant names, and struct-param names. `name[i]` addresses a repeat element (**instance path**), with one index per lift level for nested lifts (`mask[2][3]`); `i` may be **negative**, resolved against the lift's realized length (`name[-1]` is the last element). `name[]` denotes the element schema (**definition path** — used by introspection; illegal in expressions), likewise repeated per level (`mask[][]`).
 
 **Scoping rule (the only one):** resolve the first segment by walking **up** to the innermost scope where it binds, then descend through the remaining segments. A bare name is the one-segment case. Shadowing behaves like lexical closures. Cross-scope constraints are declared at the common ancestor. Composed spaces are therefore *relocatable*: nesting a space under a variant or struct never rewrites its internal references.
 
@@ -300,7 +300,7 @@ ds.param("rows").space(
 ).repeat(8)                                        # ds.param("cells").sum() → per row
 ```
 
-Instance paths are legal in expressions: `ds.param("stops[0].dwell_min") < 10`. An out-of-range index makes the leaf inactive (→ Unknown) — this is a *runtime* condition (the index depends on the realized count), distinct from a *structural* one caught at resolution. `.field(name)` requires a struct lift whose element declares `name`; projecting an undeclared field, or `.field()` on a non-struct lift, is a resolution error (a nonexistent definition path — row 6), not a silent Unknown. Ordinals: comparison only; two ordinal *params* compare only if they declare identical value sequences; comparing an ordinal against a literal that is not one of its declared values is a resolution error (row 18). Categoricals: `==`, `!=`, `.is_in()` only.
+Instance paths are legal in expressions: `ds.param("stops[0].dwell_min") < 10`, at any nesting the grammar admits (`g[0][1]`, `layers[2].act[1]`). **Negative indices are admitted**, resolved against the lift's own realized length — for a *dynamic* count `x[-1]` is the only way to name the last element — and they still reference exactly that lift, so `dependency_graph`, `topological_order`, and the bound envelopes are untouched. An out-of-range index makes the leaf inactive (→ Unknown) wherever the length is a *runtime* fact (a dynamic count), distinct from a *structural* error caught at resolution: against a **static** count the length is known at resolution, so an out-of-range index — `repeat(3)` with `y[7]` — is a resolution error (row 29), not a silently inapplicable constraint. An `ArithExpr` index is excluded entirely (see *Out of Scope*). `.field(name)` requires a struct lift whose element declares `name`; projecting an undeclared field, or `.field()` on a non-struct lift, is a resolution error (a nonexistent definition path — row 6), not a silent Unknown. Ordinals: comparison only; two ordinal *params* compare only if they declare identical value sequences; comparing an ordinal against a literal that is not one of its declared values is a resolution error (row 18). Categoricals: `==`, `!=`, `.is_in()` only.
 
 **Runtime equality.** `==`, `!=`, and `.is_in()` compare `bool` by type-tagged identity against everything else (so `True ≠ 1` — bool is strict), `int` and `float` numerically against each other (`1 == 1.0`), and every other pair (strings and other `Any`-typed categorical/ordinal values) by exact type match. This runtime rule is deliberately distinct from declaration-time distinctness (rows 3–4) and fingerprint canonicalization, which type-tag uniformly; a categorical that declares both `1` and `1.0` as distinct variants therefore cannot be told apart by a runtime `==`.
 
@@ -514,7 +514,7 @@ Drawing *unconditioned* is the whole point. `sample()` returns the post-rejectio
 .evaluate_constraints(config) -> list[ConstraintEval]
 ```
 
-Relations: `is_feasible(c) == validate(c).valid`, both defined by param errors plus hard constraints; `evaluate_constraints` reports every constraint (hard and declared) with `applicable` and `margin`. `context` enables evaluating constraints that reference other params (bound-origin couplings included); without it, `validate_param` reports those as unevaluated rather than guessing — concretely, an under-determined constraint (one referencing a param absent from `context`) is **omitted** from `validate_param`'s `constraint_evals` rather than appearing with a placeholder: `ConstraintEval` has no "pending on missing context" state, and reusing `applicable=False` would conflate it with a genuine Kleene-Unknown. `validate` and `config_hash` operate on the **raw phenotype representation** only; transformed views have no identity.
+Relations: `is_feasible(c) == validate(c).valid`, both defined by param errors plus hard constraints; `evaluate_constraints` reports every constraint (hard and declared) with `applicable` and `margin`. `context` enables evaluating constraints that reference other params (bound-origin couplings included); without it, `validate_param` reports those as unevaluated rather than guessing — concretely, an under-determined constraint (one referencing a param absent from `context`) is **omitted** from `validate_param`'s `constraint_evals` rather than appearing with a placeholder: `ConstraintEval` has no "pending on missing context" state, and reusing `applicable=False` would conflate it with a genuine Kleene-Unknown. `validate` and `config_hash` operate on this space's own **phenotype** configs. A genotype is not a transformed view of one: it is a config of its own target `Space` and takes that space's identity (`target.fingerprint()`, `config_hash(g, target)`) — see *The Representation Layer*.
 
 ---
 
@@ -718,6 +718,17 @@ warm-starting needs — anchors and historical observations are phenotypes, and 
 them is `rep.encode(config)`. `measure_preserving` is likewise per-encoding and declared, never
 assumed; core proves it only for the induced representation, where `chart(u)` on `u ~ U[0,1]` *is*
 the declared measure.
+
+**Defaults and anchors are phenotype values.** `ParamDef.default` and `Space.anchors` hold values in
+source units, so only `encode` can carry them into a genotype target. Where the applied encoding
+supplies it, `represent()` encodes them and **validates the result itself** rather than trusting the
+assembler; where it does not, they are dropped and reported (`dropped_defaults`,
+`dropped_anchors`). A default drops per param; an **anchor drops whole**, since a config missing an
+active param is not a valid anchor. The drop is not a corner case — an `Encoding` need not supply
+`encode` at all, and even the induced representation cannot encode a param whose external `Prior`
+offers `ppf` without `cdf` (that chart decodes but cannot encode; see *Charts*). Carrying an
+unencoded phenotype value across is the failure this prevents: a `1e-3` default lands inside a unit
+target's `[0,1]` and passes the domain check while meaning something else entirely.
 
 Operators never live on `ParamType`: neighborhoods and distances are properties of a genotype, and
 the same phenotype admits many.
@@ -929,6 +940,18 @@ class ParamDef:
     meta: dict[str, Any]
     chart: Chart | None           # None for non-chart kinds; always static
 
+# One domain class per kind, each carrying exactly that kind's declared facts
+# (RealDomain(lo, hi), SubsetDomain(items, min_size, max_size), ...). ListDomain
+# is recursive and holds every element-level fact — element_chart,
+# element_default, count, list_default, element_constraints — which is why a
+# lift's own ParamDef is chartless. A struct/choice element's descendants are
+# not here: they are relocated into Space.params under a "[]"-prefixed path.
+Domain = (
+    RealDomain | IntegerDomain | CategoricalDomain | OrdinalDomain | BoolDomain
+    | SubsetDomain | PermutationDomain | ChoiceDomain | StructDomain
+    | CustomDomain | ListDomain
+)
+
 class Chart(Protocol):
     def from_unit(self, u: float) -> Any: ...
     def to_unit(self, value) -> float: ...                # interval midpoint for integers/grids
@@ -1075,6 +1098,8 @@ class Representation:             # a Space → Space morphism; see The Represen
     excluded_by_prop: tuple[str, ...]        # params a repeat() count or .prop() reads
     opaque_conditions: tuple[str, ...]       # transported opaquely, not structurally
     opaque_constraints: tuple[Constraint, ...]
+    dropped_defaults: tuple[str, ...]        # phenotype defaults no encode() could carry
+    dropped_anchors: tuple[str, ...]         # anchor keys likewise (an anchor drops whole)
     invertible: bool              # every applied encoding supplies encode()
     measure_preserving: bool      # every applied encoding declares it
 
@@ -1196,7 +1221,7 @@ The permanent expression-language boundary: value-dependent indexing (`islands[e
 
 ## Errors, Concurrency
 
-Exception taxonomy: `DesignSpaceError` (base) → `ResolutionError` (table above, R rows), `SerializationError`, `SamplingError`. Misuse guards (`__bool__`, `__contains__`) raise plain `TypeError`. Validation-time findings surface as `ParamError` records inside results wherever a result object exists; only operations with no result channel raise.
+Exception taxonomy: `DesignSpaceError` (base) → `ResolutionError` (table above, R rows), `SerializationError`, `SamplingError`. Misuse guards (`__bool__`, `__contains__`) raise plain `TypeError`. A **missing optional dependency** likewise raises a plain `ImportError` naming the extra, never a `DesignSpaceError`: the taxonomy is reserved for semantic findings about a design space, and an uninstalled package is an environment fact. Validation-time findings surface as `ParamError` records inside results wherever a result object exists; only operations with no result channel raise.
 
 All public objects — expressions, spaces, IR dataclasses, charts — are immutable after construction and safe to share across threads. RNG state is passed explicitly (`seed` / `Generator`); nothing mutates shared state.
 
@@ -1204,7 +1229,7 @@ All public objects — expressions, spaces, IR dataclasses, charts — are immut
 
 ## Dependencies
 
-Core: `numpy` (RNG) and `rfc8785==0.1.4` (pure-Python, `py.typed`, no transitive dependencies) for the RFC 8785 (JCS) number/byte canonicalization behind `fingerprint`/`config_hash`. `rfc8785` is pinned **exactly**, not `>=`: an already-frozen digest format wants its number-formatting library pin-stable, since a transitive bump could silently shift every committed known-answer vector — bumping the pin is a deliberate act under the format-version protocol. Built-in priors are implemented internally — no distribution-library dependency; any `Prior`-satisfying object (scipy frozen distributions, preliz) plugs in. Extras: `designspace[polars]` for `space.sample()`'s DataFrame output (`sample_dicts()`/`sample_one()` need no extra); `designspace[pydantic]` for model export.
+Core: `numpy` (RNG) and `rfc8785==0.1.4` (pure-Python, `py.typed`, no transitive dependencies) for the RFC 8785 (JCS) number/byte canonicalization behind `fingerprint`/`config_hash`. `rfc8785` is pinned **exactly**, not `>=`: an already-frozen digest format wants its number-formatting library pin-stable, since a transitive bump could silently shift every committed known-answer vector — bumping the pin is a deliberate act under the format-version protocol. Built-in priors are implemented internally — no distribution-library dependency; any `Prior`-satisfying object (scipy frozen distributions, preliz) plugs in. Extras: `designspace[polars]` for `space.sample()`'s DataFrame output (`sample_dicts()`/`sample_one()` need no extra); `designspace[pydantic]` for model export. `space.sample()` is the only surface that imports `polars`, lazily; absent it, the call raises a plain `ImportError` naming the extra and pointing at the no-extra sampling paths (see *Errors, Concurrency* for why this stays outside the exception taxonomy).
 
 ---
 
@@ -1219,7 +1244,7 @@ The spec's executable laws double as the acceptance suite:
 - **Partial Configs:** three-valued activity collapses to binary activity under `unknown → inactive`; the driver-loop coincidence `next_assignable(c) == [] ⟺ is_complete(c)`; `remaining_domain` soundness (never excludes a still-feasible value; every descriptor value validates against the declared domain); the one-unset-operand reducer positive (bound and single-forbid narrowing across kinds) and negative (a two-unset-operand implication is not propagated); the `PartialEval` evaluable/pending partition.
 - **Identity:** sugar-equivalence pairs fingerprint-equal (`log_scale`/prior, `implies`, variadic repeat/chain, expression bounds vs. their `.forbid(x > y)` forbidden-state manual expansion — *and* fingerprint-**distinct** from the feasibility-opposite `.forbid(x <= y)`, so fingerprint-equality tracks feasibility despite `origin`'s exclusion; `require(e)` feasibility-, margin-, and fingerprint-equal to `forbid(~e)`); permuted declarations differ; scope monotonicity (meta/tags/anchors/declared-constraint changes are `sampling`-equal, `full`-distinct); round-trip law; mark-sentinel distinctness; type-tag distinctness (`1` vs `1.0` vs `True`); `−0.0 ≡ 0.0`; known-answer digest vectors.
 - **Structure:** `unflatten(flatten(c)) == c`; per-element constraint instantiation counts; `Array`-vs-`List` dtype per static/dynamic count level; leaf-flattening aggregate values on nested lifts.
-- **Representation:** `decode` totality as **domain membership** — `source.validate(rep.decode(g)).param_errors == ()` for every `g` drawn from `target` (not `.valid`, which folds in feasibility, and so would be false by construction wherever a constraint is opaque); `encode` target-validity when `invertible`; the **one-directional** round-trip `decode(encode(x)) == x`, with `encode(decode(g)) == g` explicitly *not* a law (integer charts, quantized grids, one-hot ties, and random-key permutations are all many-to-one); **feasibility agreement** `target.is_feasible(g) == source.is_feasible(rep.decode(g))`, unconditional because transport is total; the **identity** — a rule set matching no param leaves `target.fingerprint() == source.fingerprint()` at both scopes with `decode(c) == c == encode(c)`; `then` **associative** with identity a two-sided unit; **path and arity preservation** for derived representations — `set(target.params) == set(source.params)` over definition-path keys, dimensionality unconstrained, and a param with relocated descendants or a `.prop()` dependent never encoded; the **induced chart representation** touches exactly the chart-bearing params (own *or* element level) that no count or `.prop()` reads, targets `real(0,1)` with `periodic` mirrored, and is measure-preserving; `Representation` never enters the IR, `to_json`, or the preimage.
+- **Representation:** `decode` totality as **domain membership** — `source.validate(rep.decode(g)).param_errors == ()` for every `g` drawn from `target` (not `.valid`, which folds in feasibility, and so would be false by construction wherever a constraint is opaque); `encode` target-validity when `invertible`; **defaults and anchors** carried into the target are valid there, and every one no `encode` could carry appears in `dropped_defaults`/`dropped_anchors` rather than crossing unencoded; the **one-directional** round-trip `decode(encode(x)) == x`, with `encode(decode(g)) == g` explicitly *not* a law (integer charts, quantized grids, one-hot ties, and random-key permutations are all many-to-one); **feasibility agreement** `target.is_feasible(g) == source.is_feasible(rep.decode(g))`, unconditional because transport is total; the **identity** — a rule set matching no param leaves `target.fingerprint() == source.fingerprint()` at both scopes with `decode(c) == c == encode(c)`; `then` **associative** with identity a two-sided unit; **path and arity preservation** for derived representations — `set(target.params) == set(source.params)` over definition-path keys, dimensionality unconstrained, and a param with relocated descendants or a `.prop()` dependent never encoded; the **induced chart representation** touches exactly the chart-bearing params (own *or* element level) that no count or `.prop()` reads, targets `real(0,1)` with `periodic` mirrored, and is measure-preserving; `Representation` never enters the IR, `to_json`, or the preimage.
 - **Sampling:** tighten-not-reject on bound-origin constraints is distributionally identical to rejection (truncation ≡ conditioning).
 
 ---

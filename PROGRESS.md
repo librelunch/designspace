@@ -23,4 +23,8 @@ Current milestone: **M10.5 (open)**.
 
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
 
-The "DECISIONS entries" column above is a **historical** record.
+The "DECISIONS entries" column above is a **historical** record: once an entry's answer is folded
+into `API.md`, the entry itself is removed from the ledger and recovered from git history. D-1
+through D-70 have been through that fold, so every ID above resolves via `git log -- DECISIONS.md`
+rather than the current file. D-52–D-70 are the exception to the one-milestone-per-row mapping —
+they came from a spec pass on 2026-07-30, before M10.5 opened, and feed M10.5 through M11.
