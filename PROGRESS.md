@@ -1,6 +1,6 @@
 # Progress
 
-Current milestone: **none — M10 shipped** (see `PLAN.md` for the next open milestone, M11)
+Current milestone: **M10.5 (open)**.
 
 | Milestone | Completed | Tests | DECISIONS entries |
 |---|---|---|---|

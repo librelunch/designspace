@@ -9,7 +9,6 @@
     gcc
     gccStdenv.cc.cc.lib
     libz
-    claude-code
   ];
   languages = {
     python = {

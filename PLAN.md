@@ -37,6 +37,25 @@ Keep exactly one milestone in progress.
   no search operators, no distances, no tree generators, no algebraic expression normalization, no clamping anywhere.
 
 
+## Freeze discipline (the version-bump protocol)
+
+The JSON document and the fingerprint preimage share **one integer format version**, frozen at `1`
+when M7 shipped. Every milestone after M7 works under this protocol:
+
+1. **One counter, two surfaces.** `to_json`'s version and the preimage's version are the same
+   number. `from_json` raises on an unknown one.
+2. **Additive changes need no bump** during the pre-release span (M8–M12): a new `origin` value, a
+   new expression node kind, a new entry in the non-serializable set — anything no shipped document
+   or committed vector depends on. M7.5 (`require`) and M7.6 (`discourage`) set this precedent.
+3. **Add, never replace, known-answer vectors.** A milestone that touches the format adds vectors
+   for the new construct and must show **every pre-existing vector byte-identical**. This is the
+   gate that actually enforces the freeze; the version integer alone would not.
+4. **Any non-additive change bumps the integer** and requires user approval — it is a compatibility
+   break, not an implementation detail.
+5. **`rfc8785` is pinned exactly.** Bumping that pin is an act under this protocol, not a routine
+   dependency update: a transitive change to number formatting would silently shift every committed
+   digest.
+
 ## Module map (stable across milestones)
 
 ```
@@ -60,7 +79,7 @@ src/designspace/
   meta/            # M8  space_from_ir, param_from_def, map_params, ...
   custom/          # M9  ParamType protocol, registry, prop()
   frame/           # M10 polars output
-  represent/       # M11 ParamTransform traversal, Encoding, capability_report
+  represent/       # M11 Encoding, Representation, transport, the induced chart representation
   program/         # M12 symbolic/code types
 tests/
   unit/            # per-module
@@ -89,7 +108,7 @@ Add each at the milestone tagged; from then on it runs in every end-to-end suite
 | `pump_configurator` | driver loop: `next_assignable` + `remaining_domain` | M6 |
 | `compiler_pipeline` | registry-driven generation, `all_`, degenerate arities, map_params | M8 |
 | `vi_family` | custom type, `describe` round-trip, `prop()` constraints | M9 |
-| `mixture_stickbreaking` | transform pipeline, mixed genotypes | M11 |
+| `mixture_stickbreaking` | representation morphism, mixed genotypes, custom→u-space bridge | M11 |
 | `annealing_schedule` | `.symbolic()` definition + validation (no generation) | M12 |
 
 ---
@@ -346,9 +365,152 @@ Completes `.freeze()` for the five kinds D-44 scoped out of M8 (choice, subset, 
 **Build:** `frame/`; `space.sample(n) -> pl.DataFrame` is new, gated behind the optional `designspace[polars]` extra rather than a core dependency (D-51 — a user-directed scope change from the milestone's original plan) — `polars` is imported lazily inside `Space.sample()` alone, raising a plain `ImportError` naming the extra when absent; `sample_dicts`/`sample_one` need no extra and are unaffected.
 **Gate:** dtype table asserted per corpus fixture; null-for-inactive; column names == path grammar; a missing-polars `ImportError` naming the extra. **Exit:** internal pre-release checkpoint — **no public tag** (v0.1 ships at M13; an internal alpha such as `0.1.0aN` is optional, not required).
 
+### M10.5 — Expression and validation hygiene
+Eight fixes and additions in the resolver and the Kleene evaluator, all pre-existing and independent
+of M11 — but M11 consumes items 3 and 5, so they land first rather than being duplicated.
+
+**Priority: item 1.** It is the only confirmed contradiction of a stated law, it silently corrupts
+driver-loop conclusions, and its cause is a documented deferral never picked up:
+`eval/_kleene.py`'s M2-era docstring says "rule 5 becomes meaningful only once [a partial-config API]
+exists", M6 shipped that API, nobody returned.
+
+1. **`.if_inactive()` must discriminate Unknown provenance** (Kleene rule 5). On a config where a
+   lift is *active* and only its elements are unset, `bufs.sum().if_inactive(0) <= 10` reports
+   `satisfied=True, margin=10.0` while the unguarded form correctly reports `satisfied=None` — and
+   the same space is infeasible once the elements land. Coalesce inactivity; propagate pending; also
+   propagate emptiness (`max([])` over an *active* lift must not become the fallback).
+2. **Static out-of-range index → resolution error** (row 29). `repeat(3)` with
+   `require(y[7] > 0.99)` currently resolves clean and makes `is_feasible` true for everything.
+   Dynamic counts keep the Unknown rule — it is right *because* lifts can be dynamic; the leak is
+   applying it where the length is statically known.
+3. **Nested and mixed instance indexing.** `g[0][1]` and `layers[2].act[1]` both fail today; the
+   grammar parses them but `_is_declared`/`_resolve_entry` strip a single bracket group. Normalize
+   progressively, retrying the base-lift fallback per level.
+4. **Negative indexing** `x[-1]`, resolved against the realized length — the only way to name the
+   last element of a dynamic lift. It references exactly that lift, so dependency analysis is
+   untouched.
+5. **Result-typed `.repeat()` counts.** `ds.param("m").sum()` over a bool lift is rejected (row 12)
+   though the same aggregate type-checks and evaluates inside a constraint. Accept any
+   integer-valued expression whose references resolve. Prerequisite for `Encoding.prop_expr`.
+6. **Boolean operators over lift-valued operands** (row 29). `require(~ds.param("g[0]"))` on a
+   `repeat(4,4)` resolves, then makes every config infeasible — the row is coerced by truthiness.
+7. **`.choice()` payload type check** (row 29). A bare `ParamExpr` where a `Space` is expected
+   raises `AttributeError` from `relocate_child`, because `Space.params` is a `Mapping` and
+   `Expr.params` a `frozenset`. Reject with a path-named error, or auto-wrap.
+8. **`space_from_ir` must validate anchors.** The builder's `.anchor()` raises row 22 on an
+   out-of-domain anchor; the metaprogramming path accepts it silently. Row 22 is unconditional.
+
+**Gate:** a conformance law per item, each asserting the *silent* pre-fix behavior (none of these
+crashed); Kleene rule 5 gets the test it never had; all prior laws, corpus, and known-answer vectors
+byte-identical; **no format bump**.
+
+### M10.6 — Sampling diagnostics
+**Spec:** *Sampling diagnostics* beside the reference sampler; `SamplingReport`/`ConstraintReport` in
+the IR results block.
+**Build:** `sample/_diagnostics.py`; `.sampling_report(n=1000, seed=None) -> SamplingReport` drawing
+through `_draw_one` with rejection bypassed, then `evaluate_constraint`/`compute_activity` per draw.
+Aggregation only — no new evaluation semantics. It reports; it never repairs, reweights, or suggests.
+
+It must draw the **unconditioned** measure: `sample()` returns the post-rejection distribution, in
+which both pathologies it exists to expose are invisible. `satisfied` is conditioned on
+**applicability**, not on all draws — otherwise "rarely relevant" and "usually violated" collapse
+into one number, which is the distinction that matters.
+
+**Gate:** on the funnel space (`repeat(ds.param("n"))` + `require(x[2] > 0.99)`) the report shows
+`applicable ≈ 0.8` and `acceptance_rate ≈ 0.208`, matching the analytic values — the conditioned
+measure concentrates 96% of accepted configs on `n ≤ 2`, which is correct-by-spec and must be
+documented beside Kleene rule 4, not "fixed". On an optional-buffer space, `applicable ≈ 0.36` for a
+naive aggregate versus `1.00` for its `.if_inactive(0)` form, the two differing only in that guard.
+Seed-reproducible; never mutates; never rejects. Corpus: reuse `solver_portfolio`.
+
+### M10.7 — Traversal extraction and child index
+A pure refactor, so the gate is unusually strong: **every test, corpus fixture, and known-answer
+vector byte-identical**, plus a fingerprint sweep over all fixtures.
+
+The space-guided walk is written five times and M11 would make six. `_direct_children` lives private
+in `config/_flatten.py` yet is imported by `config/_unflatten.py`, `identity/_config_encode.py`,
+`frame/_rows.py`, `frame/_schema.py`, and `build/_space.py` — the last two through *local* imports to
+break cycles. Four recursions share one skeleton with parallel `_*_choice` / `_*_list_element` helper
+pairs, and the `"[]."`/`"[i]."` convention is re-derived across 13 modules. Extraction is literally
+the spec's own principle for this layer.
+
+Also index `_direct_children`, which full-scans `space.params` on every call, once per struct level:
+on `k` structs × 8 fields it costs 1.29 µs/param at 45 params and **5.39 µs/param at 360** — 8× the
+params for 33× the time. Struct *lifts* stay linear because the template dict is small regardless of
+element count, so this is specifically a wide/nested-struct problem, invisible in flat and lift
+benchmarks. Build a `dict[prefix, list[path]]` index eagerly at `_emit`; `Space` is frozen, so it is
+safe to cache and safe to share.
+
+**Abort criterion, decided up front:** if the unified driver needs more than four hooks, or forces a
+consumer to pass flags it ignores, keep the copies and ship only the index. A bad abstraction over
+five call sites is worse than the duplication.
+
+**Also here, because it is the same walk:** `Space.coordinate_paths()` (the fixed leaf layout, row
+33) and `unflatten`'s static-count fallback. A solver adapter has to turn a genotype config into a
+positional vector and back, and deriving which flat keys are coordinates rather than lift-length
+bookkeeping means walking the `ListDomain` chain per bracket group — `x` is an outer count, `x[0]`
+an inner count, `x[0][0]` a coordinate. Written by hand it fails *silently*: the round trip returns
+a config that validates and differs. The layout is induced, not chosen (the order is already
+`flatten`'s, which is already the DataFrame column order), so this is not the vectorization Out of
+Scope excludes; the packing itself stays with the consumer.
+**Gate:** `coordinate_paths()` round-trips through `unflatten` on every static, unconditional corpus
+fixture; raises row 33 naming the offending param on a dynamic count and on a conditional param;
+excludes lift-length entries at every nesting depth; order matches `flatten`'s and the DataFrame's.
+
+### M10.8 — `ds.value`: opaque derived quantities
+**Spec:** Expressions (`ds.value`, dual-typed like `.prop()`); Kleene rule 1's declared-operand rule;
+the white/grey/black tier table under *Constraints*; the non-serializable set gains `fn`; rows 30.
+**Build:** a `Value(ArithExpr, BoolExpr)` node carrying `fn`, operands, and `returns`, mirroring
+`Prop` so evaluation, margins, and dual-typing reuse existing paths; evaluation in `eval/_kleene.py`
+(Unknown if any referenced param is inactive, else `fn(*values)`); type checking beside `prop_type`;
+`encode_expr` raising/marking it like any other callable.
+
+Independently motivated — a physical constraint over ordinary reals currently forces the author to
+wrap unrelated params in a sham custom type — and it is what lets M11's transport be total.
+
+**Gate:** `returns=float` yields a real margin (parity with `prop("n") > 3 → 4.0`); `returns=bool` is
+usable bare and yields `margin=None` that absorbs through Boolean composition (parity with
+`prop("ok")`); `returns=int` drives a `.repeat()` count once M10.5 item 5 lands; non-scalar `returns`
+is a row-30 error; an undeclared read raises because the value was never passed — asserted directly,
+since that calling convention is the whole contract; `to_json`/`fingerprint` raise with the
+closed-set message and `mark` yields `{"$opaque": true}`; `dependency_graph` includes the operands'
+params. All prior vectors byte-identical.
+
 ### M11 — Representation layer
-**Spec:** Transforms and Encodings (entire section); `capability_report`.
-**Gate:** children-first traversal order observable via a recording transform; transform→flatten pipeline on `mixture_stickbreaking` reproduces the spec's genotype recipe; `Encoding` registry populated only in tests, never in `src/`.
+**Spec:** *The Representation Layer* (entire section); `Encoding` in Protocols; `Representation` in
+the IR; the Representation conformance bullet; Solver Integration's three shapes; rows 31–32.
+**Build:** `represent/` — `_protocol.py` (`Encoding`, `EncodingRule`, `hasattr` predicates mirroring
+`custom/_protocol.py`), `_representation.py` (the frozen dataclass, `decode`, `encode`, `then`,
+`check`), `_build.py` (dispatch → encodability and prop-dependency checks → targets → transport →
+`meta/_meta.py::space_from_ir`), `_transport.py` (leaf substitution, projection resolution via
+`_vector_base`, opaque synthesis), `_charts.py` (the induced representation and the chart node).
+`Space.represent()`. `__init__.py` gains `Representation`, `Encoding`, `EncodingRule`, `ParamDef`,
+`Chart`, and the domain types an `Encoding.target()` must construct; `Representation`'s constructor
+is public — that *is* the supplied tier. Exporting `ParamDef` closes an M8 hole: `map_params`,
+`param_from_def`, and `space_from_ir` have all taken it since M8 with no way for a user to annotate
+their own callback.
+
+Three things the implementation must not rediscover the hard way. **Rewrite expressions before
+calling `space_from_ir`** — `check_expr_types` raises at construction for any surviving expression
+whose operand changed kind. **`decode` must normalize instance paths to definition templates**
+(`stops[0].dwell` → `stops[].dwell`) before looking up an encoding; getting this wrong makes
+`delivery_routes` decode 0/200. **"Chart-bearing" is not `ParamDef.chart is not None`** — a scalar
+lift's chart lives in `ListDomain.element_chart`, and the literal reading silently drops whole
+vectors from the genotype.
+
+**Gate:** the full Representation law block. Decode totality **200/200 on every corpus fixture** — a
+measured baseline from a throwaway prototype, so anything less is a regression, not an unknown.
+Feasibility agreement on `firmware_buffers`, the fixture where omitting transport costs 94% of the
+budget (12/200 source-feasible while the target calls all 200 feasible). Path and arity preservation
+over every fixture; `solver_portfolio`/`delivery_routes`/`memetic_pipeline` keep their count params
+`integer`; rows 31–32 get message-content tests naming the path; the induced representation is
+measure-preserving (fixed-seed KS on a log-scaled real, chi-square on integer and quantized params);
+`src/` contains **zero** chosen encodings and **zero** structural morphisms (grep-asserted in CI —
+the successor to "registry populated only in tests"); and a **supplied hierarchy-flattening
+morphism, written entirely against the public surface**, passes `rep.check()` — the only honest test
+that the supplied tier is expressive enough without core shipping it. Corpus:
+`mixture_stickbreaking`. New known-answer vectors; every existing vector byte-identical;
+format-version stays `1`. **Exit:** internal pre-release checkpoint — no public tag.
 
 ### M12 — Program types
 **Spec:** `.symbolic()` / `.code()`; generative/non-generative sampling behavior; `Signature`, literals, `Primitive`.

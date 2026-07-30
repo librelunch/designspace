@@ -300,4 +300,622 @@ API.md's "Dependencies" section (moved `polars` from `Core:` to `Extras:`) and t
 
 ---
 
-_Ledger tail._ D-1 through D-44 were resolved into `API.md` on and their entries removed here (preserved in git history); continue with D-52.
+## D-52 — `Encoding.target` returns `ParamDef`, and the consequent IR export
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §The Representation Layer; §Protocols; §Space — Metaprogramming
+- Decided by: User
+
+### Question
+
+`Encoding` is a protocol users implement, and three of its methods take a `ParamDef`. Should the protocol be stated at the IR level (`ParamDef` in, `ParamDef` out), which requires exporting `ParamDef` and several `Domain` classes from `designspace`, or at the builder level (`TypedParamExpr`), which exports nothing new?
+
+### Why the specification is insufficient
+
+API.md has never said which layer user-facing protocols bind to. `ParamType` (the other protocol users implement) touches no IR type, so it set no precedent.
+
+### Possibilities considered
+
+1. **Builder level.** `target()` returns a `TypedParamExpr` built with the already-exported view types (`ds.param(pd.path).real(0,1).repeat(3)`), and core converts. Exports nothing; gives builder-level domain validation free. But it needs a `def_from_param` inverse that does not exist (the un-exported half of `_emit`), and makes representation construction a builder round-trip rather than an IR rewrite.
+2. **IR level, exporting `ParamDef`, `Chart`, and the domain classes an encoding must construct.** Direct, no new inverse, and the encoding reads `pd.chart`/`pd.domain` anyway.
+
+### Answer
+
+Possibility 2.
+
+### Reasoning
+
+The export is not new surface so much as an acknowledgement of surface that already exists: `Space.map_params(fn: Callable[[ParamDef], ParamDef])`, `ds.param_from_def(pd: ParamDef)`, and `ds.space_from_ir(params: ...ParamDef...)` have all been public since M8, and a user cannot type-annotate their own `map_params` callback without reaching into a non-`__all__` subpackage. M11 does not create that hole; it makes it unignorable, since `Encoding` has three methods taking the type. `ParamDef` is a frozen dataclass whose shape the frozen wire format already pins, so exporting it adds no compatibility surface beyond what `to_json` committed to at M7.
+
+### Specification update
+
+API.md §Protocols (`Encoding` in its IR-level shape); §The Representation Layer. `ParamDef`, `Chart`, and the domain classes join `__init__`'s exports at M11.
+
+---
+
+## D-53 — Path preservation, arity, and the two exclusions
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §The Representation Layer
+- Decided by: Agent
+
+### Question
+
+Which params may a derived representation encode, and what may the target look like?
+
+### Why the specification is insufficient
+
+The old text said only that "leaves may change shape", with no statement about paths, arity, or which params are eligible at all.
+
+### Possibilities considered
+
+1. **One source param → one target subtree** rooted at the same path. More expressive (heterogeneous targets), but gives up a checkable key-set law and is not closed under composition.
+2. **One source param → one `ParamDef` at the same path.** Kind and shape may change; a lift is one key, so dimensionality is still unconstrained. Every canonical encoding — u-space, one-hot, stick-breaking, subset-as-bools, random keys, type bridges — is homogeneous and fits.
+
+### Answer
+
+Possibility 2, plus two eligibility rules. A param `p` is **encodable** iff no other key of `source.params` begins `f"{p}."` or `f"{p}[]."`, and **prop-excluded** if a `.repeat()` count or any `.prop()` reads it.
+
+### Reasoning
+
+The key-set law is only meaningful because `.params` is keyed by *definition* path: one-hot maps `algo` to a `ListDomain(count=3)` still keyed `algo`, with coordinates at instance paths that never enter `.params`. Verified against the shipped library — the key set is unchanged while the genotype dimension goes 1→3.
+
+The encodability rule is forced by `_emit`, which relocates struct fields and choice payloads into separate flat entries that nothing reconnects. Without it a one-hot'd choice produces a *silently corrupt* target: `config/_flatten.py::_direct_children` takes the list branch and `algo.svm.C` becomes permanently unreachable, while `ops/_introspect.py::subspaces` keeps fabricating a variant condition from `ChoiceDomain`, and resolution does not catch it — `check_expr_types` type-checks `gt/lt/ge/le` but never `eq`. A *bare* choice has no descendants and stays encodable, which is right: it is semantically a categorical.
+
+The prop exclusion generalizes what would otherwise be a count-only rule. On `vi_family`, `edge_weight`'s count is `Prop(topology, "n_edges")` and a constraint reads `topology.prop("is_connected")`; encoding `topology` dangles both, because `prop_type` requires a `CustomDomain`. Count dependencies are caught free, since `_list_count_deps` already walks `Prop`.
+
+### Specification update
+
+API.md §The Representation Layer ("Path and arity"); error table row 32.
+
+---
+
+## D-54 — Transport is total; nothing is dropped
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §The Representation Layer ("Transport")
+- Decided by: User
+
+### Question
+
+A condition or constraint over an encoded param no longer type-checks in the target. What happens to it?
+
+### Why the specification is insufficient
+
+The old representation layer was value-level only, so the question never arose.
+
+### Possibilities considered
+
+1. **Drop and report**, with a `strict=` flag to raise instead. Simple, but loses feasibility information and — for conditions — makes the target over-activate, which costs invertibility and makes the target's feasible set an *unsound* relaxation (it can reject configs the source accepts, when a transported constraint fires on a param the source considers inactive).
+2. **Refuse to encode any param a condition or constraint mentions.** Sound but useless: bound-origin constraints reference nearly everything.
+3. **Rewrite, three mechanisms deep, with an opaque fallback core synthesizes itself.**
+
+### Answer
+
+Possibility 3: leaf substitution via `decode_expr`, then optional per-node `rewrite`, then an opaque `ds.value` wrapper that core builds from `decode` and the source AST.
+
+### Reasoning
+
+Core can *always* synthesize the third rung — it knows the decode and the source expression — so transport is total and the drop case never arises. That removes `strict=`, the poison rule, and dropped conditions in one step; target activity therefore always matches source activity, which in turn removes both the invertibility loss and the relaxation unsoundness that dropping caused. What survives is a *quality* distinction, reported as `opaque_conditions`/`opaque_constraints`, since a structurally transported expression keeps margins and partial evaluation and an opaque one does not.
+
+Two implementation facts this decision depends on, both verified against the shipped library. Expressions live in **four** stores, not two: a struct lift built from `ds.space(...).require(...)` leaves `Space.constraints` empty and puts the constraint on `ListDomain.element_constraints`, whose owning lift is itself non-encodable while carrying constraints over params that are encoded — left untouched it compares u-coordinates, and a genotype `{lo: 0.5, hi: 0.6}` is target-feasible while decoding to a source-infeasible `{lo: 50.5, hi: 15.85}`. And `Expr.params` **cannot drive the walk**: for `boxes.field("w").sum()` it reports `['boxes']`, never `boxes[].w`, so a `.params`-keyed walk passes the constraint through unchanged and the sum silently ranges `[0,3]` instead of `[3,300]`. `_vector_base` resolves the projection correctly and must be used.
+
+### Specification update
+
+API.md §The Representation Layer ("Transport"); the Representation conformance bullet.
+
+---
+
+## D-55 — Defaults and anchors under a representation
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §The Representation Layer
+- Decided by: Agent
+
+### Question
+
+`ParamDef.default` and `Space.anchors` hold phenotype values. What happens to them in a genotype target?
+
+### Why the specification is insufficient
+
+Silent; the question is new with the morphism.
+
+### Answer
+
+Encode them when the encoding supplies `encode`; otherwise drop and report. `represent()` validates the result itself rather than relying on the assembler.
+
+### Reasoning
+
+The assembler cannot be trusted here, and the failure modes differ by surface. Defaults get a *membership* check — carrying a phenotype default into a unit target raises row 21 loudly for a value outside `[0,1]` — but **not a semantic one**: a default of `1e-3` passes, because 0.001 lies inside `[0,1]`, and then decodes to ≈`1.007e-4`, silently meaning something else. Anchors get **no check at all** on the `space_from_ir` path, though the builder's `.anchor()` correctly raises row 22 — an asymmetry worth fixing on its own (M10.5 item 8) and worth not depending on meanwhile.
+
+Anchors are also the concrete reason `invertible` is worth reporting rather than being an internal detail: anchors and historical observations are warm-start data, and seeding a solver with them *is* `rep.encode(config)`.
+
+### Specification update
+
+API.md §The Representation Layer ("Obligations"); PLAN.md M10.5 item 8.
+
+---
+
+## D-56 — Measure pushforward is a per-encoding declared capability
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §The Representation Layer ("Obligations")
+- Decided by: Agent
+
+### Question
+
+Should `decode(target.sample_one(seed))` be required to reproduce `source.sample_one()`'s distribution?
+
+### Possibilities considered
+
+1. **Universal law.** Clean, but it would forbid most useful encodings — one-hot under declared weights, naive stick-breaking, top-k subset repair are all non-preserving — and it is untestable in general for encodings core does not ship.
+2. **Per-encoding, `hasattr`-declared**, with core guaranteeing it only where it can prove it.
+
+### Answer
+
+Possibility 2, following D-45's precedent for optional protocol members.
+
+### Reasoning
+
+A universal law conflates two contracts. `decode` totality is *structural*; measure equality is a *sampling* claim, and "sampling is declared measure, not search" — a solver proposing genotypes is not sampling the declared measure at all. Core can and does prove it for the induced chart representation, where `chart(u)` on `u ~ U[0,1]` *is* the declared measure; everywhere else the honest answer is that the encoding author knows and core does not.
+
+### Specification update
+
+API.md §The Representation Layer; §Protocols (`measure_preserving`).
+
+---
+
+## D-57 — Removing `transform`, `ParamTransform`, the `Encoding` registry, and `capability_report`
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §The Representation Layer; §Protocols; §IR; §Conformance Laws; §Staging
+- Decided by: User
+
+### Question
+
+The reworked layer supersedes four pieces of specified-but-unimplemented surface. Should they be removed outright?
+
+### Why the specification is insufficient
+
+Not a gap — a deliberate removal of stated surface, including one stated conformance law, recorded here because CLAUDE.md requires user approval before changing the public contract.
+
+### Answer
+
+Remove all four. `.transform`/`.inverse_transform` and `ParamTransform` are superseded by `Representation`; the `type_key`-keyed `Encoding` registry disappears because rules are plain callables; `capability_report()`/`Capabilities` are deleted. The Structure law "`transform`/`inverse_transform` round-trip when both leaf directions exist" is replaced by the Representation bullet, whose round-trip is deliberately **one-directional**.
+
+### Reasoning
+
+The value-level transform cannot answer the question the layer exists for — a solver needs the *space* it proposes from, not a dict-to-dict map. The registry existed only to key encodings by `type_key`; with `EncodingRule = Callable[[ParamDef], Encoding | None]` a consumer's dict is a three-line lambda, and "core never populates the registry" becomes trivially true because there is no registry.
+
+`capability_report` deserves its own note: designspace cannot know what a solver supports, so the fail-fast message it was meant to produce belongs to the solver. Every fact it carried is already on the IR — `has_chart` is `pd.chart is not None`, `periodic` and `type_kind` are fields, `type_key` is on the domain's `ParamType`, `generative` is the existing `is_generative`. With `rep.target` an ordinary `Space`, negotiation is ordinary introspection. API.md's own Staging section already called it "sugar over introspection".
+
+The replaced law is weaker in one direction by necessity: `encode(decode(g)) == g` cannot hold, because integer charts, quantized grids, one-hot ties, and random-key permutations are all many-to-one.
+
+### Specification update
+
+All four removed; §Conformance Laws Structure bullet rewritten and a Representation bullet added; §Staging drops `capability_report()`.
+
+---
+
+## D-58 — The induced chart representation's exact target
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §The Representation Layer; §Charts
+- Decided by: Agent
+
+### Question
+
+`space.represent()` with no rules is the induced representation. Which params does it touch, and what does each become?
+
+### Answer
+
+Every param carrying a chart **at its own level or at any element level of its `ListDomain` chain**, *excluding* any param a `.repeat()` count or `.prop()` reads. Each becomes `real(0,1)`, rewritten at the level the chart was found, with `periodic` mirrored.
+
+### Reasoning
+
+Three facts, each verified, each of which breaks a simpler formulation.
+
+**"Chart-bearing" cannot mean `ParamDef.chart is not None`.** On a NAS-shaped space, charts live in three places: `n_layers` carries its own, `layers[].width` carries its own at a template key, and `dropout: real.repeat(3)` has **`chart is None`** with the chart in `ListDomain.element_chart`. The literal reading skips `dropout` entirely — dropping a three-real vector out of the genotype, the opposite of what anyone wants.
+
+**Count-referenced params must be excluded.** `_check_count_type_node` raises row 12 unless a count's referenced param is `integer`; integers are chart-bearing, so the naive induced representation fails to *construct* on `solver_portfolio`, `delivery_routes`, `memetic_pipeline`, and API.md's own Quick Example. A count is load-bearing structure and is not droppable, and row 12 may not be weakened, so exclusion is the only remaining option.
+
+**Periodic must be mirrored.** There is no `PeriodicChart`; `periodic` is a validation fact only, and the chart is a plain uniform, so `from_unit(1.0)` yields `hi` — which validates as **invalid**. Without the mirror, `decode` is not total.
+
+Nested lifts and quantized elements need no special case: depth-2 lifts put the chart innermost and `rebuild_list_domain_charts` recurses correctly.
+
+### Specification update
+
+API.md §The Representation Layer ("The induced chart representation"); §Charts (Periodicity).
+
+---
+
+## D-59 — The `to_unit` asymmetry between integers and quantized reals
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §Charts
+- Decided by: Agent
+
+### Question
+
+`to_unit` returns a representative of a cell for both cell-valued kinds, but integers return the interval **midpoint** and quantized reals the **left edge**. Align them, or document?
+
+### Why the specification is insufficient
+
+API.md states the midpoint rule for integers and says nothing about quantized reals.
+
+### Answer
+
+Document the difference; do not align.
+
+### Reasoning
+
+Both satisfy `from_unit(to_unit(v)) == v`, which is the only law either owes, so neither is wrong. Aligning would move a shipped round-trip for no semantic gain, and `encode` should not inherit an undocumented asymmetry silently — naming it is the cheaper fix.
+
+### Specification update
+
+API.md §Charts ("All charts are static").
+
+---
+
+## D-60 — Structural morphisms are not core
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §Out of Scope; §The Representation Layer ("Two tiers")
+- Decided by: User
+
+### Question
+
+Should core ship a morphism that flattens a hierarchical space into a flat table (the ConfigSpace shape), relaxes conditions away for a fixed-dimension target, or pads a dynamic lift to fixed width?
+
+### Answer
+
+No. All three are writable as a *supplied* `Representation`; core ships none.
+
+### Reasoning
+
+designspace's IR **is** already the flattening — `_emit` relocates variant payloads to `optimizer.adam.beta1` gated on the discriminator, which is a flat param table plus conditions. So there is nothing to invent, and what blocks the derived tier is merely mechanical: designspace derives structure from path prefixes where ConfigSpace uses opaque flat names.
+
+Shipping it anyway would make core endorse flattening as *the* answer to hierarchy, which contradicts both "no opinionated metrics" and the Representation Model's insistence that chosen genotypes come from consumers. Hierarchy is a modeling decision to be handled explicitly, not circumvented.
+
+Relaxation and padding are additionally *chosen* rather than induced. Relaxation's `decode` needs no policy (it prunes by re-deriving source activity), but its `encode` must put something in the slot of a source-inactive param, and "inactive means absent" is a stated principle no filler respects — ConfigSpace uses NaN, SMAC imputes defaults, and core cannot pick. Padding needs a `max_count` and a convention that interacts with the element charts.
+
+What core owes them instead: supplied-tier construction, `then`, `check()`, and a guide recipe.
+
+### Specification update
+
+API.md §Out of Scope (new bullet); §The Representation Layer ("Two tiers").
+
+---
+
+## D-61 — Two tiers, and which laws bind each
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §The Representation Layer ("Two tiers")
+- Decided by: User
+
+### Question
+
+If core does not ship structural morphisms, how does a consumer write one — and what does core guarantee about it?
+
+### Answer
+
+Two tiers. **Derived** (`space.represent(*rules)`) is built mechanically from per-param encodings and carries every law. **Supplied** (`Representation(...)` constructed directly) takes a target `Space` and both value maps from the user and carries **no structural guarantee, no arity or path law**. Core supplies the type, `then`, and `check()`.
+
+### Reasoning
+
+The escape hatch has to exist for D-60 to be tenable — refusing to ship flattening while also making it unwritable would just be a refusal. Every ingredient is already public (`ds.space_from_ir`, `flatten`/`unflatten`, `param_activity`), so the supplied tier costs core a constructor and a checker.
+
+`check()` earns its place because a supplied morphism otherwise has no way to be shown sound, and core already owns every ingredient of the laws. It turns the conformance suite into a user-facing tool.
+
+One clarification belongs in the spec because the name misleads: the arity law compares **definition-path keys**, so it does not constrain genotype dimensionality at all — a lift is one key.
+
+### Specification update
+
+API.md §The Representation Layer ("Two tiers", "Path and arity").
+
+---
+
+## D-62 — Decode totality is domain membership
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §Conformance Laws (Representation)
+- Decided by: Agent
+
+### Question
+
+"Every valid genotype decodes to a valid phenotype" — valid by which check?
+
+### Answer
+
+`source.validate(rep.decode(g)).param_errors == ()`, i.e. domain membership. **Not** `ValidationResult.valid`.
+
+### Reasoning
+
+`valid` folds in constraint feasibility. Stating the law with it would make the law false by construction wherever a constraint is opaque, since an opaque constraint is enforced through decode rather than mirrored structurally — measured directly: `param_errors == ()` while `valid is False`. Feasibility is a separate law with its own statement.
+
+Two implementation notes the law depends on. `decode` must **normalize instance paths to definition templates** (`stops[0].dwell` → `stops[].dwell`) before looking up an encoding; without it `delivery_routes` decodes 0/200. And the law was validated before being written: a throwaway induced representation decodes **200/200** on `flat_hpo`, `firmware_buffers`, `delivery_routes`, `solver_portfolio`, `memetic_pipeline`, and `wind_farm_grid` — covering dynamic lifts, struct lifts, lifted choices, subsets, and expression-bounded params.
+
+### Specification update
+
+API.md §Conformance Laws (Representation bullet).
+
+---
+
+## D-63 — The repair obligation, and `prop_expr`
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §The Representation Layer ("Obligations"); §Protocols
+- Decided by: Agent
+
+### Question
+
+What must an encoding do when the phenotype domain carries an invariant the genotype cannot express?
+
+### Answer
+
+`decode` must **repair**, or the genotype must be chosen so it cannot represent an invalid value. Separately, `Encoding.prop_expr` maps a phenotype property to a genotype expression, which is what lets a bridged custom type restore a `.prop()`-driven lift count.
+
+### Reasoning
+
+Encodings divide cleanly, and the division is measurable. Charts, stick-breaking, random keys, and argmax are surjective onto their domains by construction — random-key permutation decoding is 500/500 valid. A bool vector over `subset(4, min_size=2, max_size=3)` is **10/16**, and an adjacency matrix is not a connected graph. Where the missing invariant is part of the type's `validate`, the loss breaks *decode totality* — the one law that holds unconditionally — rather than merely costing feasibility, and it does so silently: the target samples happily and produces invalid phenotypes.
+
+`prop_expr` is what makes a bridge buildable at all rather than merely conceivable. It also depends on a resolver fix: the `.repeat()` count check types *leaves*, so `sum(matrix)` is refused as a count even though the same aggregate type-checks and evaluates inside a constraint, is integer-valued, and statically references exactly its lift. That check becomes result-typed in M10.5.
+
+### Specification update
+
+API.md §The Representation Layer ("Obligations"); §Protocols (`prop_expr`); PLAN.md M10.5 item 5.
+
+---
+
+## D-64 — The chart-application expression node
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §Expressions
+- Decided by: User
+
+### Question
+
+Leaf substitution needs to express "apply this param's chart to a unit coordinate" inside a transported expression. How?
+
+### Possibilities considered
+
+1. **Desugar to arithmetic.** Works for uniform (`lo + u·(hi−lo)`) and power charts with today's operators, but log and logit need `exp` and integer/quantized need `floor` — so it covers a minority of cases.
+2. **A node that applies the referenced param's own chart.** Wrong: in the target that param is `real(0,1)` with a *uniform* chart, not the source's.
+3. **A node carrying the source chart's declaration** — domain, prior, quantization.
+
+### Answer
+
+Possibility 3, vector-polymorphic (element-wise over a lift or projection).
+
+### Reasoning
+
+The node is additive to a frozen format, so it needs justification beyond convenience: the chart is *already* a first-class core concept — static, per-param, serialized, named in "priors are coordinate systems" — so making it expressible exposes something that exists rather than inventing semantics. The spec it carries is exactly what `identity/_ir_codec.py::encode_param` already serializes, so the codec is reuse.
+
+Vector-polymorphism is forced by the projection case: `sum(field(boxes,'w'))` must become `sum(chart(field(boxes,'w')))`, which only type-checks if the node maps element-wise.
+
+Static analysis is unaffected (the node references exactly its operand) and bound envelopes get *easier*, since its hull is the source domain.
+
+### Specification update
+
+API.md §Expressions; §Out of Scope (the language is closed at chart + `ds.value`).
+
+---
+
+## D-65 — `ds.value`: one dual-typed opaque node
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §Expressions; §Support Types; §Constraints
+- Decided by: User
+
+### Question
+
+Constraints that no expression language should be expected to cover — a simulator's verdict, graph connectivity, a physical quantity computed by a real algorithm over several ordinary params — have no representation today. What should the escape hatch look like?
+
+### Why the specification is insufficient
+
+`forbid()` requires a `BoolExpr`, and the only opaque predicates are *per-param*: `ParamType.validate` and the `.custom(sampler, validator)` shorthand.
+
+### Possibilities considered
+
+1. **A boolean-only `ds.predicate`.** Simplest, but throws away margins for quantities that have them.
+2. **Separate predicate and scalar nodes.** Two nodes where the codebase already has a dual-typed precedent.
+3. **One dual-typed node with a declared `returns`**, modelled on `Prop`.
+
+### Answer
+
+Possibility 3. `ds.value(fn, *operands, returns=type)`, `returns ∈ {int, float, bool, str}`, operands passed positionally as expressions, `fn` called with exactly those values and never the config.
+
+### Reasoning
+
+`Prop` is already `class Prop(ArithExpr, BoolExpr)` with a declared scalar type, so one node reuses its evaluation, margin, and dual-typing paths, and `.prop()` becomes its ergonomic special case — *one custom param, named property* versus *any operands, arbitrary function*.
+
+This is not a new capability class. `.prop()` is already **grey-box**: `prop("n") > 3` yields `margin = 4.0` (opaque extraction, structural comparison) while `prop("ok")` yields `None`. Arbitrary Python already decides feasibility today; it just has to be wrapped in a custom type and can only see one param. That disposes of the "escape hatch opens the floodgates" objection — the floodgate is open behind an awkward door — and the wart it removes is real: a physical constraint over ordinary reals currently forces the author to invent a sham `ParamType`.
+
+Two design points earn their specificity. **Positional expression operands** keep `.if_inactive()` composable inside them, which matters because an opaque node otherwise has no escape hatch for an inactive operand. And **calling `fn` with exactly the operand values, never the config**, is what makes the reference set trustworthy: an undeclared read raises rather than reading silently. The asymmetry is worth documenting — under-declaring fails loudly, over-declaring weakens *silently*, since an ignored operand going inactive still makes the node Unknown and the constraint inapplicable.
+
+### Specification update
+
+API.md §Expressions (`ds.value`, Kleene rule 1); §Support Types; §Constraints (the white/grey/black table); §Identity (non-serializable set); error table row 30.
+
+---
+
+## D-66 — The expression language is closed at two nodes
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §Out of Scope
+- Decided by: User
+
+### Question
+
+Exact constraint transport is unbounded — one-hot wants `argmax`, log charts want `exp`, integers want `floor`, graphs want reachability. Where does the language stop growing?
+
+### Answer
+
+At chart application and `ds.value`. The pair is categorically exhaustive: anything structurally expressible goes through the language, anything else through the opaque leaf, and there is no third category.
+
+### Reasoning
+
+An earlier framing — "exactly one node, ever" — was an arbitrary line the first hard case would have argued against. This one has a reason behind it, which is what makes it holdable: the two nodes are not two features but two *kinds* of answer, and admitting the second removes the pressure that would otherwise produce a third, fourth, and fifth.
+
+It also settles what a solver gets. Structurally transported constraints are white-box and keep margins and partial evaluation; opaque ones are correct but rejection-only. The reason to prefer the former is **not** solver consumption — with a grey-box objective nothing is handing constraints to a MIP or CP solver anyway, and constrained CMA-ES wants smooth constraints a mixed conditional space does not supply — but that margins, `evaluate_partial`, `remaining_domain` narrowing, and bound-origin tightening are all *designspace's own* machinery and all run on structure.
+
+### Specification update
+
+API.md §Out of Scope; §Constraints (white/grey/black); §Expressions.
+
+---
+
+## D-67 — `.if_inactive()` and the provenance of Unknown
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §Expressions (Kleene rule 5)
+- Decided by: Agent
+
+### Question
+
+`.if_inactive()` coalesces Unknown to a fallback. Unknown has three sources — inactivity, emptiness (`min`/`max` over an active empty lift), and, in partial evaluation, an unset operand. Which does it eat?
+
+### Why the specification is insufficient
+
+Rule 5 already answers half of it: "coalesces inactivity only and never eats pending". The implementation **contradicts** that, which is a bug rather than a decision. The *emptiness* half is a genuine gap — the spec is silent.
+
+### Answer
+
+Inactivity only. Pending and emptiness both propagate.
+
+### Reasoning
+
+The pending half is a shipped violation of a stated law, with a measurable consequence: on a config where a lift is *active* and only its elements are unset — no inactivity anywhere — `bufs.sum().if_inactive(0) <= 10` reports `satisfied=True, margin=10.0`, while the unguarded form correctly reports `satisfied=None` and the same space is infeasible once the elements land. A driver loop prunes on a false conclusion.
+
+Its provenance is worth recording, because it is a process failure rather than a coding one. `eval/_kleene.py`'s M2-era module docstring says plainly: "M2 has no partial-config API yet (M6), so there is no separate 'pending' state to confuse it with (rule 5 becomes meaningful only once one exists)". M6 shipped that API; nobody returned. The comment predicted the exact bug.
+
+Emptiness is decided the same way for consistency and for the method's name: an active empty lift is *active*, and silently turning an undefined `max([])` into the fallback is a poor default. An author who wants an empty lift to contribute a value can say so.
+
+**Rule 5 had no conformance test.** It is stated in the Kleene prose but never named in the Conformance Laws list, which is what laws-first testing follows — `if_inactive` has tests (both M2-era) and the evaluable/pending partition has one, and the bug lived in the intersection neither reached. The Kleene law bullet now names Unknown provenance explicitly, and the list should be audited against the prose more broadly.
+
+### Specification update
+
+API.md §Expressions (rule 5 rewritten); §Conformance Laws (Kleene bullet gains the provenance law); PLAN.md M10.5 item 1.
+
+---
+
+## D-68 — Index expressions: negative admitted, `ArithExpr` refused, static out-of-range an error
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §Expressions; §Out of Scope
+- Decided by: User
+
+### Question
+
+Instance paths are legal in expressions and an out-of-range index makes the leaf inactive. Should negative indices be admitted? Arithmetic ones? And should a statically provable out-of-range index stay inactive?
+
+### Answer
+
+Negative indices are admitted. `ArithExpr` indices stay excluded. A statically provable out-of-range index becomes a resolution error.
+
+### Reasoning
+
+**Negative indexing** is not sugar. For a static count it is convenience; for a *dynamic* count it is the only way to name the last element, which is currently inexpressible and which the corpus already wants (`delivery_routes`' final stop, `memetic_pipeline`'s final op). It does not open the door the spec closes: `x[-1]` indexes by the lift's own realized length, so the expression still statically references exactly that lift and `dependency_graph`, `topological_order`, and the bound envelopes are untouched. Out-of-range already means inactive, so `x[-1]` on an empty lift falls out of existing semantics with no new rule.
+
+**`ArithExpr` indexing** stays excluded, but the spec's stated reason was wrong. `x[n_layers - 1]` is not the relational join `islands[edges[k].src]` API.md cites. The real cost is **loss of static dependency analysis**: the referenced element is unknown until `k` is assigned, so the expression must conservatively reference the whole lift, degrading `remaining_domain`'s one-unset-operand reducer, `dependency_graph`, and the bound envelopes — machinery M5 and M6 already shipped and that laws depend on. For a static count the case is already expressible by unrolling, which is exactly what the metaprogramming surface exists for.
+
+**Static out-of-range** is a silent no-op today: `repeat(3)` with `require(y[7] > 0.99)` resolves clean and makes `is_feasible` true for every config, because `_is_declared` only checks that the base lift exists. The Unknown rule itself is right, and for the stated reason — a lift can be dynamic, so there is generally no length to check against and an out-of-range leaf must not reject — but applying it where the length *is* statically known is a leak, not a policy.
+
+A related gap surfaced while probing and is fixed alongside: nested and mixed instance indexing (`g[0][1]`, `layers[2].act[1]`) fails today because `_is_declared`/`_resolve_entry` strip a single bracket group, though the path grammar parses both.
+
+### Specification update
+
+API.md §Expressions; §Out of Scope (value-dependent-indexing bullet rewritten); error table row 29; PLAN.md M10.5 items 2–4.
+
+---
+
+## D-69 — Sampling diagnostics report the unconditioned measure
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §Sampling and Generativity (Sampling diagnostics); §IR
+- Decided by: User
+
+### Question
+
+Kleene rule 4 makes an unevaluable constraint *inapplicable*, i.e. accepted. That is permissive, and silent. Should the rule change, and if not, how does a user find out?
+
+### Answer
+
+The rule stays. Add `.sampling_report(n, seed)`, which draws the **unconditioned** measure and reports per-constraint applicability and satisfaction plus per-param activity. `satisfied` is conditioned on **applicability**, not on all draws.
+
+### Reasoning
+
+The rule is right: Unknown → violated would over-constrain every conditional space, and the language already ships both escape hatches — `is_active()` for reasoning about structure, `.if_inactive(v)` for coalescing a value. The gap is **observability, not semantics**. A textbook "total memory ≤ budget" over optional buffers silently stops enforcing across two thirds of its space: measured, `a + b + c <= 100` with `c` optional is applicable in **36%** of draws and reports `is_feasible → True` for `a + b = 128`, while the `.if_inactive(0)` form is applicable in 100% and correctly rejects.
+
+It must draw the unconditioned measure, because `sample()` returns the post-rejection distribution — precisely the one in which this is invisible. The same surface exposes the dynamic-count funnel, which is *correct-by-spec* and must be documented rather than fixed: with `.repeat(ds.param("n"))` and `require(x[2] > 0.99)`, the constraint is inapplicable whenever `n ≤ 2`, so rejection accepts those draws unconditionally and **96.3%** of accepted configs concentrate on `n ≤ 2` (analytically `0.2/0.208`). Changing that would mean `require` no longer conditions the declared measure.
+
+Conditioning `satisfied` on applicability is the one design detail that decides whether the report is useful: otherwise "rarely relevant" and "usually violated" collapse into the same number, and that is the distinction the whole surface exists to draw.
+
+It reports; it never repairs, reweights, or suggests — which is what keeps it clear of the penalty-policy exclusion.
+
+### Specification update
+
+API.md §Sampling and Generativity (new subsection); §IR (`SamplingReport`, `ConstraintReport`); PLAN.md M10.6.
+
+---
+
+## D-70 — The fixed leaf layout: where config ↔ positional vector lives
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §Config Utilities ("The fixed leaf layout")
+- Decided by: User
+
+### Question
+
+A solver emits a positional container — CMA-ES a 1-D `ndarray`. Converting a genotype config to that container and back is somebody's job. Whose?
+
+### Why the specification is insufficient
+
+The spec covers phenotype ↔ genotype (`Representation`) and config ↔ flat dict (`flatten`/`unflatten`), but never flat dict ↔ ordered vector. Out of Scope excludes "vectorization", which reads as though the whole question were settled — but that bullet is about *chosen* genotypes, and a positional layout is not chosen.
+
+### Possibilities considered
+
+1. **Entirely the adapter's.** Core ships nothing; each adapter derives the layout from `flatten`.
+2. **Entirely core's** — `to_vector`/`from_vector` on `Space`. Convenient, but commits core to dtype, shape, and batch conventions that belong to the solver, and drifts toward the vectorization the scope line excludes.
+3. **Split: core owns the layout, the consumer owns the packing.**
+
+### Answer
+
+Possibility 3. `Space.coordinate_paths()` returns the ordered leaf instance paths excluding lift-length bookkeeping, and `unflatten` gains a static-count fallback so the reverse needs no bookkeeping re-injection. Packing into any particular container stays with the consumer.
+
+### Reasoning
+
+Possibility 1 was tested rather than assumed, and it fails. `flatten` interleaves structural bookkeeping with coordinates, and the two are not distinguishable by key shape: for `real.repeat(2,3)` it emits `x` as the outer count, `x[0]` as an *inner count*, and `x[0][0]` as a coordinate; for a struct lift, `a[0].b` is a count and `a[0].b[0]` a coordinate. Telling them apart means walking the `ListDomain` chain one bracket group at a time. A first attempt written directly against the public surface — by someone who had spent a session in this codebase — classified a scalar lift's elements as bookkeeping, because stripping the index maps an element to its owning lift, which *is* a list. The round trip returned a config that **validated** and was not the input. Silent, and exactly the failure mode this library already fails in too often.
+
+Possibility 2 goes too far the other way: dtype, 1-D versus batch, and the solver's own conventions are not core's to guess, and shipping them would make the scope line meaningless.
+
+The split holds because the layout is **induced**. Its order is `flatten`'s, which is already the DataFrame column order; which keys are coordinates is a structural fact about the space. Nothing is chosen, which is what distinguishes it from one-hot or padding.
+
+Two conditions are kept deliberately separate because they fail differently. A **fixed layout** needs static counts and no conditions — either makes the key set config-dependent, so no positional layout exists at all, and both are errors rather than a silently config-specific answer. **Numeric packability** is a different question: `subset` and `permutation` leaves have a stable key but a variable-length list value, and `categorical`/`ordinal` are scalar but not numeric. Those still appear in `coordinate_paths()` — they are real coordinates — and a caller packing floats fails on them at the point of conversion, which is where the error means something. A genotype built for a real-vector solver satisfies both by construction; that is what makes it one.
+
+### Specification update
+
+API.md §Config Utilities (`coordinate_paths`, "The fixed leaf layout", the `unflatten` fallback); error table row 33; PLAN.md M10.7.
+
+---
+
+_Ledger tail._ D-1 through D-44 were resolved into `API.md` and their entries removed here (preserved in git history); continue with D-71.
