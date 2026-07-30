@@ -9,6 +9,7 @@ live in ir/).
 from designspace.eval._constraint_eval import (
     evaluate_constraint,
     instance_constraint_evals,
+    instance_evals_indexed,
     is_violated,
 )
 from designspace.eval._kleene import (
@@ -45,6 +46,7 @@ __all__ = [
     "evaluate_bool",
     "evaluate_constraint",
     "instance_constraint_evals",
+    "instance_evals_indexed",
     "is_violated",
     "local_topological_order",
     "margin",

@@ -43,17 +43,22 @@ def evaluate_constraint(
     )
 
 
-def instance_constraint_evals(
+def instance_evals_indexed(
     space: Space, config: dict[str, Any], activity: dict[str, bool]
-) -> list[ConstraintEval]:
-    """Constraints declared on a `.space(prebuilt)` lift element
-    (DECISIONS.md D-20) — carried as templates on `ListDomain.
-    element_constraints`, never in `space.constraints` — instantiated
-    once per active instance ("evaluation reports one `ConstraintEval`
-    per instance path," API.md "Modifiers and Layering")."""
+) -> list[tuple[str, int, ConstraintEval]]:
+    """`instance_constraint_evals`'s underlying walk, additionally tagged
+    with `(owning list path, template index)` per eval — the owning lift's
+    definition path and the position of the *template* `Constraint` within
+    `domain.element_constraints`, i.e. which declared per-element
+    constraint this eval instantiates. `instance_constraint_evals` is a
+    thin projection of this (drops the tag); `sample/_diagnostics.py`
+    needs the tag to fold per-instance evals back onto one
+    `ConstraintReport` row per template (D-73), grouping across instances
+    and across draws without re-walking `element_constraints` itself or
+    depending on flat-list ordering."""
     from designspace.resolve._relocate import instantiate_constraints
 
-    result: list[ConstraintEval] = []
+    result: list[tuple[str, int, ConstraintEval]] = []
     for path, pd in space.params.items():
         if pd.type_kind != "list":
             continue
@@ -67,12 +72,24 @@ def instance_constraint_evals(
         template_prefix = f"{path}[]."
         for i in range(n):
             concrete_prefix = f"{path}[{i}]."
-            for c in instantiate_constraints(
+            instantiated = instantiate_constraints(
                 domain.element_constraints, template_prefix, concrete_prefix
-            ):
+            )
+            for template_idx, c in enumerate(instantiated):
                 ce = evaluate_constraint(c, config, activity, space)
-                result.append(replace(ce, instance_path=f"{path}[{i}]"))
+                result.append((path, template_idx, replace(ce, instance_path=f"{path}[{i}]")))
     return result
+
+
+def instance_constraint_evals(
+    space: Space, config: dict[str, Any], activity: dict[str, bool]
+) -> list[ConstraintEval]:
+    """Constraints declared on a `.space(prebuilt)` lift element
+    (DECISIONS.md D-20) — carried as templates on `ListDomain.
+    element_constraints`, never in `space.constraints` — instantiated
+    once per active instance ("evaluation reports one `ConstraintEval`
+    per instance path," API.md "Modifiers and Layering")."""
+    return [ce for _path, _idx, ce in instance_evals_indexed(space, config, activity)]
 
 
 def is_violated(ce: ConstraintEval) -> bool:

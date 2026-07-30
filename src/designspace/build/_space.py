@@ -42,6 +42,7 @@ from designspace.ir import (
     QuantizedSpec,
     RealDomain,
     RemainingDomain,
+    SamplingReport,
     StructDomain,
     SubsetDomain,
     SubspaceInfo,
@@ -306,6 +307,13 @@ class Space:
         from designspace.frame import sample_frame as _sample_frame
 
         return _sample_frame(self, n, seed=seed, reject_soft=reject_soft)
+
+    def sampling_report(
+        self, n: int = 1000, seed: Seed = None, tighten_bounds: bool = False
+    ) -> SamplingReport:
+        from designspace.sample import sampling_report as _sampling_report
+
+        return _sampling_report(self, n, seed=seed, tighten_bounds=tighten_bounds)
 
     def apply_defaults(self, config: dict[str, Any]) -> dict[str, Any]:
         from designspace.defaults import apply_defaults as _apply_defaults

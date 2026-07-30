@@ -4,7 +4,8 @@ M2 needs (`ConstraintEval`, `ValidationResult`, `ParamError`); M6 adds
 `PartialEval` and the `RemainingDomain` descriptor family; M7 adds
 `ParamDiff`; M8 adds `SubspaceInfo` (`Capabilities` waits for the M11
 Representation/Encoding layer `.capability_report()` needs — DECISIONS.md
-D-43 defers it, "cheap read-only accessors only" for M8).
+D-43 defers it, "cheap read-only accessors only" for M8); M10.6 adds
+`ConstraintReport`/`SamplingReport` (API.md, "Sampling diagnostics").
 """
 
 from __future__ import annotations
@@ -151,3 +152,38 @@ class SubspaceInfo:
     member_paths: tuple[str, ...]
     condition: BoolExpr | None
     variant_name: str | None = None  # set only for kind == "variant"
+
+
+@dataclass(frozen=True)
+class ConstraintReport:
+    """One `SamplingReport.constraints` row (API.md, "Sampling diagnostics").
+
+    `constraint` is the declared `Constraint` — for a per-element template
+    (`ListDomain.element_constraints`), the template itself, never an
+    instantiated per-instance copy. `applicable`/`satisfied` are fractions
+    of all `n` draws (D-73): a per-element constraint folds its k
+    per-draw instance evals into one applicable/satisfied decision per
+    draw before dividing by `n`, so every row shares one denominator and
+    stays comparable to `acceptance_rate`. `satisfied` is conditioned on
+    `applicable` (fraction of *applicable* draws satisfied), and is `0.0`
+    by convention — never `NaN` — when `applicable == 0.0`.
+    """
+
+    constraint: Constraint
+    applicable: float
+    satisfied: float
+
+
+@dataclass(frozen=True)
+class SamplingReport:
+    """`.sampling_report(n, seed, tighten_bounds)` (API.md, "Sampling
+    diagnostics"). Aggregation only, over the **unconditioned** measure —
+    drawn before rejection, so both Unknown-swallowing and funnel bias are
+    visible. `activity` keys are exactly `set(space.params)`, including
+    `"[]"`-templated definition paths from inside a lifted struct/choice,
+    folded per draw the same way as `constraints` (D-73)."""
+
+    n: int
+    acceptance_rate: float
+    constraints: tuple[ConstraintReport, ...]
+    activity: MappingProxyType[str, float]

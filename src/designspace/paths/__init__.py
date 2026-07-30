@@ -7,6 +7,7 @@ keys, `validate_param`, `flatten`/`unflatten` keys).
 
 from designspace.paths._grammar import (
     Segment,
+    definition_form,
     is_definition_path,
     join_path,
     parse_path,
@@ -15,6 +16,7 @@ from designspace.paths._grammar import (
 
 __all__ = [
     "Segment",
+    "definition_form",
     "is_definition_path",
     "join_path",
     "parse_path",

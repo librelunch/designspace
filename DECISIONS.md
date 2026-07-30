@@ -127,6 +127,127 @@ return over a bool sequence — encoding anything else would misrepresent the ru
 
 Folded into API.md's `count` bullet (§Modifiers and Layering, "The lift").
 
+## D-73 — Folding per-instance evals and template activity into per-draw fractions
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §Sampling diagnostics
+- Decided by: User, Agent
+
+### Question
+
+`SamplingReport.constraints` is a `ConstraintReport` per `Constraint`, and `ConstraintReport.
+applicable`/`.satisfied` are documented as fractions "of all draws". But a per-element
+constraint (`ListDomain.element_constraints`, instantiated once per active lift instance —
+API.md, "Modifiers and Layering") produces *k* `ConstraintEval`s per draw, not one, so the
+per-draw fraction is underspecified without a fold rule. The same question recurs for
+`SamplingReport.activity`: a param declared inside a lifted struct/choice exists in
+`space.params` only as a `"[]"`-templated definition path (`workers[].timeout_s`) and per draw
+only as concrete instance paths (`workers[0].timeout_s`); "per-param active fraction" does not
+say which key set `activity` uses or how instances fold onto their template.
+
+### Why the specification is insufficient
+
+The diagnostics section was written against the scalar/whole-constraint case (the funnel and
+optional-aggregate examples) and never states a rule for either the many-instances-per-draw or
+the template-vs-instance-path case. Both are real: `delivery_routes` has an
+`element_constraints` template, and every corpus fixture with a lifted struct has template-only
+paths in `space.params`.
+
+### Possibilities considered
+
+1. **Per-draw fold** (chosen). A row's `applicable` is the fraction of draws where ≥1 instance
+   eval was Kleene-defined; `satisfied` is the fraction of *applicable* draws where every
+   applicable instance was satisfied. `activity`'s template keys use the identical fold: the
+   fraction of draws where ≥1 instance was active. Denominator is `n` for every row and every
+   key, matching the stated "fraction of all draws" verbatim, and rows stay comparable to each
+   other and to `acceptance_rate`. A draw materializing zero instances (an active-empty lift, or
+   the lift itself inactive) counts as inapplicable/inactive for that row — exactly the
+   Unknown-swallowing signal the surface exists to expose, not a special case to work around.
+2. **Per-instance observations.** Each `(draw, instance)` pair is one observation; denominator is
+   the instantiation count, not `n`. Finer-grained, but breaks "fraction of all draws" for
+   exactly the rows that have instances, and makes those rows incomparable to every scalar row
+   and to `acceptance_rate` in the same report.
+3. **Exclude element constraints and template paths from the report.** Simplest, but silently
+   drops the row/keys most likely to carry the Unknown-swallowing signal (a per-stop budget
+   constraint, a lifted-struct field's activity) — the exact failure mode this milestone exists
+   to surface.
+
+### Answer
+
+Possibility 1, for both `ConstraintReport` rows and `activity` keys.
+
+### Reasoning
+
+A single fold rule, applied uniformly to constraint evals and activity, keeps the whole report's
+denominator at `n` — the reading a user brings from `acceptance_rate` and the scalar rows
+extends without exception to the lifted case, rather than requiring a per-row footnote about
+what's being divided by what.
+
+### Specification update
+
+Folded into API.md's §Sampling diagnostics.
+
+## D-74 — `sampling_report` and the best-effort tightening optimization
+
+- Status: Resolved
+- Date: 2026-07-30
+- Spec section: API.md §Sampling diagnostics; §Charts > "All charts are static" (tighten-not-reject)
+- Decided by: User
+
+### Question
+
+The reference sampler *may* recognize an already-assigned bound-origin coupling and draw from a
+tightened chart instead of rejecting (API.md, "All charts are static") — a `may`, best-effort
+optimization, observably identical to rejection by the tighten-not-reject law.
+`sampling_report` draws the *unconditioned* measure specifically to expose what rejection
+hides. Should its draw path apply this optimization?
+
+### Why the specification is insufficient
+
+Nothing in §Sampling diagnostics says whether "unconditioned" means "no rejection" alone or
+"no rejection and no best-effort conditioning of any kind." The two readings diverge sharply in
+practice: measured on `firmware_buffers` (n=2000, seed 0), `acceptance_rate` is **0.0515**
+without tightening and **1.00** with it, and the three bound-origin `ConstraintReport` rows show
+`satisfied` 0.524/0.193/0.511 vs 1.00/1.00/1.00 — tightening does not merely speed up sampling,
+it makes the diagnostic numbers unable to show the exact pathology the report exists to surface
+on a bound-coupled space.
+
+### Possibilities considered
+
+1. **Report-only flag, default off** (chosen). `sampling_report(n=1000, seed=None,
+   tighten_bounds=False)`. Default bypasses tightening — draws are made with `bound_targets={}`,
+   the same call shape `_draw_config` already accepts. `tighten_bounds=True` opts into drawing
+   the way the reference sampler actually would, answering "how much does tightening save me"
+   directly. The three sampling entry points (`sample`/`sample_one`/`sample_dicts`) are
+   untouched — tightening is truncation-equals-conditioning there, so a flag would be inert by
+   the very law that licenses the optimization.
+2. **Always bypass, no flag.** Keeps the spec's fixed `.sampling_report(n=1000, seed=None)`
+   signature untouched. One canonical reading, nothing to test twice — but no way to ask "is my
+   sampling actually cheap because of tightening," a question `acceptance_rate` alone doesn't
+   answer once tightening is in play.
+3. **Always tighten** (report what the sampler experiences). Rejected: on any space with a bound
+   coupling this collapses the report's most informative rows to `satisfied ≈ 1.0`, hiding
+   exactly the declared-measure hostility the surface exists to reveal.
+
+### Answer
+
+Possibility 1.
+
+### Reasoning
+
+Tightening is optimization, not semantics (the spec's own `may` and the tighten-not-reject
+distributional-equivalence law say so) — so it belongs behind an opt-in switch on the one
+surface that specifically wants the *un*optimized measure, not baked into either reading
+unconditionally. The switch lives only on `sampling_report`, where it is meaningful; adding it
+to the three samplers would be a knob with no observable effect, since there tightening only
+ever changes speed, never the returned distribution.
+
+### Specification update
+
+Folded into API.md's `.sampling_report` signature (§Sampling and Generativity) and §Sampling
+diagnostics.
+
 ---
 
 ## Entry template
@@ -170,5 +291,5 @@ The `API.md` section changed after resolution, or `Pending`.
 ---
 
 _Ledger tail._ D-1 through D-70 were resolved into `API.md` and their entries removed here
-(preserved in git history). D-71 and D-72 (M10.5) are resolved above and will fold out on
-the next spec pass; continue with D-73.
+(preserved in git history). D-71 through D-74 (M10.5, M10.6) are resolved above and will fold
+out on the next spec pass; continue with D-75.

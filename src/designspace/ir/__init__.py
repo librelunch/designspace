@@ -25,6 +25,7 @@ from designspace.ir._param import Condition, Constraint, ParamDef
 from designspace.ir._priors import Log, Logit, Power, Prior, PriorSpec, Weights
 from designspace.ir._results import (
     ConstraintEval,
+    ConstraintReport,
     IntegerRemaining,
     ParamDiff,
     ParamError,
@@ -32,6 +33,7 @@ from designspace.ir._results import (
     PermutationRemaining,
     RealRemaining,
     RemainingDomain,
+    SamplingReport,
     SubsetRemaining,
     SubspaceInfo,
     ValidationResult,
@@ -46,6 +48,7 @@ __all__ = [
     "Condition",
     "Constraint",
     "ConstraintEval",
+    "ConstraintReport",
     "CustomDomain",
     "Domain",
     "IntegerDomain",
@@ -67,6 +70,7 @@ __all__ = [
     "RealDomain",
     "RealRemaining",
     "RemainingDomain",
+    "SamplingReport",
     "StructDomain",
     "SubsetDomain",
     "SubsetRemaining",

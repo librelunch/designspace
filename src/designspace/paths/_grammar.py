@@ -125,3 +125,20 @@ def split_instance_path(path: str) -> tuple[str, tuple[int | None, ...]] | None:
         prefix_parts.append(f"{seg.name}{'[]' if seg.brackets else ''}.")
     last = segments[-1]
     return "".join(prefix_parts) + last.name, last.brackets
+
+
+def definition_form(path: str) -> str:
+    """An instance path with every concrete index blanked to its `"[]"`
+    template marker (`workers[0].timeout_s` -> `workers[].timeout_s`,
+    `g[0][1]` -> `g[][]`) — the inverse direction from `split_instance_path`
+    (which peels one trailing group), needed wherever concrete instances
+    fold back onto the single definition-path key `space.params` declares
+    them under (M10.6 `sampling_report`'s per-draw activity fold; M11's
+    `decode` will need the identical normalization to look up an encoding).
+    A path with no brackets is already its own definition form.
+    """
+    segments = parse_path(path)
+    template = tuple(
+        Segment(name=seg.name, brackets=tuple(None for _ in seg.brackets)) for seg in segments
+    )
+    return join_path(template)

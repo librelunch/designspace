@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from designspace.errors import ResolutionError
-from designspace.paths import Segment, is_definition_path, join_path, parse_path
+from designspace.paths import Segment, definition_form, is_definition_path, join_path, parse_path
 
 
 class TestParsePlainNames:
@@ -82,3 +82,27 @@ class TestIsDefinitionPath:
 
     def test_instance_index_is_not_definition(self):
         assert is_definition_path("mask[2]") is False
+
+
+class TestDefinitionForm:
+    """`definition_form` (M10.6): blank every concrete index to `"[]"` —
+    the inverse of `split_instance_path`'s peel."""
+
+    def test_plain_name_is_its_own_definition_form(self):
+        assert definition_form("algo.svm.gamma") == "algo.svm.gamma"
+
+    def test_single_index(self):
+        assert definition_form("workers[0].timeout_s") == "workers[].timeout_s"
+
+    def test_nested_indices(self):
+        assert definition_form("g[0][1]") == "g[][]"
+
+    def test_index_across_segments(self):
+        assert definition_form("layers[2].act[1]") == "layers[].act[]"
+
+    def test_already_definition_form_is_idempotent(self):
+        assert definition_form("workers[].timeout_s") == "workers[].timeout_s"
+
+    def test_empty_path_raises(self):
+        with pytest.raises(ResolutionError):
+            definition_form("")
