@@ -39,6 +39,7 @@ reversible implementation gap, but must still record it if it affects the contra
 - Add dependencies only when the active milestone needs them.
 - Keep the public surface small; internal structure is not automatically public API.
 - Do not commit or tag until the milestone is explicitly approved.
+- Do not open any PRs or push to remotes unless explicitly requested.
 
 ## Commit gates
 
