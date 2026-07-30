@@ -55,6 +55,7 @@ from designspace.ir import (
     SubsetDomain,
     Weights,
 )
+from designspace.paths import element_prefix, strip_last_index
 from designspace.resolve._bounds import bound_origin_targets
 from designspace.resolve._pipeline import check_fully_resolved
 from designspace.resolve._relocate import element_paramdef, instantiate_element
@@ -211,8 +212,7 @@ def _draw_lift_element(
     if domain.element_kind == "choice":
         config[inst_path] = _materialize_scalar(inst_path, element_paramdef(inst_path, domain), rng)
         activity[inst_path] = True
-    outer_path = inst_path[: inst_path.rindex("[")]
-    template_prefix = f"{outer_path}[]."
+    template_prefix = element_prefix(strip_last_index(inst_path))
     inst_params, inst_conditions = instantiate_element(space, template_prefix, f"{inst_path}.")
     inst_conditions_by_target = {c.target: c for c in inst_conditions}
     for local_path in local_topological_order(list(inst_params), inst_conditions_by_target):

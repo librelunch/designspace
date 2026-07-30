@@ -1,6 +1,6 @@
 # Progress
 
-Current milestone: **M10.7 (open)**.
+Current milestone: **M10.8 (open)**.
 
 | Milestone | Completed | Tests | DECISIONS entries |
 |---|---|---|---|
@@ -22,6 +22,7 @@ Current milestone: **M10.7 (open)**.
 | M10 — DataFrame output (`space.sample() -> pl.DataFrame`, `polars` an optional extra) | 2026-07-26 | 1063 | D-51 |
 | M10.5 — Expression and validation hygiene (Unknown provenance, instance-path indexing, repeat-count calculus, lift-valued-bool/choice-payload/anchor validation) | 2026-07-30 | 1099 | D-71, D-72 |
 | M10.6 — Sampling diagnostics (`sampling_report`, `SamplingReport`/`ConstraintReport`) | 2026-07-30 | 1130 | D-73, D-74 |
+| M10.7 — Traversal extraction and child index (`Space.coordinate_paths()`, `unflatten` static-count fallback) | 2026-07-31 | 1189 | D-75 |
 
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
 

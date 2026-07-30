@@ -24,6 +24,7 @@ from designspace.build._space import Space
 from designspace.eval._kleene import Unknown, evaluate_bool
 from designspace.eval._margins import margin
 from designspace.ir import Constraint, ConstraintEval, ListDomain
+from designspace.paths._grammar import element_prefix, instance_prefix
 
 
 def evaluate_constraint(
@@ -69,9 +70,9 @@ def instance_evals_indexed(
         n = config.get(path, 0)
         if not isinstance(n, int) or isinstance(n, bool) or n < 0:
             continue
-        template_prefix = f"{path}[]."
+        template_prefix = element_prefix(path)
         for i in range(n):
-            concrete_prefix = f"{path}[{i}]."
+            concrete_prefix = instance_prefix(path, i)
             instantiated = instantiate_constraints(
                 domain.element_constraints, template_prefix, concrete_prefix
             )

@@ -25,7 +25,7 @@ from typing import Any
 
 from designspace.build._space import Space
 from designspace.charts._grid import build_grid_shape, grid_membership
-from designspace.config._flatten import _direct_children, _split_choice_value
+from designspace.config._flatten import _split_choice_value
 from designspace.errors import SerializationError
 from designspace.identity._tags import encode_default_value, sort_key, tag_value
 from designspace.ir import (
@@ -36,6 +36,7 @@ from designspace.ir import (
     QuantizedSpec,
     RealDomain,
 )
+from designspace.paths import element_prefix
 
 
 def _canonical_grid(
@@ -81,7 +82,7 @@ def _encode_level(nested: Any, space: Space, template_prefix: str) -> Any:
     if not isinstance(nested, dict):
         return nested
     result: dict[str, Any] = {}
-    for template_path in _direct_children(space, template_prefix):
+    for template_path in space._direct_children(template_prefix):
         pd = space.params[template_path]
         local_name = template_path[len(template_prefix) :]
         if local_name not in nested:
@@ -98,7 +99,7 @@ def _encode_level(nested: Any, space: Space, template_prefix: str) -> Any:
                 result[local_name] = value
                 continue
             result[local_name] = [
-                _encode_list_element(item, pd.domain, space, f"{template_path}[].")
+                _encode_list_element(item, pd.domain, space, element_prefix(template_path))
                 for item in value
             ]
         else:
@@ -126,7 +127,7 @@ def _encode_list_element(item: Any, domain: ListDomain, space: Space, template_p
         if not isinstance(item, list):
             return item
         return [
-            _encode_list_element(sub, domain.element_domain, space, f"{template_prefix[:-1]}[].")
+            _encode_list_element(sub, domain.element_domain, space, element_prefix(template_prefix))
             for sub in item
         ]
     return _encode_scalar_value(

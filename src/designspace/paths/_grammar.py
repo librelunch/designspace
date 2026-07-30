@@ -24,6 +24,17 @@ from designspace.errors import ResolutionError
 _SEGMENT_RE = re.compile(r"^([^.\[\]]+)((?:\[[^\[\]]*\])*)$")
 _BRACKET_RE = re.compile(r"\[([^\[\]]*)\]")
 
+# A cheap, non-raising alternative to `definition_form` for stripping concrete
+# indices — `validate/_validate.py::_lookup_param_shape` and
+# `ops/_structural.py::_definition_path_of`/`_governing_definition_path` share
+# it rather than each compiling their own copy (M10.7: was independently
+# defined in both, `import re` for no other reason in either file). Kept
+# distinct from the parsing grammar above on purpose: both call sites accept
+# a possibly-non-grammar path (a `.validate_param()`/`.remaining_domain()`
+# argument, an anchor/constraint-param flat key) and must not raise on one,
+# where `definition_form`/`parse_path` would.
+_INDEX_RE = re.compile(r"\[\d+\]")
+
 
 @dataclass(frozen=True)
 class Segment:
@@ -125,6 +136,35 @@ def split_instance_path(path: str) -> tuple[str, tuple[int | None, ...]] | None:
         prefix_parts.append(f"{seg.name}{'[]' if seg.brackets else ''}.")
     last = segments[-1]
     return "".join(prefix_parts) + last.name, last.brackets
+
+
+def strip_last_index(path: str) -> str:
+    """Peels one trailing `"[i]"` bracket group off an instance path,
+    returning the base path one level up (`"stops[3]"` -> `"stops"`,
+    `"stops[3][1]"` -> `"stops[3]"`) — the "which lift does this concrete
+    sibling belong to" step, re-derived by hand (`path[: path.rindex("[")]`)
+    in half a dozen modules before M10.7."""
+    return path[: path.rindex("[")]
+
+
+def element_prefix(base: str) -> str:
+    """The lift's element-*template* prefix for `base`: a bare definition
+    path (`"edges"` -> `"edges[]."`) or an existing `"[]."`/`"[i]."`-
+    terminated prefix one level up, whose trailing dot is dropped before
+    appending another bracket group (`"grid[]."` -> `"grid[][]."`, the
+    depth-2 case a chained `.repeat().repeat()` produces). Compose with
+    `strip_last_index` to go from a *concrete* instance path to its lift's
+    template prefix (`element_prefix(strip_last_index("stops[3]"))` ->
+    `"stops[]."`)."""
+    if base.endswith("."):
+        base = base[:-1]
+    return f"{base}[]."
+
+
+def instance_prefix(base: str, index: int) -> str:
+    """The concrete per-instance prefix for lift element `index` of `base`
+    (`"stops", 3` -> `"stops[3]."`)."""
+    return f"{base}[{index}]."
 
 
 def definition_form(path: str) -> str:

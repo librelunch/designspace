@@ -85,6 +85,7 @@ from designspace.ir import (
     SubsetDomain,
     Weights,
 )
+from designspace.paths import element_prefix, instance_prefix
 from designspace.resolve._bounds import bound_deps, check_bound_refs, compute_bound_envelopes
 from designspace.resolve._desugar import desugar_bool
 from designspace.resolve._expr_checks import check_expr_types, check_refs_declared, prop_type
@@ -1085,8 +1086,8 @@ def _validate_list_default_level(
                 item,
                 domain,
                 space,
-                template_prefix=f"{concrete_prefix}[].",
-                concrete_prefix=f"{concrete_prefix}[{i}].",
+                template_prefix=element_prefix(concrete_prefix),
+                concrete_prefix=instance_prefix(concrete_prefix, i),
                 out=flat,
                 errors=shape_errors,
             )
@@ -1211,7 +1212,7 @@ def _emit(defs: tuple[ParamExpr, ...], charts: dict[str, Chart | None]) -> Space
             leaf = _innermost_element(d.lift)
             if leaf.element_class is StructParamExpr and leaf.struct_space is not None:
                 child_params, child_conditions, child_constraints = relocate_child(
-                    leaf.struct_space, new_prefix=f"{d.path}[].", injected_condition=None
+                    leaf.struct_space, new_prefix=element_prefix(d.path), injected_condition=None
                 )
                 params.update(child_params)
                 conditions.extend(child_conditions)
@@ -1226,7 +1227,11 @@ def _emit(defs: tuple[ParamExpr, ...], charts: dict[str, Chart | None]) -> Space
                 assert isinstance(leaf.domain, ChoiceDomain)
                 variant_params, variant_conditions, variant_constraints = (
                     _relocate_choice_variants(
-                        f"{d.path}[]", f"{d.path}[].", leaf.domain, leaf.choice_payloads, None
+                        f"{d.path}[]",
+                        element_prefix(d.path),
+                        leaf.domain,
+                        leaf.choice_payloads,
+                        None,
                     )
                 )
                 params.update(variant_params)

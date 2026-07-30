@@ -66,7 +66,13 @@ from designspace.expr import (
     SumOver,
 )
 from designspace.ir import CustomDomain, ListDomain, OrdinalDomain
-from designspace.paths._grammar import parse_path, split_instance_path
+from designspace.paths._grammar import (
+    element_prefix,
+    instance_prefix,
+    parse_path,
+    split_instance_path,
+    strip_last_index,
+)
 
 _PROVENANCE_RANK = {"inactive": 0, "pending": 1, "permanent": 2}
 
@@ -757,9 +763,9 @@ def _expand_lift_activity(
     n = config.get(path, 0)
     if not isinstance(n, int) or isinstance(n, bool) or n < 0:
         return
-    template_prefix = f"{path}[]."
+    template_prefix = element_prefix(path)
     for i in range(n):
-        concrete_prefix = f"{path}[{i}]."
+        concrete_prefix = instance_prefix(path, i)
         inst_params, inst_conditions = instantiate_element(space, template_prefix, concrete_prefix)
         inst_conditions_by_target = {c.target: c for c in inst_conditions}
         for local_path in local_topological_order(list(inst_params), inst_conditions_by_target):
@@ -964,7 +970,7 @@ def _expand_instance_status(
         status[inst_path] = "set" if inst_path in config else "active_unset"
         order.append(inst_path)
         deps[inst_path] = frozenset()
-    template_prefix = f"{inst_path[: inst_path.rindex('[')]}[]."
+    template_prefix = element_prefix(strip_last_index(inst_path))
     inst_params, inst_conditions = instantiate_element(space, template_prefix, f"{inst_path}.")
     inst_conditions_by_target = {c.target: c for c in inst_conditions}
     for local_path in local_topological_order(list(inst_params), inst_conditions_by_target):

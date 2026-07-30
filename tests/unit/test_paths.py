@@ -10,7 +10,16 @@ from __future__ import annotations
 import pytest
 
 from designspace.errors import ResolutionError
-from designspace.paths import Segment, definition_form, is_definition_path, join_path, parse_path
+from designspace.paths import (
+    Segment,
+    definition_form,
+    element_prefix,
+    instance_prefix,
+    is_definition_path,
+    join_path,
+    parse_path,
+    strip_last_index,
+)
 
 
 class TestParsePlainNames:
@@ -106,3 +115,44 @@ class TestDefinitionForm:
     def test_empty_path_raises(self):
         with pytest.raises(ResolutionError):
             definition_form("")
+
+
+class TestStripLastIndex:
+    """`strip_last_index` (M10.7): peel one trailing `"[i]"` bracket group,
+    the "which lift does this concrete sibling belong to" step re-derived
+    by hand (`path[: path.rindex("[")]`) in half a dozen modules before
+    M10.7's traversal-extraction milestone."""
+
+    def test_single_index(self):
+        assert strip_last_index("stops[3]") == "stops"
+
+    def test_nested_indices_peels_only_the_last(self):
+        assert strip_last_index("stops[3][1]") == "stops[3]"
+
+    def test_index_after_a_dotted_field(self):
+        assert strip_last_index("layers.act[1]") == "layers.act"
+
+
+class TestElementPrefix:
+    """`element_prefix` (M10.7): the lift's element-template prefix, unifying
+    the two idioms every space-guided walker rederived: a bare definition
+    path gets `"[]."` appended; an existing `"[]."`/`"[i]."`-terminated
+    prefix gets its trailing dot dropped before another bracket group is
+    appended (one level deeper, for a chained `.repeat().repeat()`)."""
+
+    def test_bare_path(self):
+        assert element_prefix("edges") == "edges[]."
+
+    def test_existing_template_prefix_nests_one_level_deeper(self):
+        assert element_prefix("grid[].") == "grid[][]."
+
+    def test_composes_with_strip_last_index_from_a_concrete_instance(self):
+        # The "which lift template does this concrete sibling belong to"
+        # composition every walker needs to go from an instance path
+        # (`"stops[3]"`) back to that lift's own element template.
+        assert element_prefix(strip_last_index("stops[3]")) == "stops[]."
+
+
+class TestInstancePrefix:
+    def test_builds_the_concrete_per_instance_prefix(self):
+        assert instance_prefix("stops", 3) == "stops[3]."

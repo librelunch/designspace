@@ -26,6 +26,7 @@ from designspace.eval import (
 )
 from designspace.expr import ArithExpr
 from designspace.ir import ListDomain
+from designspace.paths import element_prefix, instance_prefix, strip_last_index
 from designspace.resolve._pipeline import check_fully_resolved
 from designspace.resolve._relocate import instantiate_element
 
@@ -129,8 +130,8 @@ def _fill_list(
                 item,
                 domain,
                 space,
-                template_prefix=f"{path}[].",
-                concrete_prefix=f"{path}[{i}].",
+                template_prefix=element_prefix(path),
+                concrete_prefix=instance_prefix(path, i),
                 out=flat,
                 errors=None,
             )
@@ -185,7 +186,7 @@ def _fill_instance(
         else:
             status[inst_path] = "active_unset"
 
-    template_prefix = f"{inst_path[: inst_path.rindex('[')]}[]."
+    template_prefix = element_prefix(strip_last_index(inst_path))
     inst_params, inst_conditions = instantiate_element(space, template_prefix, f"{inst_path}.")
     inst_conditions_by_target = {c.target: c for c in inst_conditions}
     for local_path in local_topological_order(list(inst_params), inst_conditions_by_target):

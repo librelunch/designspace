@@ -1,0 +1,104 @@
+"""`Space.coordinate_paths()` (API.md, "Config Utilities" > "The fixed leaf
+layout"; error-table row 33; M10.7).
+
+The **fixed leaf layout**: the ordered instance paths of a space's leaf
+entries, excluding the lift-length entries `flatten` emits as structural
+bookkeeping — the layout a consumer needs to pack a config into a positional
+container (a solver's parameter vector). Requires every `.repeat()` count to
+be a literal integer and no param to carry a condition; either makes the key
+set config-dependent, so no positional layout exists (row 33).
+
+The walk below mirrors `config/_flatten.py`'s `_flatten_level`/
+`_flatten_list_element` shape exactly — same `_direct_children`-driven
+descent, same `template_prefix`/`concrete_prefix` pair, same struct/choice/
+list dispatch — but is driven by the space alone (no config, no gate) and
+never writes a list's own bookkeeping count. A payload-bearing choice can
+never reach the walk: `resolve/_pipeline.py` folds the discriminator-equality
+condition into every variant descendant's `.condition`, so the row-33 sweep
+below already raises on it before descent would matter; a bare-variant-only
+choice contributes exactly one coordinate (its discriminator).
+"""
+
+from __future__ import annotations
+
+from designspace.build._space import Space, _has_dynamic_count
+from designspace.errors import ResolutionError
+from designspace.ir import ListDomain
+from designspace.paths import element_prefix, instance_prefix
+
+
+def _check_fixed_layout(space: Space) -> None:
+    for path, pd in space.params.items():
+        if pd.condition is not None:
+            raise ResolutionError(
+                f"coordinate_paths(): {path!r} carries a condition, so the "
+                "space has no fixed layout (row 33)"
+            )
+        if pd.type_kind == "list":
+            assert isinstance(pd.domain, ListDomain)
+            if _has_dynamic_count(pd.domain):
+                raise ResolutionError(
+                    f"coordinate_paths(): {path!r} has a dynamic repeat() "
+                    "count, so the space has no fixed layout (row 33)"
+                )
+
+
+def coordinate_paths(space: Space) -> tuple[str, ...]:
+    from designspace.resolve._pipeline import check_fully_resolved
+
+    check_fully_resolved(space)
+    _check_fixed_layout(space)
+    out: list[str] = []
+    _walk_level(space, "", "", out)
+    return tuple(out)
+
+
+def _walk_level(space: Space, template_prefix: str, concrete_prefix: str, out: list[str]) -> None:
+    for template_path in space._direct_children(template_prefix):
+        pd = space.params[template_path]
+        local_name = template_path[len(template_prefix) :]
+        concrete_path = concrete_prefix + local_name
+        if pd.type_kind == "space":
+            _walk_level(space, f"{template_path}.", f"{concrete_path}.", out)
+        elif pd.type_kind == "list":
+            assert isinstance(pd.domain, ListDomain)
+            count = pd.domain.count
+            assert isinstance(count, int)  # _check_fixed_layout already ensured static
+            for i in range(count):
+                _walk_list_element(
+                    space,
+                    pd.domain,
+                    element_prefix(template_path),
+                    instance_prefix(concrete_path, i),
+                    out,
+                )
+        else:
+            # choice (always bare-variant-only here -- a payload-bearing
+            # variant's descendant already raised above) and every scalar/
+            # subset/permutation/custom leaf: one coordinate.
+            out.append(concrete_path)
+
+
+def _walk_list_element(
+    space: Space, domain: ListDomain, template_prefix: str, concrete_prefix: str, out: list[str]
+) -> None:
+    concrete_path = concrete_prefix[:-1]
+    if domain.element_kind == "space":
+        _walk_level(space, template_prefix, concrete_prefix, out)
+    elif domain.element_kind == "list":
+        assert isinstance(domain.element_domain, ListDomain)
+        inner = domain.element_domain
+        count = inner.count
+        assert isinstance(count, int)
+        for j in range(count):
+            _walk_list_element(
+                space,
+                inner,
+                element_prefix(template_prefix),
+                instance_prefix(concrete_path, j),
+                out,
+            )
+    else:
+        # choice element (bare-variant-only) and every scalar/subset/
+        # permutation/custom element: one coordinate.
+        out.append(concrete_path)

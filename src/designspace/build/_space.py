@@ -15,7 +15,7 @@ guarantee for additive fields), so every pre-M8 space is unaffected.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
@@ -69,6 +69,17 @@ class Space:
     # class-level default), mirroring ParamExpr's `meta_map`/`.meta()` split.
     anchors: MappingProxyType[str, Any] = field(default_factory=lambda: MappingProxyType({}))
     meta_map: MappingProxyType[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    # M10.7: a lazily-built, cached index backing `_direct_children` below —
+    # a pure function of `params`, so excluded from `__eq__`/`__repr__`
+    # (`compare=False, repr=False`) rather than treated as part of a space's
+    # identity. Lazy rather than built at every one of the ~12 construction
+    # sites (`_emit`, `from_json`, `space_from_ir`, `extend`, `freeze`, the
+    # two throwaway `skeleton = Space(...)` spaces in `ops/_structural.py`,
+    # and every `dataclasses.replace(space, ...)` call) — those would all
+    # need to remember to (re)build it; laziness needs none of them to.
+    _child_index: dict[str, tuple[str, ...]] | None = field(
+        default=None, init=False, compare=False, repr=False
+    )
 
     @property
     def n_params(self) -> int:
@@ -166,6 +177,29 @@ class Space:
 
     def param_conditions(self, path: str) -> list[Condition]:
         return [c for c in self.conditions if c.target == path or path in c.params]
+
+    def _direct_children(self, prefix: str) -> tuple[str, ...]:
+        """Template paths one segment below `prefix` (M10.7 — the traversal
+        primitive every space-guided walker shares): `""` for the root,
+        `"algo.svm."` inside a chosen variant, `"edges[]."` inside a lift's
+        element template. `prefix` must be `""` or end in `"."` — the only
+        two forms any caller constructs; a bare non-empty, non-dot-terminated
+        prefix (e.g. `"algo"`) is not a valid query and returns `()`.
+
+        Backed by a lazily-built, cached index (`_child_index`) rather than a
+        per-call scan of `space.params` — the scan is quadratic in param
+        count (a struct with many fields pays it for every field), the index
+        is one pass, and `Space` is frozen, so caching is safe."""
+        index = self._child_index
+        if index is None:
+            index = _build_child_index(self.params)
+            object.__setattr__(self, "_child_index", index)
+        return index.get(prefix, ())
+
+    def coordinate_paths(self) -> tuple[str, ...]:
+        from designspace.config._coordinates import coordinate_paths as _coordinate_paths
+
+        return _coordinate_paths(self)
 
     def slice(self, values: dict[str, Any] | None = None, **kw: Any) -> Space:
         from designspace.ops._structural import parse_path_values, slice_space
@@ -386,6 +420,20 @@ class Space:
         return _fingerprint(self, scope=scope, on_unserializable=on_unserializable)
 
 
+def _build_child_index(params: Mapping[str, ParamDef]) -> dict[str, tuple[str, ...]]:
+    """One pass over `space.params`, bucketing each path by its parent
+    prefix (`path[: path.rfind(".") + 1]`, `""` when dotless) — exactly the
+    set the old per-call predicate (`startswith(prefix)` and a dot-free
+    remainder) selected, for the `""`/dot-terminated prefixes every caller
+    builds. Dict order preserves `params`' declaration order (already
+    `flatten`'s order, already the DataFrame column order)."""
+    buckets: dict[str, list[str]] = {}
+    for path in params:
+        prefix = path[: path.rfind(".") + 1]
+        buckets.setdefault(prefix, []).append(path)
+    return {prefix: tuple(paths) for prefix, paths in buckets.items()}
+
+
 def _has_dynamic_count(domain: ListDomain) -> bool:
     if isinstance(domain.count, ArithExpr):
         return True
@@ -440,10 +488,8 @@ def _grid_cardinality(lo: float, hi: float, quantized: QuantizedSpec) -> int:
 
 
 def _struct_cardinality(path: str, pd: ParamDef, space: Space) -> int | None:
-    from designspace.config._flatten import _direct_children
-
     total = 1
-    for child_path in _direct_children(space, f"{path}."):
+    for child_path in space._direct_children(f"{path}."):
         child_pd = space.params[child_path]
         if not _condition_matches_injection(child_pd.condition, pd.condition):
             return None  # an independent .when() on a struct field
@@ -455,7 +501,6 @@ def _struct_cardinality(path: str, pd: ParamDef, space: Space) -> int | None:
 
 
 def _choice_cardinality(path: str, domain: ChoiceDomain, pd: ParamDef, space: Space) -> int | None:
-    from designspace.config._flatten import _direct_children
     from designspace.expr import Compare, Literal
     from designspace.resolve._relocate import and_
 
@@ -468,7 +513,7 @@ def _choice_cardinality(path: str, domain: ChoiceDomain, pd: ParamDef, space: Sp
         discriminator_eq = Compare("eq", ParamExpr(path=path), Literal(variant))
         expected = and_(pd.condition, discriminator_eq)
         variant_total = 1
-        for child_path in _direct_children(space, prefix):
+        for child_path in space._direct_children(prefix):
             child_pd = space.params[child_path]
             if not _condition_matches_injection(child_pd.condition, expected):
                 return None  # an independent .when() on a variant's own field

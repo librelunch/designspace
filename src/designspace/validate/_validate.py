@@ -18,7 +18,6 @@ shape errors.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from designspace.build._space import Space
@@ -49,6 +48,8 @@ from designspace.ir import (
     SubsetDomain,
     ValidationResult,
 )
+from designspace.paths import element_prefix, strip_last_index
+from designspace.paths._grammar import _INDEX_RE
 from designspace.resolve._pipeline import check_fully_resolved
 from designspace.resolve._relocate import element_paramdef
 
@@ -173,10 +174,6 @@ def _presence_error(
     return None
 
 
-def _strip_last_index(inst_path: str) -> str:
-    return inst_path[: inst_path.rindex("[")]
-
-
 def _validate_lift_element(
     space: Space,
     inst_path: str,
@@ -206,7 +203,7 @@ def _validate_lift_element(
             error = _presence_error(inst_path, domain, flat, activity)
             if error is not None:
                 errors.append(error)
-        template_prefix = f"{_strip_last_index(inst_path)}[]."
+        template_prefix = element_prefix(strip_last_index(inst_path))
         for template_path, template_pd in space.params.items():
             if not template_path.startswith(template_prefix):
                 continue
@@ -289,9 +286,6 @@ def validate(space: Space, config: dict[str, Any]) -> ValidationResult:
     )
 
 
-_INDEX_RE = re.compile(r"\[\d+\]")
-
-
 def _lookup_param_shape(space: Space, path: str) -> ParamDef:
     """`path` may be a bare definition path, a struct-lift descendant
     instance path (`"layers[2].width"` — its `"[]"`-bracketed template is
@@ -307,7 +301,7 @@ def _lookup_param_shape(space: Space, path: str) -> ParamDef:
     if template_path in space.params:
         return space.params[template_path]
     if "[" in path:
-        base = path[: path.rindex("[")]
+        base = strip_last_index(path)
         if base in space.params and space.params[base].type_kind == "list":
             domain = space.params[base].domain
             assert isinstance(domain, ListDomain)

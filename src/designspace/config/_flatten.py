@@ -26,20 +26,7 @@ from typing import Any
 
 from designspace.build._space import Space
 from designspace.ir import ChoiceDomain, ListDomain, ParamError
-
-
-def _direct_children(space: Space, prefix: str) -> list[str]:
-    """Full (template) paths that are one segment below `prefix` ("" for
-    root, `"algo.svm."` inside a chosen variant, or `"edges[]."` inside a
-    lift's element template)."""
-    result = []
-    for path in space.params:
-        if not path.startswith(prefix):
-            continue
-        remainder = path[len(prefix) :]
-        if remainder and "." not in remainder:
-            result.append(path)
-    return result
+from designspace.paths import element_prefix, instance_prefix
 
 
 def _split_choice_value(value: Any) -> tuple[str | None, dict[str, Any] | None, bool]:
@@ -67,7 +54,7 @@ def _flatten_level(
 ) -> None:
     if not isinstance(nested, dict):
         return
-    for template_path in _direct_children(space, template_prefix):
+    for template_path in space._direct_children(template_prefix):
         pd = space.params[template_path]
         local_name = template_path[len(template_prefix) :]
         if local_name not in nested:
@@ -105,8 +92,8 @@ def _flatten_level(
                     item,
                     pd.domain,
                     space,
-                    template_prefix=f"{template_path}[].",
-                    concrete_prefix=f"{concrete_path}[{i}].",
+                    template_prefix=element_prefix(template_path),
+                    concrete_prefix=instance_prefix(concrete_path, i),
                     out=out,
                     errors=errors,
                 )
@@ -196,8 +183,8 @@ def _flatten_list_element(
                 subitem,
                 domain.element_domain,
                 space,
-                template_prefix=f"{template_prefix[:-1]}[].",
-                concrete_prefix=f"{concrete_path}[{j}].",
+                template_prefix=element_prefix(template_prefix),
+                concrete_prefix=instance_prefix(concrete_path, j),
                 out=out,
                 errors=errors,
             )

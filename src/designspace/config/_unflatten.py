@@ -6,27 +6,51 @@ prefix pair (DECISIONS.md D-18): a lift's realized count lives at its own
 flat key (`flat["dropout"] == 4`, `flat["edges"] == 2`); each instance's
 value(s) live under `"[i]"`-indexed keys, reconstructed from the `"[]"`-
 bracketed descendant *template* in `space.params`.
+
+M10.7 adds the **static-count fallback** (API.md, "The fixed leaf layout"):
+when the bookkeeping key is absent and the `ListDomain`'s own count is a
+literal `int`, that count recovers the length instead of silently dropping
+the list — this is what makes `ds.unflatten(dict(zip(space.coordinate_paths(),
+values)), space)` (a flat dict with no bookkeeping keys at all) an inverse of
+`flatten`. A *present* bookkeeping key still wins (it is `flatten`'s own
+realized length); the fallback fires only on absence. A *dynamic* and absent
+count stays exactly as before — unrecoverable, since no `ListDomain` count
+exists to fall back to: the outer level omits the list (as it already did),
+the nested level still raises `KeyError` (as it already did) — noted, not
+changed; the spec addresses only the static case.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from designspace.build._space import Space
-from designspace.config._flatten import _direct_children
+from designspace.expr import ArithExpr
 from designspace.ir import ChoiceDomain, ListDomain
+from designspace.paths import element_prefix, instance_prefix
+
+
+def _resolve_count(flat: dict[str, Any], concrete_path: str, count: int | ArithExpr) -> int | None:
+    """The lift's realized length at `concrete_path`. Prefers the flat
+    bookkeeping key when present; falls back to a literal `ListDomain` count
+    on absence; `None` when neither resolves (a dynamic count, absent)."""
+    if concrete_path in flat:
+        return cast("int", flat[concrete_path])
+    if isinstance(count, int):
+        return count
+    return None
 
 
 def _unflatten_level(
     flat: dict[str, Any], space: Space, template_prefix: str, concrete_prefix: str
 ) -> dict[str, Any]:
     result: dict[str, Any] = {}
-    for template_path in _direct_children(space, template_prefix):
+    for template_path in space._direct_children(template_prefix):
         pd = space.params[template_path]
         local_name = template_path[len(template_prefix) :]
         concrete_path = concrete_prefix + local_name
         if pd.type_kind == "space":
-            children = _direct_children(space, f"{template_path}.")
+            children = space._direct_children(f"{template_path}.")
             if not children:
                 result[local_name] = {}
                 continue
@@ -48,16 +72,16 @@ def _unflatten_level(
                 result[local_name] = value
         elif pd.type_kind == "list":
             assert isinstance(pd.domain, ListDomain)
-            if concrete_path not in flat:
+            n = _resolve_count(flat, concrete_path, pd.domain.count)
+            if n is None:
                 continue
-            n = flat[concrete_path]
             result[local_name] = [
                 _unflatten_list_element(
                     flat,
                     pd.domain,
                     space,
-                    template_prefix=f"{template_path}[].",
-                    concrete_prefix=f"{concrete_path}[{i}].",
+                    template_prefix=element_prefix(template_path),
+                    concrete_prefix=instance_prefix(concrete_path, i),
                 )
                 for i in range(n)
             ]
@@ -104,14 +128,16 @@ def _unflatten_list_element(
         )
     if domain.element_kind == "list":
         assert isinstance(domain.element_domain, ListDomain)
-        n = flat[concrete_path]
+        n = _resolve_count(flat, concrete_path, domain.element_domain.count)
+        if n is None:
+            raise KeyError(concrete_path)  # dynamic and absent -- unrecoverable, unchanged
         return [
             _unflatten_list_element(
                 flat,
                 domain.element_domain,
                 space,
-                template_prefix=f"{template_prefix[:-1]}[].",
-                concrete_prefix=f"{concrete_path}[{j}].",
+                template_prefix=element_prefix(template_prefix),
+                concrete_prefix=instance_prefix(concrete_path, j),
             )
             for j in range(n)
         ]

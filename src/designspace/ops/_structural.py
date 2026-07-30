@@ -9,7 +9,6 @@ positional `dict[str, Any]` (required when paths contain `.` or `[]`)").
 
 from __future__ import annotations
 
-import re
 import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
@@ -63,6 +62,8 @@ from designspace.ir import (
     StructDomain,
     SubsetDomain,
 )
+from designspace.paths import strip_last_index
+from designspace.paths._grammar import _INDEX_RE
 from designspace.resolve._bounds import bound_origin_targets, hull
 
 # -- shared path/value argument parsing (`.slice`/`.freeze`'s `values=None, **kw`) --
@@ -203,9 +204,6 @@ def substitute_bool(expr: BoolExpr, literals: dict[str, Literal | BoolLiteral]) 
     return cast_bool(substitute_expr(expr, literals))
 
 
-_INDEX_RE = re.compile(r"\[\d+\]")
-
-
 def _definition_path_of(concrete_path: str) -> str:
     """A `flatten()`-produced concrete instance path (`"edges[3].weight"`)
     back to its definition-path template (`"edges[].weight"`) — the shape
@@ -232,7 +230,7 @@ def _governing_definition_path(space: Space, path: str) -> str:
     if templated in space.params:
         return templated
     if "[" in path:
-        return path[: path.rindex("[")]
+        return strip_last_index(path)
     return path
 
 

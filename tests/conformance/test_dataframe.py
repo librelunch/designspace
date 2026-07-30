@@ -24,8 +24,6 @@ CORPUS_DIR = Path(__file__).resolve().parents[1] / "corpus"
 if str(CORPUS_DIR) not in sys.path:
     sys.path.insert(0, str(CORPUS_DIR))
 
-from designspace.config._flatten import _direct_children  # noqa: E402
-
 FIXTURES = [
     "flat_hpo",
     "greenhouse",
@@ -52,7 +50,7 @@ def test_top_level_columns_match_path_grammar(name):
     space = _build(name)
     df = space.sample(5, seed=0)
     expected: set[str] = set()
-    for child in _direct_children(space, ""):
+    for child in space._direct_children(""):
         pd = space.params[child]
         expected.add(child)
         if pd.type_kind == "choice":
@@ -72,7 +70,7 @@ def test_scalar_column_null_matches_dict_absence(name):
     n = 60
     df = space.sample(n, seed=2)
     dicts = space.sample_dicts(n, seed=2)
-    for child in _direct_children(space, ""):
+    for child in space._direct_children(""):
         pd = space.params[child]
         if pd.type_kind in ("space", "list", "choice"):
             continue  # container-shaped; covered by per-fixture tests

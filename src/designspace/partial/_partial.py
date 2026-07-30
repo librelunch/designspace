@@ -45,6 +45,7 @@ from designspace.ir import (
     SubsetRemaining,
     ValueRemaining,
 )
+from designspace.paths import element_prefix, instance_prefix
 from designspace.resolve._pipeline import check_fully_resolved
 from designspace.resolve._relocate import instantiate_constraints
 from designspace.validate._validate import _lookup_param_shape
@@ -119,9 +120,9 @@ def _instance_constraint_evals_partial(
         n = flat.get(path, 0)
         if not isinstance(n, int) or isinstance(n, bool) or n < 0:
             continue
-        template_prefix = f"{path}[]."
+        template_prefix = element_prefix(path)
         for i in range(n):
-            concrete_prefix = f"{path}[{i}]."
+            concrete_prefix = instance_prefix(path, i)
             for c in instantiate_constraints(
                 domain.element_constraints, template_prefix, concrete_prefix
             ):

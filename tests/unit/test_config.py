@@ -46,6 +46,69 @@ class TestFlattenUnflatten:
         assert flat == {"algo": "linear"}
 
 
+class TestUnflattenStaticCountFallback:
+    """M10.7 (API.md, "The fixed leaf layout"): "for a static count [unflatten]
+    recovers the length from the ListDomain rather than requiring the
+    bookkeeping key." A present key still wins; a dynamic-and-absent count
+    is unchanged (outer omits, nested raises `KeyError`)."""
+
+    def _static_space(self):
+        return ds.space(
+            ds.param("dropout").real(0.0, 1.0).repeat(3),
+            ds.param("grid").real(0.0, 1.0).repeat(2, 3),
+        )
+
+    def test_outer_static_count_recovered_when_bookkeeping_key_absent(self):
+        space = self._static_space()
+        flat = {"dropout[0]": 0.1, "dropout[1]": 0.2, "dropout[2]": 0.3, "grid": 0}
+        assert ds.unflatten(flat, space)["dropout"] == [0.1, 0.2, 0.3]
+
+    def test_nested_static_count_recovered_when_bookkeeping_key_absent(self):
+        space = self._static_space()
+        flat = {
+            "dropout": 0,
+            "grid[0][0]": 0.1,
+            "grid[0][1]": 0.2,
+            "grid[0][2]": 0.3,
+            "grid[1][0]": 0.4,
+            "grid[1][1]": 0.5,
+            "grid[1][2]": 0.6,
+        }
+        result = ds.unflatten(flat, space)
+        assert result["grid"] == [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
+
+    def test_full_static_round_trip_with_no_bookkeeping_keys_at_all(self):
+        space = self._static_space()
+        config = {"dropout": [0.1, 0.2, 0.3], "grid": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]}
+        coordinates = space.coordinate_paths()
+        flat = ds.flatten(config, space)
+        no_bookkeeping = {p: flat[p] for p in coordinates}
+        assert ds.unflatten(no_bookkeeping, space) == config
+
+    def test_present_bookkeeping_key_still_wins(self):
+        # flatten's own realized length takes priority over the domain's
+        # declared static count -- the fallback only ever fires on absence.
+        space = ds.space(ds.param("dropout").real(0.0, 1.0).repeat(3))
+        flat = {"dropout": 2, "dropout[0]": 0.1, "dropout[1]": 0.2}
+        assert ds.unflatten(flat, space)["dropout"] == [0.1, 0.2]
+
+    def test_dynamic_and_absent_count_is_unchanged(self):
+        space = ds.space(
+            ds.param("n").integer(0, 5),
+            ds.param("dropout").real(0.0, 1.0).repeat(ds.param("n")),
+        )
+        # Outer level: silently omitted, exactly as before this milestone.
+        assert "dropout" not in ds.unflatten({"n": 2}, space)
+
+    def test_nested_dynamic_and_absent_count_still_raises_key_error(self):
+        space = ds.space(
+            ds.param("n").integer(0, 5),
+            ds.param("grid").real(0.0, 1.0).repeat(ds.param("n")).repeat(2),
+        )
+        with pytest.raises(KeyError):
+            ds.unflatten({"n": 2}, space)
+
+
 class TestVariantPayloadDestructure:
     def test_bare_variant(self):
         cfg = {"algo": "linear"}

@@ -248,6 +248,57 @@ ever changes speed, never the returned distribution.
 Folded into API.md's `.sampling_report` signature (§Sampling and Generativity) and §Sampling
 diagnostics.
 
+## D-75 — `unflatten`'s static-count fallback vs. a present, disagreeing bookkeeping key
+
+- Status: Resolved
+- Date: 2026-07-31
+- Spec section: API.md §Config Utilities > "The fixed leaf layout"
+- Decided by: Agent
+
+### Question
+
+"For a static count [`unflatten`] recovers the length from the `ListDomain` rather than
+requiring the bookkeeping key" states the fallback for an *absent* count key. It does not say
+what happens when the bookkeeping key is **present** but disagrees with the `ListDomain`'s own
+declared static count (e.g. `flat = {"dropout": 2, "dropout[0]": ..., "dropout[1]": ...}` against
+a `.repeat(3)` declaration) — does the present key win, or the declared static count?
+
+### Why the specification is insufficient
+
+The fixed-leaf-layout paragraph was written to justify `coordinate_paths()`'s existence (a flat
+dict with *no* bookkeeping keys at all) and states only that direction. It never had reason to
+address a flat dict carrying *both* signals at once.
+
+### Possibilities considered
+
+1. **Present key wins** (chosen). `unflatten` already treats every other bookkeeping/leaf key as
+   authoritative when present (that is what "non-validating... walks whatever keys structurally
+   match" means throughout Config Utilities); the static-count fallback exists solely to cover
+   *absence*. A present key is `flatten`'s own realized length for that exact config — the more
+   specific, more trustworthy signal — while the domain's static count is a resolution-time upper
+   fact that says nothing about which config produced this particular flat dict.
+2. **Declared static count wins.** Would make `unflatten` silently reject or truncate a
+   `flatten()`-produced dict whose count happens to be pinned already (impossible in practice,
+   since `flatten` only ever writes the true length) — solves no real case and contradicts
+   `unflatten`'s established "trust present keys" posture everywhere else.
+3. **Raise on disagreement.** Turns `unflatten` from non-validating into partially validating,
+   a role `.validate()` already owns; API.md is explicit elsewhere that `flatten`/`unflatten`
+   "walk whatever keys structurally match... and ignore the rest rather than raising."
+
+### Answer
+
+Possibility 1.
+
+### Reasoning
+
+Consistent with `unflatten`'s existing non-validating contract (a present key is always trusted)
+and the narrowest reading of "static count... rather than requiring the bookkeeping key" — a
+fallback for absence, not an override for presence.
+
+### Specification update
+
+Folded into API.md's "The fixed leaf layout" (§Config Utilities).
+
 ---
 
 ## Entry template
@@ -291,5 +342,5 @@ The `API.md` section changed after resolution, or `Pending`.
 ---
 
 _Ledger tail._ D-1 through D-70 were resolved into `API.md` and their entries removed here
-(preserved in git history). D-71 through D-74 (M10.5, M10.6) are resolved above and will fold
-out on the next spec pass; continue with D-75.
+(preserved in git history). D-71 through D-75 (M10.5, M10.6, M10.7) are resolved above and will
+fold out on the next spec pass; continue with D-76.

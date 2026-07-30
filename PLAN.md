@@ -444,9 +444,33 @@ element count, so this is specifically a wide/nested-struct problem, invisible i
 benchmarks. Build a `dict[prefix, list[path]]` index eagerly at `_emit`; `Space` is frozen, so it is
 safe to cache and safe to share.
 
+**Implemented as lazy, not eager at `_emit`** — a deviation from the line above, decided during
+implementation. `Space` is constructed at seven `src/` sites (`_emit`, `from_json`,
+`space_from_ir`, `extend`, `freeze`, and two throwaway `skeleton = Space(params=..., conditions=())`
+spaces in `ops/_structural.py` that feed straight into `flatten`) plus five `dataclasses.replace(
+space, ...)` call sites; an eager build at `_emit` alone would leave the other eleven with no index.
+Laziness (`Space._child_index`, `init=False, compare=False, repr=False`, built via
+`object.__setattr__` on first `_direct_children` call) covers all twelve uniformly and costs nothing
+for a space never traversed — routine implementation detail, not a DECISIONS.md-worthy gap.
+
 **Abort criterion, decided up front:** if the unified driver needs more than four hooks, or forces a
 consumer to pass flags it ignores, keep the copies and ship only the index. A bad abstraction over
-five call sites is worse than the duplication.
+five call sites is worse than the duplication. **The criterion fired**: the five walkers diverge on
+seven axes (accumulator style, prefix arity, gate source, absent-child policy, choice shape, count
+source, leaf work), not four — traversing three different structures (space alone; config-driven;
+space-driven-with-two-side-tables) to emit four spec-mandated shapes. Only `_direct_children` and the
+`"[]."`/`"[i]."`/`rindex("[")` path-construction idioms were extracted (the latter into
+`paths/_grammar.py`'s `element_prefix`/`instance_prefix`/`strip_last_index`); the five recursion
+bodies are untouched. `_INDEX_RE` (`validate/_validate.py`'s `_lookup_param_shape`,
+`ops/_structural.py`'s `_definition_path_of`/`_governing_definition_path`) had been independently
+compiled in both files — `import re` for no other purpose in either — so it moved to one shared
+definition in `paths/_grammar.py` (a zero-risk dedup, no usage change). Its *usage* was deliberately
+left unswapped for the canonical `definition_form()`: both call sites back public,
+user-path-accepting surfaces (`.validate_param()`, `.remaining_domain()`, anchor/constraint-param
+lookups) where a malformed path is a real, not merely hypothetical, input, and `definition_form()`
+raises on one while the regex silently passes it through — an exception-type change on a public
+misuse path, not a pure refactor. `tests/unit/test_traversal_refactor.py` confirms the two agree on
+every well-formed corpus path (so the construction sweep lost nothing) and documents the boundary.
 
 **Also here, because it is the same walk:** `Space.coordinate_paths()` (the fixed leaf layout, row
 33) and `unflatten`'s static-count fallback. A solver adapter has to turn a genotype config into a

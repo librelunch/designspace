@@ -20,9 +20,9 @@ from __future__ import annotations
 from typing import Any
 
 from designspace.build._space import Space
-from designspace.config._flatten import _direct_children
 from designspace.expr import ArithExpr
 from designspace.ir import ChoiceDomain, ListDomain, PermutationDomain, SubsetDomain
+from designspace.paths import element_prefix
 
 
 def build_schema(space: Space, pl: Any) -> dict[str, Any]:
@@ -31,7 +31,7 @@ def build_schema(space: Space, pl: Any) -> dict[str, Any]:
 
 def _level_schema(space: Space, template_prefix: str, pl: Any) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    for template_path in _direct_children(space, template_prefix):
+    for template_path in space._direct_children(template_prefix):
         pd = space.params[template_path]
         local_name = template_path[len(template_prefix) :]
         if pd.type_kind == "space":
@@ -45,7 +45,7 @@ def _level_schema(space: Space, template_prefix: str, pl: Any) -> dict[str, Any]
                 )
         elif pd.type_kind == "list":
             assert isinstance(pd.domain, ListDomain)
-            out[local_name] = _list_dtype(space, pd.domain, f"{template_path}[].", pl)
+            out[local_name] = _list_dtype(space, pd.domain, element_prefix(template_path), pl)
         else:
             out[local_name] = _scalar_dtype(pd.type_kind, pd.domain, pl)
     return out
@@ -72,7 +72,7 @@ def _element_dtype(space: Space, domain: ListDomain, elem_template_prefix: str, 
         return pl.Struct(fields)
     if domain.element_kind == "list":
         assert isinstance(domain.element_domain, ListDomain)
-        return _list_dtype(space, domain.element_domain, f"{elem_template_prefix[:-1]}[].", pl)
+        return _list_dtype(space, domain.element_domain, element_prefix(elem_template_prefix), pl)
     return _scalar_dtype(domain.element_kind, domain.element_domain, pl)
 
 

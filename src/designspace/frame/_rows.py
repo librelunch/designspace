@@ -25,8 +25,8 @@ import json
 from typing import Any
 
 from designspace.build._space import Space
-from designspace.config._flatten import _direct_children
 from designspace.ir import ChoiceDomain, ListDomain
+from designspace.paths import element_prefix, instance_prefix
 
 
 def build_row(space: Space, config: dict[str, Any], activity: dict[str, bool]) -> dict[str, Any]:
@@ -41,7 +41,7 @@ def _level_row(
     activity: dict[str, bool],
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    for template_path in _direct_children(space, template_prefix):
+    for template_path in space._direct_children(template_prefix):
         pd = space.params[template_path]
         local_name = template_path[len(template_prefix) :]
         concrete_path = concrete_prefix + local_name
@@ -74,8 +74,8 @@ def _level_row(
                     _element_row(
                         space,
                         pd.domain,
-                        f"{template_path}[].",
-                        f"{concrete_path}[{i}].",
+                        element_prefix(template_path),
+                        instance_prefix(concrete_path, i),
                         config,
                         activity,
                     )
@@ -121,8 +121,8 @@ def _element_row(
             _element_row(
                 space,
                 domain.element_domain,
-                f"{elem_template_prefix[:-1]}[].",
-                f"{concrete_path}[{j}].",
+                element_prefix(elem_template_prefix),
+                instance_prefix(concrete_path, j),
                 config,
                 activity,
             )
