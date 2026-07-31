@@ -52,6 +52,10 @@ Laws covered here:
 
 from __future__ import annotations
 
+import json
+import math
+import sys
+from pathlib import Path
 from types import MappingProxyType
 
 import pytest
@@ -64,6 +68,14 @@ from designspace.expr import ChartApply, Compare, Literal
 from designspace.identity._tags import EncodeContext, decode_expr, encode_expr
 from designspace.ir import Constraint, ParamDef, RealDomain
 from designspace.represent import Representation
+
+_CONF_DIR = Path(__file__).resolve().parent
+if str(_CONF_DIR) not in sys.path:
+    sys.path.insert(0, str(_CONF_DIR))
+
+from _chart_apply_demo import build_space as build_chart_apply_demo  # noqa: E402
+
+_VECTORS_DIR = _CONF_DIR / "vectors"
 
 # -- supplied-tier fixtures ---------------------------------------------------
 
@@ -634,6 +646,7 @@ _CORPUS_FIXTURES = [
     "pump_configurator",
     "compiler_pipeline",
     "vi_family",
+    "mixture_stickbreaking",
 ]
 
 
@@ -664,3 +677,236 @@ class TestRepresentCorpus:
             assert rep.target.is_feasible(g) == space.is_feasible(p), (
                 f"{name}: feasibility agreement violated"
             )
+
+
+class TestChartApplyKnownAnswerVector:
+    """`_chart_apply_demo.py`'s induced-representation target fingerprints/
+    serializes to a committed, byte-stable digest — the M11 sibling of
+    `test_anchors.py`'s `anchor_demo`/`test_require.py`'s `require_demo`."""
+
+    def _load_vector(self) -> dict:
+        path = _VECTORS_DIR / "chart_apply_demo.json"
+        if not path.exists():
+            raise FileNotFoundError(
+                f"missing known-answer vector {path} — generate it with "
+                "`uv run python tests/conformance/vectors/_generate.py` "
+                "(deliberately, per the version-bump protocol; never auto-generated)"
+            )
+        return json.loads(path.read_text())
+
+    def test_fingerprint_matches_known_answer(self):
+        space = build_chart_apply_demo()
+        vector = self._load_vector()
+        assert space.fingerprint("full") == vector["fingerprint_full"]
+        assert space.fingerprint("sampling") == vector["fingerprint_sampling"]
+
+    def test_to_json_matches_known_answer(self):
+        space = build_chart_apply_demo()
+        vector = self._load_vector()
+        assert space.to_json() == vector["to_json"]
+
+
+# =============================================================================
+# Measure preservation (D-56): the induced chart representation is the one
+# core proves it for -- chart(u) on u ~ U[0,1] *is* the declared measure.
+# Hand-rolled statistics with fixed seeds and asymptotic critical values, not
+# scipy (not a dependency and not needed for this milestone).
+# =============================================================================
+
+
+def _ks_statistic(a: list[float], b: list[float]) -> float:
+    """Two-sample Kolmogorov-Smirnov statistic: the largest gap between the
+    two samples' empirical CDFs. `i`/`j` only ever advance, so the total
+    work across the outer loop is O(len(a) + len(b)) despite the nesting."""
+    a_sorted, b_sorted = sorted(a), sorted(b)
+    n1, n2 = len(a_sorted), len(b_sorted)
+    i = j = 0
+    d_max = 0.0
+    for x in sorted(a_sorted + b_sorted):
+        while i < n1 and a_sorted[i] <= x:
+            i += 1
+        while j < n2 and b_sorted[j] <= x:
+            j += 1
+        d_max = max(d_max, abs(i / n1 - j / n2))
+    return d_max
+
+
+def _ks_critical(n1: int, n2: int, c: float) -> float:
+    """The two-sample KS critical value `c * sqrt((n1+n2)/(n1*n2))`. `c`
+    values by significance level (standard asymptotic table): 0.10->1.22,
+    0.05->1.36, 0.01->1.63, 0.001->1.95."""
+    return c * math.sqrt((n1 + n2) / (n1 * n2))
+
+
+def _chi2_critical(df: int, z: float) -> float:
+    """The Wilson-Hilferty approximation to the chi-square critical value:
+    `df * (1 - 2/(9df) + z*sqrt(2/(9df)))**3`, accurate to ~1-2% against
+    tabulated values for df >= 2 -- ample margin for a lenient (`alpha`
+    small, `z` large) goodness-of-fit threshold. `z` is the standard-normal
+    right-tail quantile for the desired `alpha` (0.001 -> 3.0902)."""
+    h = 2.0 / (9 * df)
+    return df * (1 - h + z * math.sqrt(h)) ** 3
+
+
+_Z_ALPHA_0001 = 3.0902  # standard-normal right-tail quantile at alpha=0.001
+
+
+class TestMeasurePreservation:
+    def test_log_scaled_real_matches_via_ks(self):
+        source = ds.space(ds.param("lr").real(1e-5, 1.0).log_scale())
+        rep = source.represent()
+        n = 500
+        direct = [c["lr"] for c in source.sample_dicts(n, seed=100)]
+        via_rep = [rep.decode(g)["lr"] for g in rep.target.sample_dicts(n, seed=200)]
+        d = _ks_statistic(direct, via_rep)
+        threshold = _ks_critical(n, n, c=1.63)  # alpha=0.01
+        assert d < threshold, (d, threshold)
+
+    def test_integer_matches_via_chi_square(self):
+        source = ds.space(ds.param("k").integer(1, 5))
+        rep = source.represent()
+        n = 2000
+        counts = dict.fromkeys(range(1, 6), 0)
+        for g in rep.target.sample_dicts(n, seed=300):
+            counts[rep.decode(g)["k"]] += 1
+        expected = n / len(counts)
+        chi2 = sum((c - expected) ** 2 / expected for c in counts.values())
+        critical = _chi2_critical(df=len(counts) - 1, z=_Z_ALPHA_0001)
+        assert chi2 < critical, (chi2, critical, counts)
+
+    def test_quantized_real_matches_via_chi_square(self):
+        source = ds.space(ds.param("q").real(0.0, 10.0).quantized(step=2.5))
+        rep = source.represent()
+        n = 2000
+        grid = [0.0, 2.5, 5.0, 7.5, 10.0]
+        counts = dict.fromkeys(grid, 0)
+        for g in rep.target.sample_dicts(n, seed=400):
+            counts[rep.decode(g)["q"]] += 1
+        expected = n / len(counts)
+        chi2 = sum((c - expected) ** 2 / expected for c in counts.values())
+        critical = _chi2_critical(df=len(counts) - 1, z=_Z_ALPHA_0001)
+        assert chi2 < critical, (chi2, critical, counts)
+
+
+class TestSuppliedHierarchyFlatteningMorphism:
+    """The only honest test that the supplied tier is expressive enough
+    without core shipping one (API.md, "Two tiers"; DECISIONS.md D-60/D-61:
+    "designspace's IR *is* already the flattening ... What blocks the
+    derived tier is merely mechanical: designspace derives structure from
+    path prefixes where ConfigSpace uses opaque flat names"). Written
+    entirely against the public surface named there: `ds.space_from_ir`,
+    `ds.flatten`/`ds.unflatten`, and the `Representation` constructor
+    itself — no private helper. Removing the struct container entirely is
+    exactly what the derived tier could never do (it must preserve the
+    source key set exactly); the supplied tier's "no arity or path law" is
+    what makes this legal here.
+    """
+
+    def _source(self) -> ds.Space:
+        return ds.space(
+            ds.param("model").space(
+                ds.param("lr").real(0.0, 1.0),
+                ds.param("depth").integer(1, 10),
+            ),
+            ds.param("seed").integer(0, 100),
+        )
+
+    def _flat_rep(self, source: ds.Space) -> Representation:
+        # Every *leaf* param gets a flat, dot-free name; the struct
+        # container itself ("model", a StructDomain with no value of its
+        # own) is dropped from the target -- the flattening this morphism
+        # exists to perform.
+        from dataclasses import replace
+
+        rename = {
+            p: p.replace(".", "__")
+            for p, pd in source.params.items()
+            if pd.type_kind not in ("space", "choice")
+        }
+        reverse = {flat: original for original, flat in rename.items()}
+        target_params = [
+            replace(source.params[original], path=flat) for original, flat in rename.items()
+        ]
+        target = ds.space_from_ir(target_params, (), ())
+
+        def decode(genotype: dict) -> dict:
+            flat = {reverse[k]: v for k, v in genotype.items()}
+            return ds.unflatten(flat, source)
+
+        def encode(phenotype: dict) -> dict:
+            flat = ds.flatten(phenotype, source)
+            return {rename[k]: v for k, v in flat.items()}
+
+        return Representation(source=source, target=target, decode=decode, encode=encode)
+
+    def test_target_has_no_struct_container(self):
+        source = self._source()
+        rep = self._flat_rep(source)
+        assert "model" in source.params  # the struct container itself
+        assert "model" not in rep.target.params
+        assert set(rep.target.params) == {"model__lr", "model__depth", "seed"}
+
+    def test_passes_check(self):
+        source = self._source()
+        rep = self._flat_rep(source)
+        result = rep.check(n=200, seed=0)
+        assert result.ok, result.failures
+
+    def test_round_trips_a_concrete_config(self):
+        source = self._source()
+        rep = self._flat_rep(source)
+        original = source.sample_one(seed=1)
+        flat_genotype = rep.encode(original)
+        assert set(flat_genotype) == {"model__lr", "model__depth", "seed"}
+        assert rep.decode(flat_genotype) == original
+
+
+# =============================================================================
+# "src/ contains zero chosen encodings and zero structural morphisms" — the
+# successor to "registry populated only in tests" (API.md gate wording).
+# =============================================================================
+
+
+_BANNED_ENCODING_PATTERNS = [
+    "one_hot",
+    "OneHot",
+    "stick_break",
+    "StickBreak",
+    "random_key",
+    "RandomKey",
+    "argmax",
+    "flatten_hierarchy",
+    "FlattenHierarchy",
+    "HierarchyFlatten",
+]
+
+
+class TestNoChosenEncodingsInCore:
+    """A grep assertion, not a unit test: the induced chart representation
+    (`represent/_charts.py::_ChartEncoding`/`_InvertibleChartEncoding`) is
+    the *only* concrete `Encoding` core ships, and it is chart-derived, not
+    chosen. Every named pattern below is a *consumer-or-type-author*
+    concern (API.md, "Out of Scope") that must never appear as a class,
+    function, or docstring-adjacent implementation inside `src/`."""
+
+    def test_no_chosen_encoding_or_structural_morphism_source(self):
+        src_dir = Path(__file__).resolve().parents[2] / "src" / "designspace"
+        assert src_dir.is_dir()
+        hits: list[str] = []
+        for path in src_dir.rglob("*.py"):
+            text = path.read_text()
+            for pattern in _BANNED_ENCODING_PATTERNS:
+                if pattern in text:
+                    hits.append(f"{path}: {pattern!r}")
+        assert not hits, hits
+
+    def test_represent_charts_defines_exactly_the_induced_encoding(self):
+        # A structural corroboration alongside the grep: the only two
+        # Encoding-shaped classes represent/_charts.py defines are the
+        # chart pair, never a chosen one.
+        from designspace.represent import _charts
+
+        encoding_classes = [
+            name for name in vars(_charts) if name.startswith("_") and name.endswith("Encoding")
+        ]
+        assert set(encoding_classes) == {"_ChartEncoding", "_InvertibleChartEncoding"}

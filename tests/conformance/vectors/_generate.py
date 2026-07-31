@@ -41,6 +41,7 @@ FIXTURES = [
     "pump_configurator",
     "compiler_pipeline",
     "vi_family",
+    "mixture_stickbreaking",
 ]
 
 
@@ -72,14 +73,17 @@ def main() -> None:
     # vectors stay a clean byte-identity check. Added — never replace a corpus
     # vector. `require_demo` (M7.5), `discourage_demo` (M7.6), `anchor_demo`
     # (M8, DECISIONS.md D-40 — kept out of `sat_solver` to avoid replacing
-    # its already-committed vector).
+    # its already-committed vector), `chart_apply_demo` (M11 — freezes the
+    # ChartApply expression codec via an induced representation's target).
     import _anchor_demo
+    import _chart_apply_demo
     import _discourage_demo
     import _require_demo
 
     _write_vector("require_demo", _require_demo.build_space())
     _write_vector("discourage_demo", _discourage_demo.build_space())
     _write_vector("anchor_demo", _anchor_demo.build_space())
+    _write_vector("chart_apply_demo", _chart_apply_demo.build_space())
 
 
 if __name__ == "__main__":

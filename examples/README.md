@@ -5,10 +5,11 @@ Two arcs, in one directory:
 - **01–04** grow the *shape* of a space — flat, hierarchical (choice),
   variable-length (lifts), and custom-typed — in increasing complexity, the
   way a real design space usually grows.
-- **05–08** hold the shape plain and grow what you *do* with a space
+- **05–09** hold the shape plain and grow what you *do* with a space
   instead — the full expression vocabulary, struct params and charts,
-  DataFrame output and sampling diagnostics, and the surface a consumer
-  (solver, wizard UI, driver loop) actually calls.
+  DataFrame output and sampling diagnostics, the surface a consumer
+  (solver, wizard UI, driver loop) actually calls, and bridging a phenotype
+  space to the genotype a solver actually optimizes over.
 
 Each file is self-contained and runnable:
 
@@ -49,10 +50,10 @@ place; later examples use it freely without re-explaining.
 | Identity and Serialization (`to_json`/`from_json`, `fingerprint`, `config_hash`) | 04 (`to_json`/`from_json`, `fingerprint()` equality, `config_hash`), 04 & 07 (`fingerprint(scope=...)`), 08 (`fingerprint(on_unserializable="mark")`) |
 | Config Utilities (`flatten`/`unflatten`, `config_hash`, `config_diff`, `variant`/`payload`/`destructure`, `coordinate_paths`) | 01 (`flatten`), 02 (`variant`/`payload`/`destructure`), 03 (`flatten`/`unflatten` round-trip), 07 (`config_diff`), 08 (`coordinate_paths`, its row-33 misuse error) |
 | Config Representation (the dtype table) | 07 (`space.sample()` walking the table: `Boolean`/`Float64`/`Int64`/`Utf8` discriminator + `Struct`/`Array` vs. `List`/null-for-inactive); struct-lift and lifted-choice dict shapes in 03 and 06 |
+| The Representation Layer (`.represent()`, `Representation`, `Encoding`, `rep.check()`, the supplied tier) | 09 (induced chart representation, decode/encode, mixed genotypes via an explicit rule, a supplied hierarchy-flattening morphism) |
 
 ## Not yet implemented
 
 These appear in `API.md` but not in any example, because they aren't built
-yet (see `PROGRESS.md`): `.represent()` / `Representation` / `Encoding` (the
-Representation Layer, milestone M11), `.symbolic()` / `.code()` (Program
-params, M12), `.to_json_schema()`.
+yet (see `PROGRESS.md`): `.symbolic()` / `.code()` (Program params, M12),
+`.to_json_schema()`.

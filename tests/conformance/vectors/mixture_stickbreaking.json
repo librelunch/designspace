@@ -1,0 +1,58 @@
+{
+  "fingerprint_full": "1:full:fdc6080ee94598f470fa3dcfde7da7859b7ba709a40c7ce43930a9e0db33ed85",
+  "fingerprint_sampling": "1:sampling:192834a430f1e4a7bcb371da280b058c6163f9d2ea502c0c7bcc4724dfe049af",
+  "to_json": {
+    "conditions": [],
+    "constraints": [],
+    "params": [
+      {
+        "domain": {
+          "describe": {
+            "k": {
+              "$t": "int",
+              "v": 3
+            }
+          },
+          "kind": "custom",
+          "type_key": "mixture_weights"
+        },
+        "kind": "custom",
+        "path": "weights",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "count": {
+            "kind": "static",
+            "n": 3
+          },
+          "element_domain": {
+            "hi": 5.0,
+            "kind": "real",
+            "lo": -5.0
+          },
+          "element_kind": "real",
+          "element_periodic": false,
+          "kind": "list"
+        },
+        "kind": "list",
+        "path": "means",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 2.0,
+          "kind": "real",
+          "lo": 0.1
+        },
+        "kind": "real",
+        "path": "scale",
+        "periodic": false,
+        "prior": {
+          "kind": "log"
+        }
+      }
+    ],
+    "version": 1
+  }
+}

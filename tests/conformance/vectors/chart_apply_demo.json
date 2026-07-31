@@ -1,0 +1,123 @@
+{
+  "fingerprint_full": "1:full:32f90586c119133e9897271dc25324fd3d976302d6811854db607049e5b9804a",
+  "fingerprint_sampling": "1:sampling:8a01a86da2b23508f6bbeee8a5166e74330f3d3458c328c505b85c42357458d5",
+  "to_json": {
+    "conditions": [],
+    "constraints": [
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "kind": "ref",
+                      "path": "lr"
+                    }
+                  ],
+                  "domain": {
+                    "hi": 1.0,
+                    "kind": "real",
+                    "lo": 1e-05
+                  },
+                  "kind": "chart_apply",
+                  "periodic": false,
+                  "prior": {
+                    "kind": "log"
+                  },
+                  "type_kind": "real"
+                },
+                {
+                  "children": [
+                    {
+                      "kind": "ref",
+                      "path": "momentum"
+                    }
+                  ],
+                  "domain": {
+                    "hi": 0.99,
+                    "kind": "real",
+                    "lo": 0.0
+                  },
+                  "kind": "chart_apply",
+                  "periodic": false,
+                  "type_kind": "real"
+                }
+              ],
+              "kind": "add"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "float",
+                "v": 1.0
+              }
+            }
+          ],
+          "kind": "gt"
+        },
+        "hard": true,
+        "origin": "user"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "children": [
+                {
+                  "kind": "ref",
+                  "path": "momentum"
+                }
+              ],
+              "domain": {
+                "hi": 0.99,
+                "kind": "real",
+                "lo": 0.0
+              },
+              "kind": "chart_apply",
+              "periodic": false,
+              "type_kind": "real"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "float",
+                "v": 0.95
+              }
+            }
+          ],
+          "kind": "lt"
+        },
+        "hard": false,
+        "origin": "user",
+        "tags": [
+          "stability"
+        ]
+      }
+    ],
+    "params": [
+      {
+        "domain": {
+          "hi": 1.0,
+          "kind": "real",
+          "lo": 0.0
+        },
+        "kind": "real",
+        "path": "lr",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 1.0,
+          "kind": "real",
+          "lo": 0.0
+        },
+        "kind": "real",
+        "path": "momentum",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}

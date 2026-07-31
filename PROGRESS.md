@@ -1,6 +1,6 @@
 # Progress
 
-Current milestone: **M11 (open)**.
+Current milestone: **M12 (open)**.
 
 | Milestone | Completed | Tests | DECISIONS entries |
 |---|---|---|---|
@@ -26,6 +26,7 @@ Current milestone: **M11 (open)**.
 | M10.8 — `ds.value`: opaque derived quantities | 2026-07-31 | 1240 | D-76, D-77, D-78 |
 | M10.9 — `unflatten`/`apply_defaults` static-count hygiene fix | 2026-07-31 | 1258 | _none_ |
 | M10.10 — `ConstraintReport.violation_rate` | 2026-07-31 | 1265 | _none_ |
+| M11 — Representation layer (`space.represent()`, `Representation`, `Encoding`, the induced chart representation) | 2026-07-31 | 1362 | D-79, D-80, D-81, D-82 |
 
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
 
@@ -33,4 +34,4 @@ The "DECISIONS entries" column above is a **historical** record: once an entry's
 into `API.md`, the entry itself is removed from the ledger and recovered from git history. D-1
 through D-70 have been through that fold, so every ID above resolves via `git log -- DECISIONS.md`
 rather than the current file. D-52–D-70 are the exception to the one-milestone-per-row mapping —
-they came from a spec pass on 2026-07-30, before M10.5 opened, and feed M10.5 through M11.
+they came from a spec pass on 2026-07-30, before M10.5 opened, and fed M10.5 through M11.

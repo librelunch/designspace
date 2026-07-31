@@ -629,40 +629,62 @@ first, confirmed failing (`AttributeError`) before the property existed. `exampl
 `ruff`/`mypy --strict`/`pytest` all green. No format bump.
 
 ### M11 — Representation layer
-**Spec:** *The Representation Layer* (entire section); `Encoding` in Protocols; `Representation` in
-the IR; the Representation conformance bullet; Solver Integration's three shapes; rows 31–32.
+A genotype is a `Space`: `space.represent(*rules) -> Representation`, a `Space → Space` morphism
+carrying `decode`/`encode`, so a solver asks the genotype the same introspection questions it asks
+any space. Landed as three individually-green commits (dispatch rules, induced encoding, transport,
+and defaults/anchors settling all shipped before the corpus fixture and full law block, per the
+user's own preference for reviewable diffs on a milestone this size).
+
 **Build:** `represent/` — `_protocol.py` (`Encoding`, `EncodingRule`, `hasattr` predicates mirroring
-`custom/_protocol.py`), `_representation.py` (the frozen dataclass, `decode`, `encode`, `then`,
-`check`), `_build.py` (dispatch → encodability and prop-dependency checks → targets → transport →
-`meta/_meta.py::space_from_ir`), `_transport.py` (leaf substitution, projection resolution via
-`_vector_base`, opaque synthesis), `_charts.py` (the induced representation and the chart node).
-`Space.represent()`. `__init__.py` gains `Representation`, `Encoding`, `EncodingRule`, `ParamDef`,
-`Chart`, and the domain types an `Encoding.target()` must construct; `Representation`'s constructor
-is public — that *is* the supplied tier. Exporting `ParamDef` closes an M8 hole: `map_params`,
-`param_from_def`, and `space_from_ir` have all taken it since M8 with no way for a user to annotate
-their own callback.
+`custom/_protocol.py`), `_representation.py` (the frozen `Representation` dataclass — `decode`/
+`encode` are *stored callables*, not delegating methods, D-81 — `then`, `check`), `_charts.py` (the
+induced chart representation: two encoding classes, not one flag, since "cannot encode" must be an
+attribute's absence, decided per param by probing whether the source chart's `to_unit` actually
+works), `_transport.py` (leaf-substitution-then-rewrite-then-opaque expression transport across all
+four stores a condition/constraint can live in, plus the row-32 count/prop-read scans), `_build.py`
+(dispatch → row 31/32 eligibility → per-param `target()` → transport → defaults/anchors settled by
+encode-and-validate-or-drop → `meta/_meta.py::space_from_ir`). `Space.represent()`; `__init__.py`
+gains `Representation`, `RepresentationCheck`/`RepresentationCheckFailure`, `Encoding`,
+`EncodingRule`, `ParamDef`, `Chart`, `Expr`, and the `Domain` family (D-52) — `Representation`'s
+constructor is public, which *is* the supplied tier.
 
-Three things the implementation must not rediscover the hard way. **Rewrite expressions before
-calling `space_from_ir`** — `check_expr_types` raises at construction for any surviving expression
-whose operand changed kind. **`decode` must normalize instance paths to definition templates**
-(`stops[0].dwell` → `stops[].dwell`) before looking up an encoding; getting this wrong makes
-`delivery_routes` decode 0/200. **"Chart-bearing" is not `ParamDef.chart is not None`** — a scalar
-lift's chart lives in `ListDomain.element_chart`, and the literal reading silently drops whole
-vectors from the genotype.
+Three things that would otherwise have been rediscovered the hard way, confirmed directly against
+the corpus before the fuller law-block pass: rewriting expressions *before* calling
+`space_from_ir` (`check_expr_types` raises at construction for any surviving expression whose
+operand changed kind); `decode` normalizing instance paths to definition templates
+(`stops[0].dwell` → `stops[].dwell`) before an encoding lookup; and "chart-bearing" never meaning
+`ParamDef.chart is not None` (a scalar lift's chart lives in `ListDomain.element_chart`).
 
-**Gate:** the full Representation law block. Decode totality **200/200 on every corpus fixture** — a
-measured baseline from a throwaway prototype, so anything less is a regression, not an unknown.
-Feasibility agreement on `firmware_buffers`, the fixture where omitting transport costs 94% of the
-budget (12/200 source-feasible while the target calls all 200 feasible). Path and arity preservation
-over every fixture; `solver_portfolio`/`delivery_routes`/`memetic_pipeline` keep their count params
-`integer`; rows 31–32 get message-content tests naming the path; the induced representation is
-measure-preserving (fixed-seed KS on a log-scaled real, chi-square on integer and quantized params);
-`src/` contains **zero** chosen encodings and **zero** structural morphisms (grep-asserted in CI —
-the successor to "registry populated only in tests"); and a **supplied hierarchy-flattening
-morphism, written entirely against the public surface**, passes `rep.check()` — the only honest test
-that the supplied tier is expressive enough without core shipping it. Corpus:
-`mixture_stickbreaking`. New known-answer vectors; every existing vector byte-identical;
-format-version stays `1`. **Exit:** internal pre-release checkpoint — no public tag.
+Two corrections earned along the way, neither found by reasoning about the spec in the abstract —
+both found by running `represent()` against every corpus fixture and reading what broke. `_build.py`'s
+dispatch has to know whether a count/prop-excluded match came from the induced rule (decline
+silently — D-58's own criterion, nobody explicitly asked for that param) or a user-supplied rule
+(raise row 32 — the user did ask), which the induced rule cannot decide itself (`EncodingRule` takes
+only a `ParamDef`, no space-wide visibility). And `resolve/_bounds.py::bound_origin_targets` assumed
+a bound-origin constraint's target-side operand is always a bare `ParamExpr` — an invariant
+transport can now break on purpose (chart-wrapping it) without weakening the bound itself; relaxed
+to skip rather than assert, since the tighten-not-reject optimization it feeds is best-effort by
+nature and the constraint is still enforced through ordinary rejection sampling either way.
+
+**Gate:** the full Representation law block, including decode totality and feasibility agreement
+**200/200 on every corpus fixture** (measured directly, not assumed) plus `mixture_stickbreaking`;
+path and arity preservation over every fixture, with `solver_portfolio`/`delivery_routes`/
+`memetic_pipeline` keeping their count params `integer`; rows 31–32 message-content tests naming the
+offending path; the induced representation's shape and measure-preservation (fixed-seed KS on a
+log-scaled real, chi-square on an integer and a quantized param — hand-rolled, no scipy); the
+round-trip laws, including the integer-chart many-to-one witness for why `encode(decode(g)) == g`
+is explicitly not a law; `then`'s associativity and identity-unit, asserted extensionally; a
+**supplied hierarchy-flattening morphism, written entirely against the public surface**
+(`ds.space_from_ir`, `ds.flatten`/`ds.unflatten`), passing `rep.check()` — the only honest test that
+the supplied tier is expressive enough without core shipping one; and a grep assertion that `src/`
+contains **zero** chosen encodings and **zero** structural morphisms. Corpus: `mixture_stickbreaking`
+(a consumer-authored stick-breaking `Encoding`, never in `src/`, bridging a custom mixture-weights
+type to `k-1` independent unit coordinates — mixed genotypes, since an explicit rule never falls
+back to the induced rule for what it misses). `examples/09_representation.py`. New known-answer
+vectors (`mixture_stickbreaking`, `chart_apply_demo` — freezing the `ChartApply` codec via an
+induced representation's target); every pre-M11 vector byte-identical; format-version stays `1`.
+1362 total, `ruff`/`mypy --strict`/`pytest` all green. **Exit:** internal pre-release checkpoint —
+no public tag.
 
 ### M12 — Program types
 **Spec:** `.symbolic()` / `.code()`; generative/non-generative sampling behavior; `Signature`, literals, `Primitive`.

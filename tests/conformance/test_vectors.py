@@ -41,6 +41,7 @@ FIXTURES = [
     "pump_configurator",
     "compiler_pipeline",
     "vi_family",
+    "mixture_stickbreaking",
 ]
 
 

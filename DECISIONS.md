@@ -465,6 +465,220 @@ Folded into API.md's error table, row 30.
 
 ---
 
+## D-79 — Row 32's `.prop()` half: strict, or capability-gated permissive?
+
+- Status: Resolved
+- Date: 2026-07-31
+- Spec section: API.md §The Representation Layer ("Path and arity"); error table row 32; §Protocols (`Encoding.prop_expr`)
+- Decided by: User
+
+### Question
+
+Row 32, as folded from D-53, excludes a param from encoding unconditionally if a `.repeat()`
+count or a `.prop()` reads it. `Encoding.prop_expr` exists specifically ("a phenotype property as
+a genotype expression") to repair a `.prop()` reference structurally. Read literally, row 32 never
+lets `prop_expr` fire — so should the `.prop()` half of the exclusion stay an unconditional error,
+or open when the matched `Encoding` supplies `prop_expr`?
+
+### Why the specification is insufficient
+
+D-53 (path and arity) and D-63 (the repair obligation, "`prop_expr` is what makes a bridge
+buildable at all rather than merely conceivable") were resolved in the same spec pass but pull in
+opposite directions on this one point, and neither entry reconciles the other. The folded API.md
+text inherited D-53's unconditional wording, silently overriding D-63's own stated purpose for
+`prop_expr` — an oversight of the fold, not a deliberate re-decision.
+
+### Possibilities considered
+
+1. **Strict — row 32 fires unconditionally**, matching the folded text verbatim. Never weakens a
+   stated law, but makes `prop_expr` permanently dead code: no future milestone calls it, and the
+   one motivating case the spec names — bridging a custom type that declares properties into a
+   genotype — becomes impossible for any such type.
+2. **Permissive, capability-gated** (chosen): a `.prop()`-read param may be encoded iff its matched
+   `Encoding` supplies `prop_expr()`, which then rewrites every such reference structurally; row 32
+   still raises, naming the path and property, when the capability is absent. The `.repeat()`-count
+   half of the exclusion stays unconditional regardless (see D-80) — the two halves are not
+   symmetric.
+3. **Permissive with an opaque fallback** — encode a `.prop()`-read param unconditionally, using
+   `prop_expr` when supplied and otherwise transporting the containing constraint opaquely. Rejected:
+   opaque transport already exists for expressions the encoding's author did not anticipate; using
+   it here would silently downgrade every unrepaired `.prop()` site to rejection-only quality
+   instead of failing loudly, which guts row 32 far more broadly than the capability check does.
+
+### Answer
+
+Possibility 2.
+
+### Reasoning
+
+`.repeat()` counts and `.prop()` reads are excluded for different reasons, and only one of them
+generalizes. A count is structural: transport rewrites conditions, `ParamDef.condition`,
+constraints, and `ListDomain.element_constraints` — deliberately not `ListDomain.count` — so an
+encoded count-read param's count expression would silently change what the count means, with no
+protocol capability able to repair it (inventing one would perturb the integer-valued repeat-count
+calculus, D-72, the sampler's count resolution, `has_variable_length`, and `cardinality`). A
+`.prop()` read is a *value* dependency with a purpose-built repair already in the protocol; refusing
+to use it defeats the reason `prop_expr` was added at all (D-63).
+
+### Specification update
+
+API.md error table row 32 (reworded); "Path and arity" section (the `.prop()` clause).
+
+---
+
+## D-80 — `check()`'s report shape
+
+- Status: Resolved
+- Date: 2026-07-31
+- Spec section: API.md §The Representation Layer; §IR (`Representation.check`)
+- Decided by: Agent
+
+### Question
+
+API.md's illustrative `Representation` listing elides `check()`'s return type
+(`def check(self, n=200, seed=None) -> ...`). What should it return?
+
+### Why the specification is insufficient
+
+"The suite as a tool, since a supplied morphism has no other way to be shown sound" states the
+purpose but not the shape; nothing else in the spec constrains it.
+
+### Possibilities considered
+
+1. **Return `None`, raise on the first law violation.** Smallest surface, and matches the literal
+   verb "asserts the conformance laws." Stops at the first failure, giving a supplied morphism's
+   author no inventory of what else is wrong — the opposite of a diagnostic tool.
+2. **A tuple of failure strings.** No new dataclass, but unstructured text carries no law identity
+   or machine-readable path, and every other diagnostic surface in this library (`ValidationResult`,
+   `SamplingReport`, `PartialEval`) is a typed dataclass, not a string list.
+3. **A frozen report dataclass** (chosen): `RepresentationCheck(n, ok, failures)`, with
+   `RepresentationCheckFailure(law, detail, count)` deduped by `(law, detail)` across the sampled
+   draws. Never raises on a violation.
+
+### Answer
+
+Possibility 3.
+
+### Reasoning
+
+Matches the established pattern this library already uses everywhere else a multi-faceted result
+needs reporting instead of raising. `RepresentationCheck` covers the laws a supplied morphism can
+meaningfully violate — decode totality, feasibility agreement, and (when invertible) the
+round-trip — deliberately not the structural laws (path/arity), which the derived tier guarantees
+by construction and the supplied tier has no comparable law to check at all.
+
+### Specification update
+
+API.md's `Representation`/IR listing (`check`'s return type; `RepresentationCheck`/
+`RepresentationCheckFailure` added to the IR).
+
+---
+
+## D-81 — `Representation`'s `decode`/`encode`: stored callables, not delegating methods
+
+- Status: Resolved
+- Date: 2026-07-31
+- Spec section: API.md §IR (`Representation`)
+- Decided by: Agent
+
+### Question
+
+API.md's illustrative listing shows `decode`/`encode` as instance methods (`def decode(self,
+genotype: dict) -> dict: ...`). The **supplied** tier's own constructor call is
+`Representation(source=…, target=…, decode=…, encode=None)` — passing `decode`/`encode` as
+constructor arguments. A frozen dataclass cannot have both a field and a same-named method (the
+`def` statement overwrites the field), so which is it?
+
+### Why the specification is insufficient
+
+The spec shows both shapes (methods in the class body, keyword arguments at the call site) without
+reconciling them; this is an implementation-mechanism question the illustrative listing was never
+precise enough to settle.
+
+### Possibilities considered
+
+1. **Fields storing callables, called directly** (chosen): `rep.decode(g)` invokes the stored
+   function object; there is no separate `Representation.decode` method to collide with it.
+2. **A private-suffixed field plus a public delegating method** (the pattern this codebase already
+   uses for `ParamExpr.meta_map`/`.meta()` and `Space.meta_map`/`.meta()`). Works, but the
+   constructor would then need `_decode_fn=`/`_encode_fn=` keywords, breaking the spec's own
+   illustrative constructor call verbatim.
+
+### Answer
+
+Possibility 1. `__post_init__` derives `invertible` from whether `encode` was supplied and, when it
+was not, replaces the stored `None` with a callable that raises a message naming why — so
+`rep.encode` is always callable and "raises unless invertible" produces a real message rather than
+`NoneType is not callable`.
+
+### Reasoning
+
+Possibility 1 is what makes the spec's own supplied-tier constructor call type-check exactly as
+written; possibility 2 would require silently deviating from it. `then`'s composition and `check`'s
+sampling both call `self.decode`/`self.encode` the same way regardless, so nothing downstream
+depends on which mechanism is chosen — only the constructor's own keyword names do.
+
+### Specification update
+
+None — an implementation-mechanism clarification, not a behavior change; recorded per CLAUDE.md
+because it resolves an apparent internal inconsistency in the illustrative listing.
+
+---
+
+## D-82 — Opaque transport's dynamic-lift boundary
+
+- Status: Resolved
+- Date: 2026-07-31
+- Spec section: API.md §The Representation Layer ("Transport"); §Expressions (`ds.value`)
+- Decided by: Agent
+
+### Question
+
+"Core can always [synthesize the opaque leaf], knowing both `decode` and the source AST, so
+transport is total." `ds.value`'s own operands must each be a scalar-evaluable expression (M10.8) —
+enumerable into one operand per instance for a lift under a *static* count, but not for a *dynamic*
+one, where no fixed operand list exists at resolution time. Does "transport is total" hold through
+this case, and if not, what happens?
+
+### Why the specification is insufficient
+
+The totality claim was written when opaque transport was designed (D-54), reasoning only from what
+core *knows* (decode, the source AST) — not from `ds.value`'s own construction-time constraint on
+its operands, which predates M11 (M10.8) and was not re-examined against it.
+
+### Possibilities considered
+
+1. **Widen `ds.value` to accept a vector operand.** Would restore totality, but contradicts D-66
+   ("the expression language is closed at two nodes") and reopens a boundary settled for unrelated
+   reasons — the fix does not belong to this problem.
+2. **Silently fall back to a weaker transport** (e.g. drop the constraint, or approximate it).
+   Rejected outright — D-54 already establishes that dropping breaks feasibility agreement and
+   over-activates the target; silent narrowing is worse than a loud failure.
+3. **Raise, naming the param and the remedy** (chosen): unreachable for the induced chart
+   representation (`decode_expr` always succeeds, so opaque transport is never invoked at all);
+   reachable only through a user-supplied `Encoding` that supplies neither `decode_expr` nor
+   `rewrite` for a dynamic-count lift a condition or constraint touches.
+
+### Answer
+
+Possibility 3. "Transport is total" holds over every representation `represent()` successfully
+builds; the dynamic-lift case is a build-time error rather than a silently-unsound one.
+
+### Reasoning
+
+Feasibility agreement is a property of representations that exist; a representation `represent()`
+refuses to build cannot violate it. Raising loudly, at the point the boundary is actually hit, keeps
+that property true without inventing new expression-language surface or silently degrading
+correctness — consistent with how every other row-31/32 violation in this milestone is handled.
+
+### Specification update
+
+API.md §The Representation Layer ("Transport") — the boundary noted where "transport is total" is
+stated; the Representation conformance bullet reworded to scope feasibility agreement to
+representations that build successfully.
+
+---
+
 ## Entry template
 
 Copy this template for each genuine specification gap.
@@ -506,5 +720,5 @@ The `API.md` section changed after resolution, or `Pending`.
 ---
 
 _Ledger tail._ D-1 through D-70 were resolved into `API.md` and their entries removed here
-(preserved in git history). D-71 through D-78 (M10.5, M10.6, M10.7, M10.8) are resolved above and
-will fold out on the next spec pass; continue with D-79.
+(preserved in git history). D-71 through D-82 (M10.5, M10.6, M10.7, M10.8, M11) are resolved above
+and will fold out on the next spec pass; continue with D-83.

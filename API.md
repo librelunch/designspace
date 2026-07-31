@@ -668,8 +668,13 @@ A param `p` is **encodable** iff no other key of `source.params` begins `f"{p}."
 an encoding owns its whole subtree, and structs, payload-bearing choice discriminators, and
 struct/choice lifts have descendants relocated into separate flat entries that nothing reconnects.
 A *bare* choice has no descendants and is encodable, which is right: it is semantically a
-categorical. Additionally, a param is **prop-excluded** if a `.repeat()` count or any `.prop()`
-reads it — encoding it away from `custom` would dangle both. Violations are resolution errors.
+categorical. Additionally, a param a `.repeat()` count reads is **excluded unconditionally**:
+transport rewrites conditions and constraints, never a count expression, so encoding the param a
+count reads would silently change what the count means. A param any `.prop()` reads is excluded
+too, *unless* the matched `Encoding` supplies `prop_expr()` to rewrite every such reference
+structurally — the repair that makes a custom-to-u-space bridge buildable at all when the bridged
+type declares properties (see *Protocols*, `Encoding.prop_expr`). Violations are resolution errors
+(row 32).
 
 ### The induced chart representation
 
@@ -697,15 +702,23 @@ Conditions and constraints are rewritten, never dropped. Three mechanisms, prefe
    cannot reach: one-hot turning `algo == "adam"` into `(algo[1] > algo[0]) & (algo[1] > algo[2])`.
 3. **Opaque transport** — core wraps the source expression as a `ds.value(...)` returning `bool`
    whose function decodes its operands and evaluates the source expression. Core can always do this,
-   knowing both `decode` and the source AST, so **transport is total**.
+   knowing both `decode` and the source AST, so **transport is total** — with one narrow boundary:
+   `ds.value`'s own operands must each be a scalar-evaluable expression, so a lift touched by the
+   expression is enumerated into per-instance operands under a *static* count, and cannot be under a
+   *dynamic* one (no fixed operand list exists at resolution time). This is unreachable for the
+   induced chart representation (its `decode_expr` always succeeds, so opaque transport is never
+   needed) and arises only from a user-supplied `Encoding` that supplies neither `decode_expr` nor
+   `rewrite` for a dynamic-count lift a condition or constraint touches — `represent()` raises,
+   naming the param and the remedy, rather than silently narrowing feasibility agreement.
 
 Because nothing is dropped, target activity always matches source activity, and **feasibility
-agreement holds by construction**. What differs is *quality*, reported as `opaque_conditions` /
-`opaque_constraints`: structurally transported expressions keep margins and partial evaluation,
-opaque ones do not (see *Constraints* on the white/grey/black tiers). Expressions are rewritten in
-all four stores they inhabit — `Space.conditions`, each `ParamDef.condition`, `Space.constraints`,
-and `ListDomain.element_constraints`. A projection (`p.field("w").sum()`) reads the lift's
-*descendant*, not the lift its `params` set names, and must be rewritten at the projection node.
+agreement holds by construction** for every representation `represent()` successfully builds. What
+differs is *quality*, reported as `opaque_conditions` / `opaque_constraints`: structurally
+transported expressions keep margins and partial evaluation, opaque ones do not (see *Constraints*
+on the white/grey/black tiers). Expressions are rewritten in all four stores they inhabit —
+`Space.conditions`, each `ParamDef.condition`, `Space.constraints`, and `ListDomain.
+element_constraints`. A projection (`p.field("w").sum()`) reads the lift's *descendant*, not the
+lift its `params` set names, and must be rewritten at the projection node.
 
 ### Obligations
 
@@ -1110,7 +1123,19 @@ class Representation:             # a Space → Space morphism; see The Represen
     def decode(self, genotype: dict) -> dict: ...      # total
     def encode(self, phenotype: dict) -> dict: ...     # raises unless invertible
     def then(self, other: Representation) -> Representation: ...
-    def check(self, n: int = 200, seed=None) -> ...    # the conformance laws, as a tool
+    def check(self, n: int = 200, seed=None) -> RepresentationCheck: ...  # the laws, as a tool
+
+@dataclass(frozen=True)
+class RepresentationCheckFailure:
+    law: str            # short law name, e.g. "decode_totality" | "feasibility_agreement"
+    detail: str          # a representative message naming the offending path/value
+    count: int           # how many of the n draws exhibited this failure
+
+@dataclass(frozen=True)
+class RepresentationCheck:
+    n: int
+    ok: bool
+    failures: tuple[RepresentationCheckFailure, ...]
 ```
 
 A `Representation` **never enters the IR**, `to_json`, or the fingerprint preimage — its target is
@@ -1170,7 +1195,7 @@ Tagged **R** (resolution-time) or **V** (validation/fill/sample-time).
 | 29 | Instance index out of range against a **static** count; boolean operator applied to a lift-valued operand; `.choice()` payload that is not a `Space` | R |
 | 30 | `ds.value`: non-scalar `returns`; an operand that is not an expression; comparison type mismatch against the declared `returns` (row 16's clause, mirrored — strict, no int/float leniency) | R |
 | 31 | `Encoding.target()` returning a path other than the source param's; `rewrite()`/`decode_expr()` output referencing anything outside that param's own paths, or an out-of-range instance index | R |
-| 32 | Encoding a param with relocated descendants (struct, payload-bearing choice discriminator, struct/choice lift), or one a `.repeat()` count or `.prop()` reads | R |
+| 32 | Encoding a param with relocated descendants (struct, payload-bearing choice discriminator, struct/choice lift); one a `.repeat()` count reads, unconditionally; or one a `.prop()` reads, unless the matched `Encoding` supplies `prop_expr()` to repair every such reference | R |
 | 33 | `coordinate_paths()` on a space with no fixed layout: a dynamic `.repeat()` count, or a param carrying a condition | R |
 
 ### Degeneracy table
@@ -1248,7 +1273,7 @@ The spec's executable laws double as the acceptance suite:
 - **Partial Configs:** three-valued activity collapses to binary activity under `unknown → inactive`; the driver-loop coincidence `next_assignable(c) == [] ⟺ is_complete(c)`; `remaining_domain` soundness (never excludes a still-feasible value; every descriptor value validates against the declared domain); the one-unset-operand reducer positive (bound and single-forbid narrowing across kinds) and negative (a two-unset-operand implication is not propagated); the `PartialEval` evaluable/pending partition.
 - **Identity:** sugar-equivalence pairs fingerprint-equal (`log_scale`/prior, `implies`, variadic repeat/chain, expression bounds vs. their `.forbid(x > y)` forbidden-state manual expansion — *and* fingerprint-**distinct** from the feasibility-opposite `.forbid(x <= y)`, so fingerprint-equality tracks feasibility despite `origin`'s exclusion; `require(e)` feasibility-, margin-, and fingerprint-equal to `forbid(~e)`); permuted declarations differ; scope monotonicity (meta/tags/anchors/declared-constraint changes are `sampling`-equal, `full`-distinct); round-trip law; mark-sentinel distinctness; type-tag distinctness (`1` vs `1.0` vs `True`); `−0.0 ≡ 0.0`; known-answer digest vectors.
 - **Structure:** `unflatten(flatten(c)) == c`; per-element constraint instantiation counts; `Array`-vs-`List` dtype per static/dynamic count level; leaf-flattening aggregate values on nested lifts; **the fixed leaf layout** — `coordinate_paths()` round-trips through `unflatten` with no bookkeeping keys present (`ds.unflatten(dict(zip(space.coordinate_paths(), values)), space)`) on a space where every `.repeat()` count is a literal integer and no param carries a condition, raises a path-named resolution error (row 33) otherwise, excludes lift-length bookkeeping at every nesting depth, and orders its output identically to `flatten`'s (and therefore the DataFrame's) leaf order.
-- **Representation:** `decode` totality as **domain membership** — `source.validate(rep.decode(g)).param_errors == ()` for every `g` drawn from `target` (not `.valid`, which folds in feasibility, and so would be false by construction wherever a constraint is opaque); `encode` target-validity when `invertible`; **defaults and anchors** carried into the target are valid there, and every one no `encode` could carry appears in `dropped_defaults`/`dropped_anchors` rather than crossing unencoded; the **one-directional** round-trip `decode(encode(x)) == x`, with `encode(decode(g)) == g` explicitly *not* a law (integer charts, quantized grids, one-hot ties, and random-key permutations are all many-to-one); **feasibility agreement** `target.is_feasible(g) == source.is_feasible(rep.decode(g))`, unconditional because transport is total; the **identity** — a rule set matching no param leaves `target.fingerprint() == source.fingerprint()` at both scopes with `decode(c) == c == encode(c)`; `then` **associative** with identity a two-sided unit; **path and arity preservation** for derived representations — `set(target.params) == set(source.params)` over definition-path keys, dimensionality unconstrained, and a param with relocated descendants or a `.prop()` dependent never encoded; the **induced chart representation** touches exactly the chart-bearing params (own *or* element level) that no count or `.prop()` reads, targets `real(0,1)` with `periodic` mirrored, and is measure-preserving; `Representation` never enters the IR, `to_json`, or the preimage.
+- **Representation:** `decode` totality as **domain membership** — `source.validate(rep.decode(g)).param_errors == ()` for every `g` drawn from `target` (not `.valid`, which folds in feasibility, and so would be false by construction wherever a constraint is opaque); `encode` target-validity when `invertible`; **defaults and anchors** carried into the target are valid there, and every one no `encode` could carry appears in `dropped_defaults`/`dropped_anchors` rather than crossing unencoded; the **one-directional** round-trip `decode(encode(x)) == x`, with `encode(decode(g)) == g` explicitly *not* a law (integer charts, quantized grids, one-hot ties, and random-key permutations are all many-to-one); **feasibility agreement** `target.is_feasible(g) == source.is_feasible(rep.decode(g))`, unconditional for every representation `represent()` successfully builds, because transport is total over that set (the one narrow exception — a dynamic-count lift touched by an expression whose encoding supplies neither `decode_expr` nor `rewrite` — is a build-time error, never a silently-unsound representation); the **identity** — a rule set matching no param leaves `target.fingerprint() == source.fingerprint()` at both scopes with `decode(c) == c == encode(c)`; `then` **associative** with identity a two-sided unit; **path and arity preservation** for derived representations — `set(target.params) == set(source.params)` over definition-path keys, dimensionality unconstrained, a param with relocated descendants or a count dependent never encoded, and a `.prop()` dependent encoded only when the matched `Encoding` supplies `prop_expr()`; the **induced chart representation** touches exactly the chart-bearing params (own *or* element level) that no count or `.prop()` reads, targets `real(0,1)` with `periodic` mirrored, and is measure-preserving; `Representation` never enters the IR, `to_json`, or the preimage.
 - **Sampling:** tighten-not-reject on bound-origin constraints is distributionally identical to rejection (truncation ≡ conditioning).
 - **Sampling diagnostics:** `sampling_report` never rejects and never mutates (`n` draws behind every row regardless of `acceptance_rate`; `space.fingerprint()` unchanged); seed-reproducible; `satisfied` conditioned on `applicable`, not on all draws; Unknown-swallowing is visible (`ConstraintReport.applicable < 1.0` on an unguarded optional aggregate, `== 1.0` once `.if_inactive()` guards it, all else equal); the funnel is visible and documented as correct-by-spec, not a defect (`acceptance_rate` matches the analytic value under Kleene rule 4, and the accepted sample concentrates away from where the constraint is inapplicable); per-instance folding and `activity`'s template keys share one denominator, `n`, with every scalar row (D-73); `tighten_bounds=False` draws the full declared envelope and `=True` matches the reference sampler's own acceptance rate (D-74).
 - **Opaque values:** `returns=float` under a comparison reports a real margin, at parity with `.prop()`'s own baseline; `returns=bool` usable bare (`margin = None`, absorbing through Boolean composition); `returns=int` drives a `.repeat()` count, a non-int `returns` there is row 12; row 30's three clauses (non-scalar `returns`, a non-expression operand, comparison type mismatch — the last strict, no int/float leniency, mirroring `.prop()`); the calling convention — `fn` receives exactly the operand values, positionally, never the config, asserted directly — and an `fn` exception propagates uncaught; Unknown is operand-*value*-driven (an inactive operand yields Unknown without calling `fn`; `.if_inactive()` inside an operand composes; an unset operand under partial evaluation is pending and never coalesced); identity opacity — `to_json`/`fingerprint` raise with the closed-set message by default, `mark` yields `{"$opaque": true}`, `drop` yields the same marker plus a manifest entry naming the site — across all three positions a `ds.value` can occupy (a constraint, a `.when()` condition, a dynamic repeat count); `dependency_graph` includes the operands' referenced params; `.cardinality()` is conservatively `None` wherever structural equality can't see through the opacity; the tier table's no-narrowing guarantee (`remaining_domain` never narrows off a grey/black predicate).

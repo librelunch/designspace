@@ -50,8 +50,9 @@ class Encoding(Protocol):
       DECISIONS.md D-63) — absent, or returning `None` for a live
       property, row 32 still fires.
     - `rewrite(self, param: ParamDef, node: Expr) -> Expr | None` — per-node
-      structural rewrite where leaf substitution cannot reach (one-hot's
-      `algo == "adam"` becoming an argmax comparison); tried before leaf
+      structural rewrite where leaf substitution cannot reach (a one-vs-
+      rest categorical bridge turning `algo == "adam"` into a pairwise
+      comparison between two of its own coordinates); tried before leaf
       substitution at each node touching this param.
     - `measure_preserving(self) -> bool` — declared, never assumed (D-56):
       absent means "not asserted", not "false" is not implied either way
