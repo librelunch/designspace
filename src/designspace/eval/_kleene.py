@@ -43,6 +43,7 @@ from designspace.expr import (
     BoolExpr,
     BoolLiteral,
     BoolOp,
+    ChartApply,
     Compare,
     Contains,
     Count,
@@ -244,6 +245,18 @@ def _vector_paths(
 def _vector_values(
     expr: Expr, config: dict[str, Any], activity: dict[str, bool], space: Space
 ) -> Any | Unknown:
+    """`ChartApply` (a representation's decode, substituted by transport) is
+    vector-polymorphic: wrapping a lift or a `.field()` projection, it maps
+    `chart.from_unit` element-wise over that operand's own vector values
+    rather than gathering instance paths itself — the wrapped operand's
+    shape is untouched by a decode, only its leaves' values are (API.md,
+    "Expressions" — "Chart application" is "vector-polymorphic: applied to
+    a lift or a projection it maps element-wise")."""
+    if isinstance(expr, ChartApply):
+        inner = _vector_values(expr.operand, config, activity, space)
+        if isinstance(inner, Unknown):
+            return inner
+        return _map_leaves(inner, expr.chart.from_unit)
     paths = _vector_paths(expr, config, activity, space)
     if isinstance(paths, Unknown):
         return paths
@@ -597,6 +610,17 @@ def evaluate_arith(
         return _evaluate_value(
             expr, config, activity, space, status=status, value_cache=value_cache
         )
+    if isinstance(expr, ChartApply):
+        # Scalar position: `operand` is always a bare `ParamExpr` here (a
+        # `Field`-projected operand only ever reaches this node inside an
+        # aggregate, which evaluates it through `_vector_values` instead —
+        # `Field` has no arithmetic dunders of its own, so it can never
+        # appear directly under a `Compare`/`ArithOp`).
+        assert isinstance(expr.operand, ArithExpr)
+        value = evaluate_arith(
+            expr.operand, config, activity, space, status=status, value_cache=value_cache
+        )
+        return value if isinstance(value, Unknown) else expr.chart.from_unit(value)
     if isinstance(expr, Sum):
         leaves = _aggregate_leaves(expr, config, activity, space)
         if isinstance(leaves, Unknown):

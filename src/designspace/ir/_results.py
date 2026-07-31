@@ -2,10 +2,14 @@
 
 M2 needs (`ConstraintEval`, `ValidationResult`, `ParamError`); M6 adds
 `PartialEval` and the `RemainingDomain` descriptor family; M7 adds
-`ParamDiff`; M8 adds `SubspaceInfo` (`Capabilities` waits for the M11
-Representation/Encoding layer `.capability_report()` needs — DECISIONS.md
-D-43 defers it, "cheap read-only accessors only" for M8); M10.6 adds
-`ConstraintReport`/`SamplingReport` (API.md, "Sampling diagnostics").
+`ParamDiff`; M8 adds `SubspaceInfo`; M10.6 adds `ConstraintReport`/
+`SamplingReport` (API.md, "Sampling diagnostics"); M11 adds
+`RepresentationCheck`/`RepresentationCheckFailure` (`Representation.check()`
+— API.md, "The Representation Layer"). `capability_report()`/`Capabilities`,
+once slated for this layer, were removed outright before M11 opened
+(DECISIONS.md D-57, folded into API.md's "Staging" section): `rep.target`
+is an ordinary `Space`, so solver negotiation is ordinary introspection —
+there is nothing left for a dedicated report to say.
 """
 
 from __future__ import annotations
@@ -211,3 +215,31 @@ class SamplingReport:
     acceptance_rate: float
     constraints: tuple[ConstraintReport, ...]
     activity: MappingProxyType[str, float]
+
+
+@dataclass(frozen=True)
+class RepresentationCheckFailure:
+    """One law violation `Representation.check()` recorded, deduped by
+    `(law, detail)` across the `n` sampled draws — a count of how many
+    draws exhibited it, not one row per draw. `check()` is a diagnostic
+    tool for a supplied morphism's author (API.md, "The Representation
+    Layer": "the suite as a tool, since a supplied morphism has no other
+    way to be shown sound"), not a per-draw audit trail."""
+
+    law: str  # short law name, e.g. "decode_totality" | "feasibility_agreement"
+    detail: str  # a representative message naming the offending path/value
+    count: int  # how many of the n draws exhibited this failure
+
+
+@dataclass(frozen=True)
+class RepresentationCheck:
+    """`rep.check(n=200, seed=None)` (API.md, "The Representation Layer";
+    DECISIONS.md — `check()`'s report shape is an implementation choice the
+    spec leaves open). Never raises on a law violation: mirrors
+    `ValidationResult`/`SamplingReport`/`PartialEval` — a report, not an
+    exception, matching every other diagnostic surface this library
+    returns. `ok` is `True` iff `failures` is empty."""
+
+    n: int
+    ok: bool
+    failures: tuple[RepresentationCheckFailure, ...]

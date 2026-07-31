@@ -32,6 +32,7 @@ from designspace.expr import (
     BoolExpr,
     BoolLiteral,
     BoolOp,
+    ChartApply,
     Compare,
     Contains,
     Count,
@@ -310,6 +311,40 @@ def encode_expr(
         assert mode == "drop" and ctx is not None
         ctx.dropped.append(f"{site}: ds.value fn (opaque)")
         return dict(_OPAQUE_MARKER)
+    if isinstance(node, ChartApply):
+        # Opaque-free, unlike `Value` above: `chart_apply`'s `fn` is always
+        # `chart.from_unit`, a pure function of `type_kind`/`domain`/
+        # `prior`/`quantized`/`periodic` — the same declaration facts
+        # `encode_param` already encodes for an ordinary `ParamDef`, reused
+        # here via `identity/_ir_codec.py` through a function-local import
+        # (a module-level one would cycle: `_ir_codec` imports `_tags` for
+        # `encode_expr` itself). `scope="document"` is fixed rather than
+        # threaded through: real/integer domain encoding — the only two
+        # kinds a chart-bearing param ever has — never branches on scope
+        # (only `list`/`custom` domains do), so any literal scope is
+        # equivalent here. An external `Prior` still rides the existing
+        # raise/mark/drop path (`encode_prior`), keyed off the same `ctx`.
+        from designspace.identity._ir_codec import (
+            encode_domain,
+            encode_prior,
+            encode_quantized,
+        )
+
+        effective_ctx = ctx if ctx is not None else EncodeContext(mode="raise")
+        tree: dict[str, Any] = {
+            "kind": "chart_apply",
+            "children": _enc_children(node.children, ctx, site),
+            "type_kind": node.type_kind,
+            "domain": encode_domain(node.type_kind, node.domain, "document", effective_ctx, site),
+            "periodic": node.periodic,
+        }
+        prior_tree = encode_prior(site, node.prior, effective_ctx)
+        if prior_tree is not None:
+            tree["prior"] = prior_tree
+        quantized_tree = encode_quantized(node.quantized)
+        if quantized_tree is not None:
+            tree["quantized"] = quantized_tree
+        return tree
     if isinstance(node, Field):
         return {
             "kind": "field",
@@ -439,6 +474,31 @@ def decode_expr(tree: dict[str, Any]) -> Expr:
     if kind == "distinct":
         (operand,) = children
         return Distinct(operand, tuple(tree["fields"]))
+    if kind == "chart_apply":
+        (operand,) = children
+        from designspace.charts import build_chart
+        from designspace.identity._ir_codec import decode_domain, decode_prior, decode_quantized
+
+        type_kind = tree["type_kind"]
+        domain = decode_domain(type_kind, tree["domain"], "<chart_apply>")
+        prior = decode_prior(tree.get("prior"))
+        quantized = decode_quantized(tree.get("quantized"))
+        # Rebuilt fresh, never trusted from input — the same "charts are
+        # always derived" rule `resolve.rebuild_charts` applies to
+        # `ParamDef.chart` (identity/_ir_codec.py's module docstring); the
+        # source facts just decoded were already valid once (the original
+        # param resolved successfully), so this cannot raise.
+        chart = build_chart("<chart_apply>", type_kind, domain, prior, quantized)
+        assert chart is not None  # type_kind is always "real"/"integer" here
+        return ChartApply(
+            operand=operand,
+            chart=chart,
+            type_kind=type_kind,
+            domain=domain,
+            prior=prior,
+            quantized=quantized,
+            periodic=tree["periodic"],
+        )
     raise SerializationError(f"unknown expression node kind {kind!r}")
 
 

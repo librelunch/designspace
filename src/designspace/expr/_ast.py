@@ -607,3 +607,48 @@ class Distinct(BoolExpr):
     @property
     def children(self) -> tuple[Expr, ...]:
         return (self.operand,)
+
+
+@dataclass(frozen=True, eq=False)
+class ChartApply(ArithExpr, VectorExpr):
+    """A representation's decode, substituted into a transported expression
+    (API.md, "Expressions" — "Chart application"; "The Representation
+    Layer" — "Transport"). Alongside `ds.value`, this is one of the two
+    nodes the expression language will ever grow — but unlike `ds.value` it
+    is opaque-free: `fn` is always `chart.from_unit`, a pure function of the
+    declaration already on `ParamDef`.
+
+    Not user-constructible: emitted only by `represent/_transport.py` when
+    leaf substitution rewrites a reference to an encoded param, wrapping
+    whatever reference node sits at the substitution site — a bare
+    `ParamExpr` (a scalar or a direct lift) or a `Field` projection (a
+    struct lift's member). It carries the **source** chart's declaration —
+    domain, prior, quantization, periodicity — because the param `operand`
+    actually reads, in the genotype, is an ordinary `real(0,1)` whose own
+    chart is uniform (API.md: "It carries the source chart's declaration
+    ... because the param it reads in the genotype is an ordinary
+    real(0,1) whose own chart is uniform"). Vector-polymorphic like
+    `Field`: applied to a lift or a projection of one, it maps element-wise
+    over the leaves (`eval/_kleene.py::_vector_values`) — hence
+    `VectorExpr`, not just `ArithExpr`.
+
+    IR-typed fields are `Any` here to avoid a cycle (`expr/` must never
+    import `ir/`) — the same avoidance already used by
+    `CustomDomain.param_type` and `ListDomain.element_constraints`.
+    """
+
+    operand: Expr
+    chart: Any  # designspace.ir.Chart — decodes a unit coordinate to a source value
+    type_kind: str  # "real" | "integer" -- the SOURCE kind
+    domain: Any  # designspace.ir.RealDomain | IntegerDomain (source)
+    prior: Any = None  # designspace.ir.PriorSpec | None (source)
+    quantized: Any = None  # designspace.ir.QuantizedSpec | None (source)
+    periodic: bool = False
+
+    @property
+    def kind(self) -> str:
+        return "chart_apply"
+
+    @property
+    def children(self) -> tuple[Expr, ...]:
+        return (self.operand,)

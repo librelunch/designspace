@@ -24,6 +24,7 @@ from designspace.expr import (
     SCALAR_TYPES,
     ArithOp,
     BoolOp,
+    ChartApply,
     Compare,
     Contains,
     CountOf,
@@ -207,11 +208,16 @@ def _lift_depth(domain: ListDomain) -> int:
 
 
 def _vector_base(node: Any) -> Any:
-    """Unwraps a `.field()` chain down to the underlying lift-referencing
-    `ParamExpr` (a scalar lift *is* a vector expression; `.field()`
-    projects a struct lift into one — the base reference is what actually
-    carries the `ListDomain`)."""
-    while isinstance(node, Field):
+    """Unwraps a `.field()` chain — and a representation's `ChartApply`
+    wrapper, which a transported expression may have inserted around either
+    a bare lift reference or a `.field()` projection (M11) — down to the
+    underlying lift-referencing `ParamExpr` (a scalar lift *is* a vector
+    expression; `.field()` projects a struct lift into one — the base
+    reference is what actually carries the `ListDomain`). Required, not
+    cosmetic: without unwrapping `ChartApply` too, a transported aggregate
+    (`Sum(ChartApply(Field(...)))`) fails `_referenced_domain`'s bare-
+    param-reference check on its own decode."""
+    while isinstance(node, Field | ChartApply):
         node = node.operand
     return node
 

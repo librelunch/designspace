@@ -24,6 +24,7 @@ from designspace.expr import (
     BoolExpr,
     BoolLiteral,
     BoolOp,
+    ChartApply,
     Compare,
     Contains,
     Count,
@@ -194,6 +195,16 @@ def substitute_expr(node: Expr, literals: dict[str, Literal | BoolLiteral]) -> E
         return IsSorted(substitute_expr(node.operand, literals), node.descending)
     if isinstance(node, Distinct):
         return Distinct(substitute_expr(node.operand, literals), node.fields)
+    if isinstance(node, ChartApply):
+        return ChartApply(
+            substitute_expr(node.operand, literals),
+            node.chart,
+            node.type_kind,
+            node.domain,
+            node.prior,
+            node.quantized,
+            node.periodic,
+        )
     raise TypeError(f"cannot substitute into expr kind {node.kind!r}")  # pragma: no cover
 
 

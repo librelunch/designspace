@@ -32,6 +32,7 @@ from designspace.expr import (
     BoolExpr,
     BoolLiteral,
     BoolOp,
+    ChartApply,
     Compare,
     Contains,
     Count,
@@ -140,6 +141,16 @@ def rewrite_expr(node: Expr, rename: Mapping[str, str]) -> Expr:
         return IsSorted(rewrite_expr(node.operand, rename), node.descending)
     if isinstance(node, Distinct):
         return Distinct(rewrite_expr(node.operand, rename), node.fields)
+    if isinstance(node, ChartApply):
+        return ChartApply(
+            rewrite_expr(node.operand, rename),
+            node.chart,
+            node.type_kind,
+            node.domain,
+            node.prior,
+            node.quantized,
+            node.periodic,
+        )
     raise TypeError(f"cannot relocate expr kind {node.kind!r}")  # pragma: no cover
 
 
