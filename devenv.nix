@@ -8,7 +8,7 @@
   packages = with pkgs; [
     gcc
     gccStdenv.cc.cc.lib
-    libz
+    zlib
   ];
   languages = {
     python = {
@@ -21,9 +21,8 @@
     };
   };
 
-  env.LD_LIBRARY_PATH = lib.makeLibraryPath [
-    pkgs.stdenv.cc.cc.lib
-    pkgs.zlib
-    "/run/opengl-driver" # libcuda.so, libnvidia-*.so from host driver, only necessary for PyTorch/CUDA
+  env.LD_LIBRARY_PATH = with pkgs; lib.makeLibraryPath [
+    stdenv.cc.cc.lib
+    zlib
   ];
 }
