@@ -172,6 +172,77 @@ def test_satisfied_conditioned_on_applicable_not_all_draws():
 
 
 # ---------------------------------------------------------------------------
+# ConstraintReport.violation_rate: the polarity-resolved reading
+# `ConstraintEval.violated` already gives the per-config case; `satisfied`
+# alone is raw (a forbid/discourage names a *bad* state, so a high
+# `satisfied` there is unhealthy, the opposite of encourage/require/bound).
+# ---------------------------------------------------------------------------
+
+
+def _one_row(space: Space, n: int = 400, seed: int = 0):
+    report = space.sampling_report(n, seed=seed)
+    (row,) = report.constraints
+    return row
+
+
+def test_forbid_violation_rate_equals_satisfied_directly():
+    # forbid names the bad state -- satisfied *is* the violation fraction.
+    space = ds.space(ds.param("x").real(0.0, 1.0)).forbid(ds.param("x") > 0.5)
+    row = _one_row(space)
+    assert not row.constraint.feasible_when_satisfied
+    assert row.violation_rate == row.satisfied
+
+
+def test_discourage_violation_rate_equals_satisfied_directly():
+    space = ds.space(ds.param("x").real(0.0, 1.0)).discourage(ds.param("x") > 0.5)
+    row = _one_row(space)
+    assert not row.constraint.feasible_when_satisfied
+    assert row.violation_rate == row.satisfied
+
+
+def test_require_violation_rate_is_one_minus_satisfied():
+    # require names the good state -- violated is the complement.
+    space = ds.space(ds.param("x").real(0.0, 1.0)).encourage(ds.param("x") <= 0.7)
+    row = _one_row(space)
+    assert row.constraint.feasible_when_satisfied
+    assert row.violation_rate == pytest.approx(1.0 - row.satisfied)
+
+
+def test_impossible_require_is_always_violated():
+    # The clearest case: a require that can never hold reports
+    # violation_rate == 1.0 directly, not a satisfied == 0.0 a reader must
+    # flip by hand.
+    space = ds.space(ds.param("x").real(0.0, 1.0)).require(ds.param("x") > 2.0)
+    row = _one_row(space)
+    assert row.satisfied == 0.0
+    assert row.violation_rate == 1.0
+
+
+def test_encourage_violation_rate_is_one_minus_satisfied():
+    space = ds.space(ds.param("x").real(0.0, 1.0)).encourage(ds.param("x") <= 0.7)
+    row = _one_row(space)
+    assert row.constraint.feasible_when_satisfied
+    assert row.violation_rate == pytest.approx(1.0 - row.satisfied)
+
+
+@pytest.mark.parametrize("verb", ["encourage", "discourage"])
+def test_applicable_zero_gives_violation_rate_zero_regardless_of_polarity(verb):
+    # Mirrors `ConstraintEval.violated`'s own "inapplicable is never
+    # violated" (Kleene rule 4) and `satisfied`'s own "0.0 by convention,
+    # never NaN" default -- extended consistently to both polarities, not
+    # derived mechanically from `1 - satisfied` (which would read a
+    # never-evaluated encourage/require row as "always violated").
+    flag = ds.param("flag").bool().prior(weights=(1, 0))  # never True
+    guarded = ds.param("y").real(0.0, 1.0).when(flag)
+    space = ds.space(flag, guarded)
+    space = getattr(space, verb)(ds.param("y") > 0.0)
+    row = _one_row(space, n=50)
+    assert row.applicable == 0.0
+    assert row.satisfied == 0.0
+    assert row.violation_rate == 0.0
+
+
+# ---------------------------------------------------------------------------
 # Unknown-swallowing
 # ---------------------------------------------------------------------------
 

@@ -18,6 +18,35 @@ count stays exactly as before — unrecoverable, since no `ListDomain` count
 exists to fall back to: the outer level omits the list (as it already did),
 the nested level still raises `KeyError` (as it already did) — noted, not
 changed; the spec addresses only the static case.
+
+**Bug fix (post-M10.7):** the static-count fallback originally assumed an
+absent bookkeeping key always meant "a full coordinate vector was supplied,
+recover the length" — but `apply_defaults` also calls this same `unflatten`
+on a `flat` dict where a literal-count list was deliberately left implicit
+(API.md, "Defaults" > "Counts and lifts": "otherwise the lift is left
+implicit") with *no* element ever written, and the fallback then tried to
+reconstruct elements that were never there. For a scalar/custom leaf that
+raised an uncaught `KeyError`; for a struct element (which unflattens
+absence to `{}` rather than raising, mirroring the omission convention just
+above) it instead silently produced `n` empty placeholders — either way,
+not the "omit if nothing present" answer every other absent container
+already gets. The static (non-zero-count) fallback branch now checks for at
+least one real leaf under the list's own instance range before committing
+to reconstruct anything; finding none, it omits the list instead, exactly
+like an absent bookkeeping key on a dynamic count already did. A present
+bookkeeping key skips this check entirely (unaffected, exactly as before),
+and the fully-supplied coordinate-vector round trip (no bookkeeping keys
+anywhere, but every leaf present) always finds its own first leaf and so is
+unaffected too.
+
+This check is gated to a **fully static** count chain (`_is_fully_static`,
+every nested `.repeat()` level a literal `int` — the identical boundary
+`coordinate_paths()` itself draws for "fixed layout"). A *mixed* chain — a
+static outer count over a dynamic inner one, e.g.
+`.repeat(ds.param("n")).repeat(2)` — is the separate, already-documented
+case just above: unrecoverable regardless of data, because the *inner*
+count is never a literal the fallback can use, so it still raises exactly
+as before this fix.
 """
 
 from __future__ import annotations
@@ -28,6 +57,25 @@ from designspace.build._space import Space
 from designspace.expr import ArithExpr
 from designspace.ir import ChoiceDomain, ListDomain
 from designspace.paths import element_prefix, instance_prefix
+
+
+def _is_fully_static(domain: ListDomain) -> bool:
+    """`True` iff every level of a (possibly nested-list) lift has a
+    literal `int` count -- the same boundary `coordinate_paths()` itself
+    draws for a "fixed layout" (a struct/choice element is a recursion
+    boundary handled by its own independent `_unflatten_level` call, not
+    inspected here). Gates the static-count-fallback safety check below: a
+    *mixed* chain (a static outer count over a dynamic inner one, e.g.
+    `.repeat(ds.param("n")).repeat(2)`) is a different, already-documented
+    "unrecoverable regardless of data" case (M10.7's own "nested level
+    still raises `KeyError`" note) that this fix must not touch.
+    """
+    if not isinstance(domain.count, int):
+        return False
+    if domain.element_kind == "list":
+        assert isinstance(domain.element_domain, ListDomain)
+        return _is_fully_static(domain.element_domain)
+    return True
 
 
 def _resolve_count(flat: dict[str, Any], concrete_path: str, count: int | ArithExpr) -> int | None:
@@ -72,9 +120,28 @@ def _unflatten_level(
                 result[local_name] = value
         elif pd.type_kind == "list":
             assert isinstance(pd.domain, ListDomain)
+            bookkeeping_present = concrete_path in flat
             n = _resolve_count(flat, concrete_path, pd.domain.count)
             if n is None:
                 continue
+            if not bookkeeping_present and n > 0 and _is_fully_static(pd.domain):
+                # Static-count fallback (D-75): a literal count needs no
+                # bookkeeping key to be "determined", so its absence alone
+                # can't distinguish a full coordinate vector (every leaf
+                # present, no bookkeeping keys anywhere -- the round-trip
+                # this fallback exists for) from a list left implicit with
+                # nothing written at all (`apply_defaults` leaving a
+                # no-default lift unfilled, or an inactive list) -- an
+                # element kind that unflattens absence to `{}` rather than
+                # raising (a struct with nothing present) would otherwise
+                # "reconstruct" `n` empty placeholders instead of omitting
+                # the list, so check for at least one real leaf under this
+                # instance range before committing to any of it. Gated to a
+                # *fully* static chain -- a mixed static/dynamic nested
+                # count is the separate, unchanged "still raises" case.
+                marker = f"{concrete_path}["
+                if not any(k.startswith(marker) for k in flat):
+                    continue
             result[local_name] = [
                 _unflatten_list_element(
                     flat,

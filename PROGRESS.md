@@ -24,6 +24,8 @@ Current milestone: **M11 (open)**.
 | M10.6 — Sampling diagnostics (`sampling_report`, `SamplingReport`/`ConstraintReport`) | 2026-07-30 | 1130 | D-73, D-74 |
 | M10.7 — Traversal extraction and child index (`Space.coordinate_paths()`, `unflatten` static-count fallback) | 2026-07-31 | 1189 | D-75 |
 | M10.8 — `ds.value`: opaque derived quantities | 2026-07-31 | 1240 | D-76, D-77, D-78 |
+| M10.9 — `unflatten`/`apply_defaults` static-count hygiene fix | 2026-07-31 | 1258 | _none_ |
+| M10.10 — `ConstraintReport.violation_rate` | 2026-07-31 | 1265 | _none_ |
 
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
 

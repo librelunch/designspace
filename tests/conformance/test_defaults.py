@@ -168,6 +168,44 @@ class TestDefaultedCountParamCascade:
         assert space.apply_defaults({}) == {"n_layers": 2}
 
 
+class TestStaticCountLiftLeftImplicit:
+    """The dynamic-count analogue above (`test_no_element_defaults_leaves_
+    lift_implicit`) is silent on a *literal* `.repeat(n)` count: there, the
+    count needs no default of its own to be "determined" (API.md, "Defaults"
+    > "Counts and lifts" — a static integer count is determined
+    unconditionally), so `apply_defaults` decides to leave the list
+    implicit with nothing else in play. `unflatten`'s static-count fallback
+    (M10.7, D-75) previously assumed a literal count with no bookkeeping key
+    always meant a full coordinate vector was supplied and tried to
+    reconstruct every element, raising an uncaught `KeyError` instead of
+    reproducing this same "left implicit" law."""
+
+    def test_scalar_lift_with_no_default_leaves_lift_implicit(self):
+        space = ds.space(ds.param("weights").real(-1.0, 1.0).repeat(4))
+        assert space.apply_defaults({}) == {}
+        assert not space.has_complete_defaults
+
+    def test_struct_lift_with_no_default_leaves_lift_implicit(self):
+        space = ds.space(
+            ds.param("layers").space(
+                ds.param("width").integer(16, 1024),  # no default anywhere
+            ).repeat(3),
+        )
+        assert space.apply_defaults({}) == {}
+
+    def test_supplied_static_lift_values_are_not_mistaken_for_absent(self):
+        """A genuinely-present static-count lift (supplied, not defaulted)
+        must still round-trip through `apply_defaults` -- the fix must not
+        start omitting real data just because it carries no default."""
+        space = ds.space(ds.param("weights").real(-1.0, 1.0).repeat(4))
+        supplied = {"weights": [0.1, 0.2, 0.3, 0.4]}
+        assert space.apply_defaults(supplied) == supplied
+
+    def test_nested_static_lift_with_no_default_leaves_lift_implicit(self):
+        space = ds.space(ds.param("grid").real(0.0, 1.0).repeat(2, 3))
+        assert space.apply_defaults({}) == {}
+
+
 class TestFieldWiseFill:
     def test_choice_default_fills_named_variant_field_wise(self):
         space = ds.space(

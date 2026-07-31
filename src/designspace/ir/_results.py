@@ -173,6 +173,30 @@ class ConstraintReport:
     applicable: float
     satisfied: float
 
+    @property
+    def violation_rate(self) -> float:
+        """The polarity-resolved fraction of applicable draws in the *bad*
+        state — the aggregate analog of `ConstraintEval.violated`. `satisfied`
+        alone is raw: a forbid/discourage names a bad state (`satisfied` *is*
+        the violation fraction), a require/encourage/bound a good one
+        (violation is the complement, `1 - satisfied`) — reading a mixed
+        table of rows by `satisfied` alone means re-deriving this flip by
+        hand per verb, exactly the confusion `ConstraintEval.violated`
+        already exists to avoid for a single evaluation.
+
+        `0.0` when `applicable == 0.0`, for both polarities — mirroring
+        `ConstraintEval.violated`'s "inapplicable is never violated" (Kleene
+        rule 4) and `satisfied`'s own "`0.0` by convention, never `NaN`"
+        default, rather than computed mechanically as `1 - satisfied`, which
+        would report a never-evaluated require/encourage row as "always
+        violated" instead of "carries no information."
+        """
+        if self.applicable == 0.0:
+            return 0.0
+        if self.constraint.feasible_when_satisfied:
+            return 1.0 - self.satisfied
+        return self.satisfied
+
 
 @dataclass(frozen=True)
 class SamplingReport:

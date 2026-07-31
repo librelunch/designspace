@@ -549,6 +549,85 @@ through `evaluate_arith`/`evaluate_bool`/`margin()` alongside `status`), so `fn`
 changed for any existing test; `tests/conformance/test_opaque_values.py::TestCallingConvention`
 gained three tests asserting the call count directly.
 
+### M10.9 — `unflatten`/`apply_defaults` static-count hygiene fix
+Not a specification gap — API.md already states the law unambiguously ("Defaults" > "Counts and
+lifts": "otherwise the lift is left implicit"); this is a regression from M10.7's static-count
+fallback contradicting it, discovered incidentally while writing `examples/` (unrelated task) and
+fixed here as a standalone follow-up, user-directed, before M11 continues. No DECISIONS.md entry.
+
+**The bug.** `apply_defaults({})` raised an uncaught `KeyError` instead of returning `{}` for a
+literal-count (`.repeat(4)`), zero-default lift — e.g. `ds.space(ds.param("weights").real(-1.0,
+1.0).repeat(4)).apply_defaults({})`. `_fill_list` (`defaults/_defaults.py`) correctly declines to
+write anything when no element gets a default, but `apply_defaults`'s closing `unflatten(flat,
+space)` call then hit M10.7's static-count fallback (`config/_unflatten.py`, D-75): absent a
+bookkeeping key, a literal count was *always* assumed to mean "a full coordinate vector was
+supplied, recover the length" — the fallback's one designed use case — and reconstruction was
+attempted against elements that were never written. No existing test caught this: the analogous
+`test_no_element_defaults_leaves_lift_implicit` covers only a *dynamic*-count lift, which sidesteps
+the fallback entirely (`isinstance(count, int)` is false for an `ArithExpr`), so the literal-count
+case was never exercised.
+
+**Build:** `config/_unflatten.py` only. `_is_fully_static(domain)` — a new helper — decides whether
+a lift's entire nested `.repeat()` chain is literal-int at every level (the identical boundary
+`coordinate_paths()` itself draws for "fixed layout"; a struct/choice element is a recursion
+boundary handled by its own independent `_unflatten_level` call, not inspected here). Gated on that,
+the static-count-fallback branch in `_unflatten_level` now checks for at least one real leaf under
+the list's own instance-path prefix before committing to reconstruct anything; finding none, it
+omits the list — the same "omit if nothing present" convention already applied to a struct with no
+present descendant, two branches above. A present bookkeeping key skips the check entirely
+(unaffected); the fully-supplied coordinate-vector round trip (no bookkeeping keys anywhere, but
+every leaf present) always finds its own first leaf and so is unaffected too.
+
+**Deliberately not touched:** a *mixed* chain — a static outer count over a dynamic inner one, e.g.
+`.repeat(ds.param("n")).repeat(2)` — still raises `KeyError` regardless of data, exactly as before
+this fix (`tests/unit/test_config.py::TestUnflattenStaticCountFallback::
+test_nested_dynamic_and_absent_count_still_raises_key_error`, pre-existing and unchanged). This is
+M10.7's own documented, deliberate scope limit ("the nested level still raises `KeyError` … noted,
+not changed"), not part of this bug: the inner count is never a literal the fallback can use, so
+reconstruction is unrecoverable independent of whether any data is present. `_is_fully_static`
+returning `False` for this shape is what keeps the two cases apart — an earlier version of this fix
+(swallowing any `KeyError` on an absent-bookkeeping list, or checking leaf-presence unconditionally)
+broke that test both times, which is why the gate below tests the boundary explicitly rather than
+just the bug itself.
+
+**Gate:** `tests/conformance/test_defaults.py::TestStaticCountLiftLeftImplicit` — written first,
+confirmed failing against the unpatched code (three of four cases raised `KeyError`) before the fix
+— covers a static-count scalar lift, a static-count struct lift, a nested fully-static lift
+(`.repeat(2, 3)`), and a guard that genuinely-supplied static-lift values are never mistaken for
+absence. All prior tests, corpus fixtures, and known-answer vectors byte-identical (1258 total,
+`ruff`/`mypy --strict`/`pytest` all green) — including, specifically, the mixed-chain test above.
+No format bump; no public surface change.
+
+### M10.10 — `ConstraintReport.violation_rate`
+A user-requested API addition, prompted by a genuine reading mistake against `examples/
+07_portfolio_observability.py`'s own `sampling_report()` output: `ConstraintReport.satisfied` is a
+raw fraction (a forbid/discourage names a *bad* state, so a high `satisfied` there is unhealthy —
+the opposite of require/encourage/bound), and nothing on the type gives the polarity-resolved
+reading `ConstraintEval.violated` already provides for a single evaluation. Not a specification gap
+— `API.md`'s "Sampling diagnostics" section is silent on this, but adding a derived, read-only
+property changes nothing it already says; no DECISIONS.md entry.
+
+**Build:** `ir/_results.py` only. `ConstraintReport.violation_rate` — a `@property`, not a stored
+field, mirroring `ConstraintEval.violated`'s own shape — `satisfied` directly for forbid/discourage
+(`feasible_when_satisfied` false), `1 - satisfied` for require/encourage/bound. **`0.0` when
+`applicable == 0.0`, for both polarities** — this is the one place a naive "just flip `satisfied`"
+implementation goes wrong: mirroring `ConstraintEval.violated`'s "inapplicable is never violated"
+(Kleene rule 4) and `satisfied`'s own "0.0 by convention, never `NaN`" default takes an explicit
+early return, since the mechanical `1 - satisfied` would report a never-evaluated require/encourage
+row as "always violated" (`1 - 0.0`) rather than "carries no information." A property, not a stored
+field: purely additive to a frozen dataclass, no equality/repr/serialization impact (this type never
+enters `to_json`/fingerprint).
+
+**Gate:** `tests/conformance/test_sampling_diagnostics.py` — one test per verb kind confirming the
+direction (`forbid`/`discourage`: `violation_rate == satisfied`; `require`/`encourage`:
+`violation_rate == 1 - satisfied`), an impossible-`require` case asserting `violation_rate == 1.0`
+directly (the motivating case — `satisfied == 0.0` read backwards without this), and a parametrized
+`applicable == 0.0` case over both polarities asserting `violation_rate == 0.0` for each — written
+first, confirmed failing (`AttributeError`) before the property existed. `examples/
+07_portfolio_observability.py` updated to read `row.violation_rate` instead of the manual
+`feasible_when_satisfied` check it had grown around this exact confusion. 1265 total,
+`ruff`/`mypy --strict`/`pytest` all green. No format bump.
+
 ### M11 — Representation layer
 **Spec:** *The Representation Layer* (entire section); `Encoding` in Protocols; `Representation` in
 the IR; the Representation conformance bullet; Solver Integration's three shapes; rows 31–32.
