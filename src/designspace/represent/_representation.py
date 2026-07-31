@@ -18,6 +18,7 @@ with a real message, never `NoneType is not callable`.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -26,6 +27,23 @@ from designspace.build._space import Seed, Space
 from designspace.ir import Constraint, RepresentationCheck, RepresentationCheckFailure
 
 Config = dict[str, Any]
+
+
+def _approx_equal(a: Any, b: Any) -> bool:
+    """Structural equality with numeric tolerance for `float` leaves.
+    `decode(encode(x)) == x` is the stated law (API.md, "The Representation
+    Layer"), but a log/logit chart's `from_unit`/`to_unit` compose through
+    `exp`/`log`, which are not bit-exact inverses at IEEE-754 precision —
+    the law is meant up to that unavoidable slack, mirroring
+    `charts/_grid.py::_isclose`'s own tolerance convention, not literal
+    float equality."""
+    if isinstance(a, float) and isinstance(b, float):
+        return math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-9)
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_approx_equal(a[k], b[k]) for k in a)
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(_approx_equal(x, y) for x, y in zip(a, b, strict=True))
+    return bool(a == b)
 
 
 def _not_invertible(_phenotype: Config) -> Config:
@@ -170,12 +188,12 @@ class Representation:
                 except Exception as exc:
                     record("round_trip", f"encode()/decode() raised: {exc}")
                 else:
-                    if round_tripped != phenotype:
+                    if not _approx_equal(round_tripped, phenotype):
                         first_diff = next(
                             (
                                 k
                                 for k in sorted(set(phenotype) | set(round_tripped))
-                                if phenotype.get(k) != round_tripped.get(k)
+                                if not _approx_equal(phenotype.get(k), round_tripped.get(k))
                             ),
                             "<unknown>",
                         )

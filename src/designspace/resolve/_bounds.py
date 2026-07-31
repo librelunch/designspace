@@ -222,15 +222,24 @@ def bound_origin_targets(
 
     Shared by `eval/_kleene.py::topological_order` (dependency ordering) and
     `sample/_sample.py` (tighten-not-reject).
+
+    A `represent()` target can break that invariant on purpose: transport
+    (M11) rewrites a bound-origin constraint's operands like any other
+    (leaf substitution wraps a chart-bearing target in `ChartApply`, or —
+    rarer — the whole comparison goes opaque, a `Value` node). Either way
+    the constraint still enforces the bound correctly through ordinary
+    rejection sampling; only the tighten-not-reject *optimization* and the
+    dependency-ordering hint this function feeds are unavailable for that
+    target, so such an entry is skipped rather than asserted against.
     """
     result: dict[str, tuple[ArithExpr | None, ArithExpr | None]] = {}
     for c in space.constraints:
         if c.origin != "bound":
             continue
         expr = c.expr
-        assert isinstance(expr, Compare)
+        if not isinstance(expr, Compare) or not isinstance(expr.left, ParamExpr):
+            continue
         target = expr.left
-        assert isinstance(target, ParamExpr)
         lo_expr, hi_expr = result.get(target.path, (None, None))
         if expr.op == "ge":
             lo_expr = expr.right

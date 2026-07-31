@@ -54,6 +54,8 @@ if TYPE_CHECKING:
 
     from designspace.identity._fingerprint import FingerprintScope, FingerprintUnserializable
     from designspace.identity._ir_codec import OnUnserializable
+    from designspace.represent._protocol import EncodingRule
+    from designspace.represent._representation import Representation
 
 Seed = int | np.random.Generator | None
 
@@ -409,6 +411,11 @@ class Space:
         from designspace.serialize import from_json as _from_json
 
         return _from_json(data, custom_types=custom_types)
+
+    def represent(self, *rules: EncodingRule) -> Representation:
+        from designspace.represent._build import represent as _represent
+
+        return _represent(self, *rules)
 
     def fingerprint(
         self,

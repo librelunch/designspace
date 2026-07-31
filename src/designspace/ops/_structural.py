@@ -116,12 +116,16 @@ def _validate_fixed_value(space: Space, path: str, value: Any, *, call: str) -> 
 # -- substitution: replace a ParamExpr leaf with its fixed literal ----------
 
 
-def substitute_expr(node: Expr, literals: dict[str, Literal | BoolLiteral]) -> Expr:
+def substitute_expr(node: Expr, literals: Mapping[str, Expr]) -> Expr:
     """Rebuild `node` with every `ParamExpr` leaf whose path is in
-    `literals` replaced by the corresponding literal — the sibling of
-    `resolve/_relocate.py::rewrite_expr` (which renames a path instead of
+    `literals` replaced by the corresponding replacement node — the sibling
+    of `resolve/_relocate.py::rewrite_expr` (which renames a path instead of
     replacing the node), used by `.slice()`/`.freeze()`'s bound-origin
-    envelope recompute and `.slice()`'s reference-site substitution.
+    envelope recompute, `.slice()`'s reference-site substitution (both pass
+    `Literal`/`BoolLiteral` values), and `represent/_transport.py`'s leaf
+    substitution (which passes an arbitrary decode expression, most often a
+    `ChartApply` — hence the parameter type reads `Expr`, not the narrower
+    `Literal | BoolLiteral` every pre-M11 caller happens to pass).
     """
     if isinstance(node, ParamExpr):
         return literals.get(node.path, node)
@@ -218,7 +222,7 @@ def cast_bool(node: Expr) -> BoolExpr:
     return node
 
 
-def substitute_bool(expr: BoolExpr, literals: dict[str, Literal | BoolLiteral]) -> BoolExpr:
+def substitute_bool(expr: BoolExpr, literals: Mapping[str, Expr]) -> BoolExpr:
     return cast_bool(substitute_expr(expr, literals))
 
 
