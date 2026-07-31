@@ -29,6 +29,9 @@ Concepts introduced here
   custom_types=...)`` (a custom param needs a ``type_key -> factory``
   registry to reconstruct), ``fingerprint()`` equality, and
   ``ds.config_hash`` as a value's own stable key.
+- ``fingerprint(scope=...)``: ``"sampling"`` (feasible set + measure + chart
+  geometry) vs. ``"full"`` (document identity) — a ``.meta()``-only change
+  moves the latter but not the former.
 - Partial configs: ``apply_defaults``, then a scripted ``next_assignable``/
   ``is_complete``/``missing_params`` driver loop — the same incremental-fill
   pattern a wizard-style UI or a solver's ask-one-thing-at-a-time interface
@@ -240,6 +243,16 @@ def main() -> None:
           f"{same_config_on_restored}")
     print(f"  config_hash matches across the round-tripped space: "
           f"{ds.config_hash(config, space) == ds.config_hash(config, restored)}")
+
+    # `scope="sampling"` identifies feasible set + measure + chart geometry
+    # only; `scope="full"` (the default) is full document identity. A change
+    # that touches only identity-level bookkeeping (tags, not the sampling
+    # surface) moves one and not the other.
+    tagged = space.meta(experiment="baseline")  # identity-level bookkeeping only
+    print(f"  a .meta()-only change: sampling-scope fingerprint equal: "
+          f"{space.fingerprint(scope='sampling') == tagged.fingerprint(scope='sampling')}")
+    print(f"  a .meta()-only change: full-scope fingerprint equal:     "
+          f"{space.fingerprint(scope='full') == tagged.fingerprint(scope='full')}")
 
     # -- Partial configs ------------------------------------------------------
     print("\n--- Partial configs ---")

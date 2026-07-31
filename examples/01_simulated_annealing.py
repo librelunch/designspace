@@ -16,11 +16,17 @@ Concepts introduced here
   simply *absent* from a config, never ``None``.
 - ``.forbid(...)`` defines feasibility (the reference sampler respects it);
   ``.encourage(...)`` only annotates (it is reported, never enforced).
+- ``.is_in(*values)`` — a forbid naming a set of move choices at once.
 - Structural operations on an already-built ``Space``: ``.freeze(...)`` pins
   tuned knobs to a single value (kept, domain narrowed) after a search;
   ``.slice(...)`` removes a rejected knob entirely, substituting its value at
   every reference site; ``.filter(tags=...)`` carves out a tagged
   sub-space; ``.extend(...)`` adds a new knob after the fact.
+
+This example (and 02-04) grows the *shape* of a space. Examples 05-08 hold
+the shape plain and grow the *vocabulary* used on it instead — the full
+expression language, charts, DataFrame output, sampling diagnostics, the
+partial-config driver-loop surface, and metaprogramming.
 
 Run it:  ``uv run python examples/01_simulated_annealing.py``
 """
@@ -57,6 +63,13 @@ def build_space() -> ds.Space:
         # outright — the sampler will never emit a config that trips it.
         .forbid(
             ds.param("min_temp") >= ds.param("initial_temp"),
+        )
+        # `.is_in()` names a set of values at once: insert/reverse moves
+        # only pay off with a long enough inner loop, so forbid pairing
+        # either with a very short one.
+        .forbid(
+            ds.param("neighborhood").is_in("insert", "reverse")
+            & (ds.param("steps_per_temp") < 5),
         )
         # A soft preference, not a rule: flag schedules that cool aggressively.
         # Declared constraints never change feasibility or the sampler; they
@@ -128,6 +141,11 @@ def main() -> None:
           f"reheat_factor never sampled: {still_absent}")
 
     # Just the cooling schedule, for a report that only discusses those knobs.
+    # This *does* print a UserWarning: the `neighborhood`/`steps_per_temp`
+    # forbid references params outside the "schedule" subtree, so `.filter()`'s
+    # best-effort default drops it and warns rather than raising (`strict=True`
+    # would raise instead) -- the same best-effort mechanism `.select()` uses,
+    # covered in depth in `examples/02_genetic_algorithm.py`.
     schedule_only = space.filter(tags=("schedule",))
     print(f"\nfilter(tags=('schedule',)): {list(schedule_only.params)}")
 

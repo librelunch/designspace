@@ -13,6 +13,12 @@ Concepts introduced here
 - ``.prior(weights=...)`` biasing which variant the sampler favors.
 - A cross-parameter ``.forbid(...)`` referencing a choice discriminator by
   equality (``ds.param("selection") == "tournament"``).
+- ``.implies(other)`` — a discriminator equality on one side of an
+  implication, desugaring to ``~expr | other`` at resolution. Used here
+  inside an ``.encourage()``, whose declare-only rendering (below) reads
+  correctly regardless of polarity; a hard ``.require()`` needs the
+  polarity-aware reading example 3 introduces, not this file's simpler
+  forbid-shaped one.
 - Reading structured configs back with ``ds.variant`` / ``ds.payload`` /
   ``ds.destructure``.
 - ``infeasibility_reasons(...)`` and interpreting ``evaluate_constraints``
@@ -77,6 +83,13 @@ def build_space() -> ds.Space:
             ds.param("mutation_rate") <= 0.1,
             tags=("exploration-budget",),
         )
+        # `.implies()`: rank selection has weak selective pressure, so this
+        # prefers keeping elitism on to protect the best individual — a
+        # preference, not a rule, so `.encourage()` rather than `.require()`.
+        .encourage(
+            (ds.param("selection") == "rank").implies(ds.param("elitism")),
+            tags=("rank-wants-elitism",),
+        )
     )
 
 
@@ -101,6 +114,12 @@ def main() -> None:
     space = build_space()
     print(f"Genetic Algorithm space: {space.n_params} parameters, "
           f"conditional={space.is_conditional}\n")
+
+    # A choice's payload-bearing variants are what make a space
+    # *hierarchical* -- each relocates its own descendants under a
+    # definition-path prefix, and `.subspaces` lists exactly those prefixes.
+    print(f"is_hierarchical: {space.is_hierarchical}")
+    print(f".subspaces: {list(space.subspaces)}\n")
 
     # A batch of draws. Each sampled config activates a different set of
     # sub-parameters depending on the operators and flags chosen.
@@ -158,11 +177,12 @@ def main() -> None:
     # Deploying a reduced variant that only ever uses the `selection`
     # operator family. `.select()` keeps the definition-path prefix subtree
     # — selecting a choice brings its variants (tournament/rank) along, not
-    # just the bare discriminator. This *does* print a UserWarning: both the
-    # `population_size > 400 & selection == "rank"` forbid and the
-    # `mutation_rate <= 0.1` encourage reference params outside the
-    # "selection" subtree (population_size, mutation_rate), so `.select()`'s
-    # best-effort default drops them and warns rather than raising —
+    # just the bare discriminator. This *does* print a UserWarning: the
+    # `population_size > 400 & selection == "rank"` forbid, the
+    # `mutation_rate <= 0.1` encourage, and the `rank-wants-elitism`
+    # encourage each reference at least one param outside the "selection"
+    # subtree (population_size, mutation_rate, elitism), so `.select()`'s
+    # best-effort default drops all three and warns rather than raising —
     # `strict=True` would raise instead if silently losing a constraint were
     # unacceptable here.
     selection_only = space.select("selection")

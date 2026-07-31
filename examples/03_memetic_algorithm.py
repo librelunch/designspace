@@ -14,7 +14,10 @@ Concepts introduced here
   operator variants (bare strings and parameterized dicts side by side).
 - A ``.subset(...)`` payload inside a variant: an unordered set of neighborhoods.
 - Vector aggregates over a lift: ``.count_of(...)`` (in a feasibility
-  ``forbid``) and ``.is_sorted(...)`` / ``.sum()`` over a scalar lift.
+  ``forbid``), ``.is_sorted(...)``, ``.length()``, ``.distinct()``,
+  ``.sum()``, and ``.min()``/``.max()`` over a scalar lift.
+- Negative instance indexing (``restart_intensity[-1]``), resolved against
+  the lift's realized length.
 - The constraint quartet — hard ``forbid``/``require`` (feasibility) and soft
   ``encourage``/``discourage`` (declared, reported, never enforced) — read back
   polarity-agnostically via ``constraint.kind`` and ``ConstraintEval.violated``.
@@ -91,6 +94,31 @@ def build_space() -> ds.Space:
         .encourage(
             ds.param("restart_intensity").is_sorted(descending=True),
             tags=("annealing-schedule",),
+        )
+        # `.length()` and `.distinct()`: the schedule has exactly
+        # RESTART_STAGES entries (trivially true for this static-count
+        # lift — the aggregate applies the same way to a dynamic one), and
+        # no two stages repeat the same intensity.
+        .require(
+            (ds.param("restart_intensity").length() == RESTART_STAGES)
+            & ds.param("restart_intensity").distinct(),
+        )
+        # `.min()`/`.max()`: keep the whole schedule inside a sane range.
+        .encourage(
+            (ds.param("restart_intensity").max() <= 4.5)
+            & (ds.param("restart_intensity").min() >= 0.02),
+            tags=("intensity-range",),
+        )
+        # `.sum()`: a soft budget on total restart intensity across stages.
+        .encourage(
+            ds.param("restart_intensity").sum() <= 8.0,
+            tags=("intensity-budget",),
+        )
+        # Negative instance indexing: `[-1]` resolves against the realized
+        # length -- the last stage should land gently.
+        .encourage(
+            ds.param("restart_intensity[-1]") <= 0.5,
+            tags=("gentle-finish",),
         )
     )
 
