@@ -69,6 +69,7 @@ from designspace.expr import (
 )
 from designspace.ir import CustomDomain, ListDomain, OrdinalDomain
 from designspace.paths._grammar import (
+    _INDEX_RE,
     element_prefix,
     instance_prefix,
     parse_path,
@@ -239,7 +240,14 @@ def _vector_paths(
         return UNKNOWN_INACTIVE
     if path not in config:
         return UNKNOWN_PENDING  # the lift's own count is still unset (partial eval)
-    return _gather_instance_paths(path, space.params[path].domain, config)
+    # `path` is usually already a `space.params` key, but a per-element
+    # constraint's own nested lift reaches here concrete-instance-renamed
+    # (`instantiate_constraints`: "rows[].cells" -> "rows[0].cells" for row
+    # 0) — never itself a declared key, only its template is. `config`'s
+    # count/leaf entries are keyed by the concrete form (`_gather_instance_
+    # paths` needs that), so only the *domain lookup* falls back to it.
+    domain_path = path if path in space.params else _INDEX_RE.sub("[]", path)
+    return _gather_instance_paths(path, space.params[domain_path].domain, config)
 
 
 def _vector_values(

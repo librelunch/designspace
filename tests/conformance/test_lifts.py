@@ -226,6 +226,43 @@ class TestPerInstanceConstraintInstantiation:
         assert not result.valid
 
 
+class TestPerElementConstraintOverNestedLift:
+    """A struct-lift element that itself declares a nested `.repeat()`,
+    aggregated by a per-element constraint declared in that same inner
+    scope — e.g. a repeated "row" whose own "cells" field is a repeated
+    real, constrained by `.sum()` inside the row's own scope. Distinct
+    from `TestPerInstanceConstraintInstantiation` (whose element fields
+    are plain scalars): `instantiate_constraints` renames the template's
+    governing path (`"rows[].cells"`, a real `space.params` key) to a
+    concrete instance path (`"rows[0].cells"`, never itself a key) before
+    evaluation reaches the aggregate, which must resolve it back to its
+    governing `ListDomain` to gather instance paths."""
+
+    def _space(self):
+        # forbid(sum <= 0.1): almost never binding for random draws (P(sum
+        # of 4 uniform[0,1] > 0.1) is close to 1), so sample_dicts succeeds
+        # easily while still exercising a genuine, occasionally-checked
+        # per-row constraint.
+        row = ds.space(ds.param("cells").real(0.0, 1.0).repeat(4)).forbid(
+            ds.param("cells").sum() <= 0.1
+        )
+        return ds.space(ds.param("rows").space(row).repeat(2))
+
+    def test_samples_without_crashing(self):
+        space = self._space()
+        configs = space.sample_dicts(20, seed=0)
+        assert len(configs) == 20
+
+    def test_per_row_forbid_is_evaluated_and_enforced(self):
+        space = self._space()
+        feasible = {"rows": [{"cells": [1.0, 1.0, 1.0, 1.0]}, {"cells": [1.0, 1.0, 1.0, 1.0]}]}
+        assert space.is_feasible(feasible)
+        infeasible = {
+            "rows": [{"cells": [0.01, 0.01, 0.01, 0.01]}, {"cells": [1.0, 1.0, 1.0, 1.0]}]
+        }
+        assert not space.is_feasible(infeasible)
+
+
 class TestDistinctFieldTuples:
     """`.distinct(*fields)` (struct lift: distinct field-tuples), per the
     spec's "Vector expressions and aggregates". Exercises `_distinct_tuples`
