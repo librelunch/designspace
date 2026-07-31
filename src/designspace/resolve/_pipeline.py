@@ -64,6 +64,7 @@ from designspace.expr import (
     Size,
     Sum,
     SumOver,
+    Value,
 )
 from designspace.ir import (
     BoolDomain,
@@ -926,11 +927,11 @@ def _check_count_type_node(node: Expr, defs_by_path: dict[str, ParamExpr], conte
     """The M10.5/D-72 integer-valued calculus for repeat() counts (row
     12): int literals, integer params, `Count`/`Size`/`Length`/
     `PositionOf`/`CountOf` (always int by construction), a declared-int
-    `Prop`, `Sum` over an integer- *or* bool-leaved lift
-    (`sum([True, False])` is `int`), `Min`/`Max` over an *integer*-leaved
-    lift only (`min([True, False])` is `bool`, not `int` — the one
-    deliberate asymmetry), a literal-valued `SumOver` mapping, `+ - * %`
-    over two int-valued operands, `**` with a non-negative literal
+    `Prop` or `returns=int` `ds.value` (M10.8), `Sum` over an integer- *or*
+    bool-leaved lift (`sum([True, False])` is `int`), `Min`/`Max` over an
+    *integer*-leaved lift only (`min([True, False])` is `bool`, not `int` —
+    the one deliberate asymmetry), a literal-valued `SumOver` mapping,
+    `+ - * %` over two int-valued operands, `**` with a non-negative literal
     integer exponent, and `IfInactive` when both branches are int-valued.
     Division and anything else outside this closed set is row 12 —
     mirrors the bounds engine's own minimal computable op set (API.md,
@@ -958,6 +959,16 @@ def _check_count_type_node(node: Expr, defs_by_path: dict[str, ParamExpr], conte
         if prop_type(node, defs_by_path, context=context) is not int:
             raise ResolutionError(
                 f"{context}: prop({node.name!r}) is not integer-typed (row 12)"
+            )
+        return
+    if isinstance(node, Value):
+        # A `ds.value(fn, ..., returns=int)`-driven count — only the
+        # declared *result* type must be integer; deliberately does not
+        # descend into the operands, mirroring the `Prop` branch above.
+        if node.returns is not int:
+            raise ResolutionError(
+                f"{context}: ds.value(returns={node.returns.__name__}) is not "
+                "integer-typed (row 12)"
             )
         return
     if isinstance(node, Count | Size | Length | PositionOf | CountOf):

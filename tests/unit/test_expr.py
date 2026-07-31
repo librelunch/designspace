@@ -26,6 +26,7 @@ from designspace.expr import (
     IsIn,
     Literal,
     Not,
+    Value,
 )
 
 
@@ -262,6 +263,52 @@ class TestIfInactive:
         rebuilt = IfInactive(*node.children)
         assert rebuilt.operand is node.operand
         assert rebuilt.fallback is node.fallback
+
+
+class TestValueConstruction:
+    """`ds.value(fn, *operands, returns=type)` — the second (and, per API.md's
+    Out of Scope list, final) opaque expression leaf, dual-typed like `Prop`.
+    Row 30's error paths (non-scalar `returns`, a non-expression operand)
+    and every evaluation/resolution/identity law live in
+    tests/conformance/test_opaque_values.py; this file stays scoped to M0's
+    "construction only" surface."""
+
+    def test_builds_node(self):
+        a, b = lit(1.0), lit(2.0)
+
+        def fn(x: float, y: float) -> float:
+            return x + y
+
+        node = ds.value(fn, a, b, returns=float)
+        assert isinstance(node, Value)
+        assert node.kind == "value"
+        assert node.children == (a, b)
+        assert node.fn is fn
+        assert node.returns is float
+
+    def test_zero_operands(self):
+        node = ds.value(lambda: True, returns=bool)
+        assert node.children == ()
+
+    def test_dual_typed_as_arith(self):
+        node = ds.value(lambda: 1, returns=int)
+        cmp = node > 0
+        assert isinstance(cmp, Compare)
+        assert cmp.kind == "gt"
+
+    def test_dual_typed_as_bool(self):
+        node = ds.value(lambda: True, returns=bool)
+        combined = node & blit(True)
+        assert isinstance(combined, BoolOp)
+        assert combined.kind == "and"
+
+    def test_is_hashable(self):
+        assert isinstance(hash(ds.value(lambda: True, returns=bool)), int)
+
+    def test_is_frozen(self):
+        node = ds.value(lambda: True, returns=bool)
+        with pytest.raises(FrozenInstanceError):
+            node.returns = int  # type: ignore[misc]
 
 
 class TestAllAny:

@@ -7,8 +7,16 @@ here — building a node never inspects a Space or a config.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, NoReturn
+
+# The dual-typed scalar universe `.prop()` and `ds.value()` may declare/return
+# (API.md, "Expressions": row 16's scalar restriction "applies identically" to
+# `ds.value`). Shared here rather than duplicated in resolve/_expr_checks.py,
+# which imports it back — `resolve` already depends on `expr`, never the
+# reverse.
+SCALAR_TYPES = (int, float, bool, str)
 
 _BOOL_GUARD = (
     "designspace expressions cannot be coerced to bool (this is what makes "
@@ -428,6 +436,32 @@ class Prop(ArithExpr, BoolExpr):
     @property
     def children(self) -> tuple[Expr, ...]:
         return (self.operand,)
+
+
+@dataclass(frozen=True, eq=False)
+class Value(ArithExpr, BoolExpr):
+    """`ds.value(fn, *operands, returns=type)`: an opaque derived quantity —
+    `.prop()` generalized from *one custom param, named property* to *any
+    operands, arbitrary function* (API.md, "Expressions"). `fn` is called
+    with exactly the operand values, positionally, and never the config
+    (row 30 checks its operands are all expressions at construction); the
+    referenced params are the union of the operands' own references, so
+    `dependency_graph`/ordering/cycle detection are unaffected. Dual-typed
+    like `Prop`: a `returns=bool` node is usable directly as a condition,
+    matching the same "bare BoolExpr coerces via `bool(value)`" convention.
+    `returns` is one of `SCALAR_TYPES` (row 30)."""
+
+    fn: Callable[..., Any]
+    operands: tuple[Expr, ...]
+    returns: type
+
+    @property
+    def kind(self) -> str:
+        return "value"
+
+    @property
+    def children(self) -> tuple[Expr, ...]:
+        return self.operands
 
 
 class VectorExpr(Expr):

@@ -301,6 +301,170 @@ Folded into API.md's "The fixed leaf layout" (§Config Utilities).
 
 ---
 
+## D-76 — `ds.value`'s Unknown rule and the calling convention's exception boundary
+
+- Status: Resolved
+- Date: 2026-07-31
+- Spec section: API.md §Expressions > `ds.value`; rule 1 (Three-valued semantics)
+- Decided by: User
+
+### Question
+
+Rule 1 states a `ds.value(...)` node "is Unknown iff any param its operands reference is
+inactive." The `ds.value` paragraph separately states operands are ordinary expressions "so
+`.if_inactive()` and any other coercion compose inside them." These disagree whenever an operand
+itself guards its own inactivity: `ds.value(f, ds.param("x").if_inactive(0.0), returns=float)`
+with `x` inactive — rule 1's literal wording (a param-activity scan over `.params`) says Unknown;
+the composition promise says `f(0.0)`. Separately: what happens when `fn` itself raises?
+
+### Why the specification is insufficient
+
+Rule 1's clause was written to state the common case (no operand guards its own inactivity, so
+both readings agree) and never anticipated the guarded case explicitly. Nothing in the spec
+states whether `fn`'s own exceptions are caught or propagate.
+
+### Possibilities considered
+
+1. **Operand-*value* driven** (chosen). Evaluate each operand; the node is Unknown iff some
+   operand *evaluates* Unknown (joining provenance per D-71), and `fn` is not called in that
+   case. Coincides with rule 1's literal wording whenever no operand carries a guard; differs
+   only in the guarded case, where it honors the composition promise instead.
+2. **Literal activity scan.** Scan `node.params` (the union of every operand's referenced
+   params) for inactivity, regardless of what the operands themselves evaluate to. Makes
+   `.if_inactive()` inside an operand a silently useless no-op — exactly the failure mode the
+   spec's own "over-declaring weakens silently" warning describes, just one level deeper.
+3. **`fn`'s exceptions caught, degrading to Unknown** (mirroring `_evaluate_prop`'s defensive
+   swallow for a malformed custom value). Rejected: `Prop`'s swallow is licensed by the
+   custom-type contract law ("`extract` is called only on a value that passed `validate`");
+   `fn` has no such contract, and "a function reading something it was not given raises rather
+   than reading it silently" is the whole point of the calling convention. Swallowing would let
+   a broken `fn` masquerade as legitimate Unknown-propagation.
+
+### Answer
+
+Possibility 1 for the Unknown rule; `fn`'s exceptions propagate uncaught (rejecting possibility
+3 for that question).
+
+### Reasoning
+
+The operand-value reading is the only one under which every stated promise (rule 1's activity
+clause, the composition promise, D-71's provenance guarantees) holds simultaneously. Letting
+exceptions propagate keeps `ds.value` diagnosable — a user's bug in `fn` surfaces immediately at
+the call site (`evaluate_constraints`/`validate`/`is_feasible`) rather than silently degrading
+into a constraint that looks merely inapplicable.
+
+### Specification update
+
+Folded into API.md's rule 1 (§Three-valued semantics).
+
+## D-77 — `on_unserializable="drop"` for an in-expression opaque site
+
+- Status: Resolved
+- Date: 2026-07-31
+- Spec section: API.md §to_json / from_json
+- Decided by: User
+
+### Question
+
+`"drop"` is specified as writing "the space without those sites plus a manifest of omissions."
+Every non-serializable site through M9 (an external `Prior`, a `.custom()` shorthand) is a whole
+*domain* or *param* — removable as a field. A `ds.value` site is an expression *leaf*, nested
+inside a constraint, a `.when()` condition, or a dynamic repeat count. There is no field to
+omit — the enclosing constraint/condition/count would have to be removed *entirely*, or something
+else has to happen.
+
+### Why the specification is insufficient
+
+The "without those sites" phrasing was written against the field-shaped case and never
+considered a site nested inside a tree, where removal has different (and non-uniform)
+consequences depending on position: dropping a constraint only weakens feasibility, but dropping
+a `.when()` condition makes its param unconditional (an activity change) and dropping a dynamic
+count has no sensible fallback at all.
+
+### Possibilities considered
+
+1. **Opaque marker in place, plus a manifest entry** (chosen). Same as `raise`/`mark`'s node-level
+   handling, just also appending to the manifest — D-47's exact precedent, where `"drop"` on the
+   `.custom(sampler, validator)` shorthand also degrades to the opaque marker rather than
+   removing the whole param, because "a whole custom param has no serializable substance without
+   its type." Uniform across all three positions a `ds.value` can occupy.
+2. **Drop the whole enclosing constraint.** Matches "without those sites" more literally for the
+   constraint case, but has no coherent answer for a `.when()` condition (removing it changes
+   activity, not just feasibility) or a dynamic repeat count (removing it leaves no count at
+   all) — not extensible to the other two positions.
+
+### Answer
+
+Possibility 1.
+
+### Reasoning
+
+D-47 already established the precedent that "drop" degrades to the mark sentinel wherever
+removal has no coherent field-level meaning; a `ds.value` site is exactly that case for all
+three of its legal positions, not just constraints. Uniformity across positions is worth more
+than a closer literal match to "without those sites" for one position alone.
+
+### Specification update
+
+Folded into API.md's §to_json / from_json.
+
+## D-78 — Row 30's comparison-type-mismatch clause
+
+- Status: Resolved
+- Date: 2026-07-31
+- Spec section: API.md error table, row 30; row 16 (`.prop()`'s third clause)
+- Decided by: User
+
+### Question
+
+Row 16 gives `.prop()` a third clause: "type mismatch in comparison" (strict, no int/float
+leniency, per D-34's type-tagged-equality precedent). Row 30 as originally stated lists only
+two `ds.value` clauses: non-scalar `returns`, and an operand that is not an expression. Should
+`ds.value` get the same comparison check `.prop()` has, given the spec calls it "dual-typed the
+same way" as `.prop()`?
+
+### Why the specification is insufficient
+
+The "dual-typed the same way" sentence is the only textual link between the two error surfaces;
+it was written to establish the bare-boolean-usage parity, not to settle whether every one of
+`.prop()`'s checks also applies to `ds.value`. Row 30 was drafted independently and simply never
+enumerated a third clause.
+
+### Possibilities considered
+
+1. **No check — row 30 stays closed at two clauses.** Smallest surface; a mistyped comparison is
+   a silently-always-False constraint, which `sampling_report`'s `satisfied` column would surface
+   downstream. Argument against: it under-delivers on "dual-typed the same way," and leaves a
+   real bug class (comparing a `returns=int` value against a string) with no dedicated error.
+2. **Check, with int/float leniency.** Rejects genuinely incompatible pairs while letting an int
+   literal compare against `returns=float` and vice versa (mirroring the runtime-equality rule,
+   "`1 == 1.0`"). Catches more real bugs than option 1 without taxing `returns=float`'s literal
+   comparisons, but introduces a third comparison-strictness rule distinct from both `.prop()`'s
+   own (fully strict) and runtime equality's (numeric-lenient, bool-strict) — a new rule for a
+   node that is supposed to be `.prop()`'s direct generalization.
+3. **Strict, mirroring `.prop()` verbatim** (chosen). Exact Python type match, no leniency,
+   identical message shape, added as row 30's third clause. Consistent with D-34's type-tagged-
+   equality precedent and with `.prop()`'s own established behavior; the cost is rejecting
+   `ds.value(f, ..., returns=float) <= 5` (an int literal against a float-declared value),
+   which a space author must then spell as `5.0`.
+
+### Answer
+
+Possibility 3.
+
+### Reasoning
+
+Consistency with `.prop()` — the construct `ds.value` is explicitly generalizing — outweighs the
+literal-comparison convenience option 2 would preserve; introducing a third, bespoke leniency
+rule for the one node meant to unify with `.prop()`'s behavior would be the more surprising
+outcome, not the less surprising one.
+
+### Specification update
+
+Folded into API.md's error table, row 30.
+
+---
+
 ## Entry template
 
 Copy this template for each genuine specification gap.
@@ -342,5 +506,5 @@ The `API.md` section changed after resolution, or `Pending`.
 ---
 
 _Ledger tail._ D-1 through D-70 were resolved into `API.md` and their entries removed here
-(preserved in git history). D-71 through D-75 (M10.5, M10.6, M10.7) are resolved above and will
-fold out on the next spec pass; continue with D-76.
+(preserved in git history). D-71 through D-78 (M10.5, M10.6, M10.7, M10.8) are resolved above and
+will fold out on the next spec pass; continue with D-79.

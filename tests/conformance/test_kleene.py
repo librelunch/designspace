@@ -24,6 +24,7 @@ import pytest
 
 import designspace as ds
 from designspace.build._space import Space
+from designspace.config import flatten
 from designspace.eval import Unknown, compute_activity, evaluate_arith, evaluate_bool
 
 T, F, U = True, False, "U"
@@ -322,6 +323,42 @@ class TestOrdinalOrderingByDeclarationPosition:
         activity = compute_activity(space, config)
         # 10 is declared *last* (highest position), so it's the greatest.
         assert evaluate_bool(ds.param("level") > 30, config, activity, space) is True
+
+    def test_lift_element_vs_lift_element(self):
+        # A regression guard for a bracket-walk bug in
+        # `_resolve_param_domain` (live from M10.5 to M10.8): an ordinal
+        # lift's elements, compared via *instance paths*, silently fell
+        # back to raw-value comparison instead of declaration position —
+        # `_ordinal_domain_of` never found the OrdinalDomain to translate
+        # against, because the bracket walk computed it and then discarded
+        # it (`return None` instead of `return domain`).
+        space = ds.space(ds.param("g").ordinal("a", "z", "m").repeat(2))
+        config = {"g": ["m", "z"]}  # declared: a=0, z=1, m=2
+        flat = flatten(config, space)
+        activity = compute_activity(space, flat)
+        # Raw string comparison ("m" > "z") is False; declaration position
+        # (index 2 > index 1) is True.
+        assert evaluate_bool(ds.param("g[0]") > ds.param("g[1]"), flat, activity, space) is True
+
+    def test_lift_element_vs_literal(self):
+        space = ds.space(ds.param("g").ordinal("a", "z", "m").repeat(2))
+        config = {"g": ["a", "z"]}
+        flat = flatten(config, space)
+        activity = compute_activity(space, flat)
+        assert evaluate_bool(ds.param("g[1]") > "a", flat, activity, space) is True
+        assert evaluate_bool(ds.param("g[0]") > "a", flat, activity, space) is False
+
+    def test_chained_scalar_lift_element_vs_literal(self):
+        # g[0][1] -- the other named case in _resolve_param_domain's own
+        # docstring (a chained lift, two bracket levels on one segment).
+        space = ds.space(
+            ds.param("g").ordinal("a", "z", "m").repeat(2).repeat(1),
+        )
+        config = {"g": [["a", "z"]]}
+        flat = flatten(config, space)
+        activity = compute_activity(space, flat)
+        assert evaluate_bool(ds.param("g[0][1]") > "a", flat, activity, space) is True
+        assert evaluate_bool(ds.param("g[0][0]") > "a", flat, activity, space) is False
 
 
 def _count_config_activity(*states: bool | str) -> tuple[dict, dict, Space]:

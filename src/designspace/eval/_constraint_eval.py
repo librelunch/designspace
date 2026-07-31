@@ -23,6 +23,7 @@ from typing import Any
 from designspace.build._space import Space
 from designspace.eval._kleene import Unknown, evaluate_bool
 from designspace.eval._margins import margin
+from designspace.expr import Value
 from designspace.ir import Constraint, ConstraintEval, ListDomain
 from designspace.paths._grammar import element_prefix, instance_prefix
 
@@ -30,7 +31,12 @@ from designspace.paths._grammar import element_prefix, instance_prefix
 def evaluate_constraint(
     constraint: Constraint, config: dict[str, Any], activity: dict[str, bool], space: Space
 ) -> ConstraintEval:
-    value = evaluate_bool(constraint.expr, config, activity, space)
+    # Shared across both the satisfaction walk (evaluate_bool) and the
+    # margin walk (margin(), which independently re-evaluates the same
+    # Compare leaves) so a ds.value node's fn is called once per
+    # evaluate_constraint(), not twice.
+    value_cache: dict[Value, Any] = {}
+    value = evaluate_bool(constraint.expr, config, activity, space, value_cache=value_cache)
     if isinstance(value, Unknown):
         return ConstraintEval(
             constraint=constraint, instance_path=None, applicable=False, satisfied=None, margin=None
@@ -40,7 +46,7 @@ def evaluate_constraint(
         instance_path=None,
         applicable=True,
         satisfied=bool(value),
-        margin=margin(constraint.expr, config, activity, space),
+        margin=margin(constraint.expr, config, activity, space, value_cache=value_cache),
     )
 
 

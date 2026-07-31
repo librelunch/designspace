@@ -26,7 +26,7 @@ from designspace.build import (
 from designspace.config import config_diff, destructure, flatten, payload, unflatten, variant
 from designspace.custom import ParamType
 from designspace.errors import DesignSpaceError, ResolutionError, SamplingError, SerializationError
-from designspace.expr import ArithExpr, BoolExpr, all_, any_, count
+from designspace.expr import ArithExpr, BoolExpr, all_, any_, count, value
 from designspace.identity import config_hash
 from designspace.ir import (
     IntegerRemaining,
@@ -95,5 +95,6 @@ __all__ = [
     "space",
     "space_from_ir",
     "unflatten",
+    "value",
     "variant",
 ]

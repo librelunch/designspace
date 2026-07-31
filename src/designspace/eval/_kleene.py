@@ -64,6 +64,7 @@ from designspace.expr import (
     Size,
     Sum,
     SumOver,
+    Value,
 )
 from designspace.ir import CustomDomain, ListDomain, OrdinalDomain
 from designspace.paths._grammar import (
@@ -337,7 +338,7 @@ def _resolve_param_domain(path: str, space: Space) -> Any:
         if not isinstance(domain, ListDomain):
             return None
         domain = domain.element_domain
-    return None
+    return domain
 
 
 def _ordinal_domain_of(node: Expr, space: Space) -> OrdinalDomain | None:
@@ -395,6 +396,76 @@ def _evaluate_prop(
         return UNKNOWN_PERMANENT
 
 
+def _evaluate_operand(
+    operand: Expr,
+    config: dict[str, Any],
+    activity: dict[str, bool],
+    space: Space,
+    *,
+    status: Mapping[str, str] | None,
+    value_cache: dict[Value, Any] | None,
+) -> Any | Unknown:
+    """A `ds.value`/future-opaque-leaf operand: an ordinary `ArithExpr` or
+    `BoolExpr` (row 30 checks at construction only that it is *some*
+    expression; a bare vector expression like an unaggregated `.field()` is
+    neither and has no scalar value to hand `fn`)."""
+    if isinstance(operand, ArithExpr):
+        return evaluate_arith(
+            operand, config, activity, space, status=status, value_cache=value_cache
+        )
+    if isinstance(operand, BoolExpr):
+        return evaluate_bool(
+            operand, config, activity, space, status=status, value_cache=value_cache
+        )
+    raise TypeError(
+        f"ds.value(): operand kind {operand.kind!r} is not scalar-evaluable "
+        "(a bare vector expression has no scalar value)"
+    )
+
+
+def _evaluate_value(
+    expr: Value,
+    config: dict[str, Any],
+    activity: dict[str, bool],
+    space: Space,
+    *,
+    status: Mapping[str, str] | None = None,
+    value_cache: dict[Value, Any] | None = None,
+) -> Any | Unknown:
+    """`ds.value(fn, *operands, returns=type)`: Unknown iff some *operand
+    evaluates* Unknown (D-76) — not a literal scan of `expr.params` — so
+    `.if_inactive()` and any other coercion inside an operand actually
+    compose, as API.md's "Expressions" promises ("`.if_inactive()` and any
+    other coercion compose inside them"). `fn` is called with exactly the
+    operand values, positionally, never the config; an exception `fn` raises
+    propagates uncaught (D-76) — deliberately unlike `_evaluate_prop`'s
+    defensive swallow, which is licensed by the custom-type contract law
+    ("extract is called only on a value that passed validate") that `fn` has
+    no equivalent of.
+
+    `value_cache` (optional, identity-keyed on the `Value` node itself) lets
+    a caller that evaluates the same expression tree twice for two purposes
+    — `eval/_constraint_eval.py::evaluate_constraint` and
+    `partial/_partial.py::_classify_constraint` both compute a Kleene
+    satisfaction value via `evaluate_bool` and then, separately, a margin
+    via `eval/_margins.py::margin`, which independently re-walks the same
+    `Compare` leaves — call `fn` only once per node instead of twice. A
+    `None` cache (every other caller) evaluates exactly as before."""
+    if value_cache is not None and expr in value_cache:
+        return value_cache[expr]
+    values = [
+        _evaluate_operand(operand, config, activity, space, status=status, value_cache=value_cache)
+        for operand in expr.operands
+    ]
+    if any(isinstance(v, Unknown) for v in values):
+        result = _join_unknown(*(v for v in values if isinstance(v, Unknown)))
+    else:
+        result = expr.fn(*values)
+    if value_cache is not None:
+        value_cache[expr] = result
+    return result
+
+
 def _apply_compare(op: str, left: Any, right: Any) -> bool:
     if op == "eq":
         return _values_equal(left, right)
@@ -425,6 +496,7 @@ def _count_range(
     activity: dict[str, bool],
     space: Space,
     status: Mapping[str, str] | None = None,
+    value_cache: dict[Value, Any] | None = None,
 ) -> tuple[int, int, Unknown]:
     """`(true_count, unknown_count, joined_unknown)` — API.md: `ds.count`
     tracks `[t, t + u]`. `joined_unknown` is the strongest provenance among
@@ -434,7 +506,7 @@ def _count_range(
     u = 0
     joined = UNKNOWN_INACTIVE
     for operand in node.operands:
-        v = evaluate_bool(operand, config, activity, space, status=status)
+        v = evaluate_bool(operand, config, activity, space, status=status, value_cache=value_cache)
         if isinstance(v, Unknown):
             u += 1
             joined = _join_unknown(joined, v)
@@ -468,26 +540,37 @@ def evaluate_arith(
     space: Space,
     *,
     status: Mapping[str, str] | None = None,
+    value_cache: dict[Value, Any] | None = None,
 ) -> Any | Unknown:
     if isinstance(expr, Literal):
         return expr.value
     if isinstance(expr, ParamExpr):
         return _leaf_value(expr.path, config, activity)
     if isinstance(expr, ArithOp):
-        left = evaluate_arith(expr.left, config, activity, space, status=status)
-        right = evaluate_arith(expr.right, config, activity, space, status=status)
+        left = evaluate_arith(
+            expr.left, config, activity, space, status=status, value_cache=value_cache
+        )
+        right = evaluate_arith(
+            expr.right, config, activity, space, status=status, value_cache=value_cache
+        )
         if isinstance(left, Unknown) or isinstance(right, Unknown):
             return _join_unknown(left, right)
         return _apply_arith(expr.op, left, right)
     if isinstance(expr, IfInactive):
-        operand_val = evaluate_arith(expr.operand, config, activity, space, status=status)
+        operand_val = evaluate_arith(
+            expr.operand, config, activity, space, status=status, value_cache=value_cache
+        )
         if isinstance(operand_val, Unknown):
             if operand_val is UNKNOWN_INACTIVE:
-                return evaluate_arith(expr.fallback, config, activity, space, status=status)
+                return evaluate_arith(
+                    expr.fallback, config, activity, space, status=status, value_cache=value_cache
+                )
             return operand_val  # rule 5: never coalesce pending or permanent
         return operand_val
     if isinstance(expr, Count):
-        t, u, joined = _count_range(expr, config, activity, space, status=status)
+        t, u, joined = _count_range(
+            expr, config, activity, space, status=status, value_cache=value_cache
+        )
         return t if u == 0 else joined
     if isinstance(expr, Size):
         value = evaluate_arith(expr.operand, config, activity, space)
@@ -510,6 +593,10 @@ def evaluate_arith(
         return config.get(path, UNKNOWN)
     if isinstance(expr, Prop):
         return _evaluate_prop(expr, config, activity, space, status=status)
+    if isinstance(expr, Value):
+        return _evaluate_value(
+            expr, config, activity, space, status=status, value_cache=value_cache
+        )
     if isinstance(expr, Sum):
         leaves = _aggregate_leaves(expr, config, activity, space)
         if isinstance(leaves, Unknown):
@@ -610,6 +697,7 @@ def evaluate_bool(
     space: Space,
     *,
     status: Mapping[str, str] | None = None,
+    value_cache: dict[Value, Any] | None = None,
 ) -> Kleene:
     if isinstance(expr, BoolLiteral):
         return expr.value
@@ -622,11 +710,24 @@ def evaluate_bool(
         # ParamExpr, above.
         value = _evaluate_prop(expr, config, activity, space, status=status)
         return value if isinstance(value, Unknown) else bool(value)
+    if isinstance(expr, Value):
+        # A bool-declared value used bare as a condition — same "coerce via
+        # bool()" convention as a bare ParamExpr/Prop, above.
+        value = _evaluate_value(
+            expr, config, activity, space, status=status, value_cache=value_cache
+        )
+        return value if isinstance(value, Unknown) else bool(value)
     if isinstance(expr, Compare):
         if isinstance(expr.left, Count) or isinstance(expr.right, Count):
-            return _evaluate_count_compare(expr, config, activity, space, status=status)
-        left = evaluate_arith(expr.left, config, activity, space, status=status)
-        right = evaluate_arith(expr.right, config, activity, space, status=status)
+            return _evaluate_count_compare(
+                expr, config, activity, space, status=status, value_cache=value_cache
+            )
+        left = evaluate_arith(
+            expr.left, config, activity, space, status=status, value_cache=value_cache
+        )
+        right = evaluate_arith(
+            expr.right, config, activity, space, status=status, value_cache=value_cache
+        )
         if isinstance(left, Unknown) or isinstance(right, Unknown):
             return _join_unknown(left, right)
         if expr.op in ("gt", "lt", "ge", "le"):
@@ -641,14 +742,22 @@ def evaluate_bool(
                     return UNKNOWN_PERMANENT
         return _apply_compare(expr.op, left, right)
     if isinstance(expr, BoolOp):
-        left_v = evaluate_bool(expr.left, config, activity, space, status=status)
-        right_v = evaluate_bool(expr.right, config, activity, space, status=status)
+        left_v = evaluate_bool(
+            expr.left, config, activity, space, status=status, value_cache=value_cache
+        )
+        right_v = evaluate_bool(
+            expr.right, config, activity, space, status=status, value_cache=value_cache
+        )
         return _kleene_and(left_v, right_v) if expr.op == "and" else _kleene_or(left_v, right_v)
     if isinstance(expr, Not):
-        v = evaluate_bool(expr.operand, config, activity, space, status=status)
+        v = evaluate_bool(
+            expr.operand, config, activity, space, status=status, value_cache=value_cache
+        )
         return v if isinstance(v, Unknown) else (not v)
     if isinstance(expr, IsIn):
-        operand = evaluate_arith(expr.operand, config, activity, space, status=status)
+        operand = evaluate_arith(
+            expr.operand, config, activity, space, status=status, value_cache=value_cache
+        )
         if isinstance(operand, Unknown):
             return operand
         return any(_values_equal(operand, v) for v in expr.values)
@@ -701,16 +810,21 @@ def _evaluate_count_compare(
     activity: dict[str, bool],
     space: Space,
     status: Mapping[str, str] | None = None,
+    value_cache: dict[Value, Any] | None = None,
 ) -> Kleene:
     if isinstance(expr.left, Count):
         count_node, other_side, count_is_left = expr.left, expr.right, True
     else:
         assert isinstance(expr.right, Count)
         count_node, other_side, count_is_left = expr.right, expr.left, False
-    other_val = evaluate_arith(other_side, config, activity, space, status=status)
+    other_val = evaluate_arith(
+        other_side, config, activity, space, status=status, value_cache=value_cache
+    )
     if isinstance(other_val, Unknown):
         return other_val
-    t, u, joined = _count_range(count_node, config, activity, space, status=status)
+    t, u, joined = _count_range(
+        count_node, config, activity, space, status=status, value_cache=value_cache
+    )
     op = expr.op
     if not count_is_left:
         op = {"lt": "gt", "gt": "lt", "le": "ge", "ge": "le"}.get(op, op)

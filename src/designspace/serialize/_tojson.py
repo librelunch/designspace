@@ -31,8 +31,11 @@ def to_json(space: Space, on_unserializable: OnUnserializable = "raise") -> dict
     doc: dict[str, Any] = {
         "version": FORMAT_VERSION,
         "params": [encode_param(pd, "document", ctx) for pd in space.params.values()],
-        "conditions": [encode_condition(c) for c in space.conditions],
-        "constraints": [encode_constraint(c, "document") for c in space.constraints],
+        "conditions": [encode_condition(c, ctx) for c in space.conditions],
+        "constraints": [
+            encode_constraint(c, "document", ctx, site=f"constraint {i}")
+            for i, c in enumerate(space.constraints)
+        ],
     }
     anchors_tree = encode_anchors(space.anchors)
     if anchors_tree is not None:

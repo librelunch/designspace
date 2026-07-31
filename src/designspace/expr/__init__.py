@@ -6,6 +6,7 @@ the operator mixins on BoolExpr/ArithExpr defined here.
 """
 
 from designspace.expr._ast import (
+    SCALAR_TYPES,
     ArithExpr,
     ArithOp,
     BoolExpr,
@@ -33,11 +34,13 @@ from designspace.expr._ast import (
     Size,
     Sum,
     SumOver,
+    Value,
     VectorExpr,
 )
-from designspace.expr._functions import all_, any_, count
+from designspace.expr._functions import all_, any_, count, value
 
 __all__ = [
+    "SCALAR_TYPES",
     "ArithExpr",
     "ArithOp",
     "BoolExpr",
@@ -65,8 +68,10 @@ __all__ = [
     "Size",
     "Sum",
     "SumOver",
+    "Value",
     "VectorExpr",
     "all_",
     "any_",
     "count",
+    "value",
 ]

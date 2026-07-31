@@ -46,6 +46,7 @@ from designspace.expr import (
     Size,
     Sum,
     SumOver,
+    Value,
 )
 from designspace.ir import (
     CategoricalDomain,
@@ -173,6 +174,12 @@ def substitute_expr(node: Expr, literals: dict[str, Literal | BoolLiteral]) -> E
         return Length(cast_arith(substitute_expr(node.operand, literals)))
     if isinstance(node, Prop):
         return Prop(cast_arith(substitute_expr(node.operand, literals)), node.name)
+    if isinstance(node, Value):
+        return Value(
+            node.fn,
+            tuple(substitute_expr(o, literals) for o in node.operands),
+            node.returns,
+        )
     if isinstance(node, Field):
         return Field(substitute_expr(node.operand, literals), node.name)
     if isinstance(node, Sum):

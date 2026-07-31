@@ -21,6 +21,7 @@ from typing import Any, cast
 from designspace.build._paramexpr import ParamExpr
 from designspace.errors import ResolutionError
 from designspace.expr import (
+    SCALAR_TYPES,
     ArithOp,
     BoolOp,
     Compare,
@@ -40,11 +41,12 @@ from designspace.expr import (
     Size,
     Sum,
     SumOver,
+    Value,
 )
 from designspace.ir import CustomDomain, ListDomain, OrdinalDomain, PermutationDomain, SubsetDomain
 from designspace.paths._grammar import split_instance_path
 
-_SCALAR_PROP_TYPES = (int, float, bool, str)
+_SCALAR_PROP_TYPES = SCALAR_TYPES
 
 
 def iter_nodes(node: Expr) -> Iterator[Expr]:
@@ -259,32 +261,62 @@ def prop_type(node: Prop, defs_by_path: Mapping[str, Any], *, context: str) -> t
     return declared_type
 
 
-def _check_prop_compare_types(
+def _opaque_scalar_type(
+    node: Any, defs_by_path: Mapping[str, Any], *, context: str
+) -> type | None:
+    """The declared/returned scalar type of an opaque leaf (`Prop` or
+    `Value`), or `None` for anything else — the two dual-typed leaves API.md
+    says are checked "identically" (row 16's scalar restriction "applies
+    identically" to `ds.value`)."""
+    if isinstance(node, Prop):
+        return prop_type(node, defs_by_path, context=context)
+    if isinstance(node, Value):
+        return node.returns
+    return None
+
+
+def _describe_opaque(node: Prop | Value) -> str:
+    if isinstance(node, Prop):
+        return f"prop({node.name!r})"
+    fn_name = getattr(node.fn, "__name__", repr(node.fn))
+    return f"ds.value({fn_name}, ...)"
+
+
+def _opaque_row(node: Prop | Value) -> str:
+    return "16" if isinstance(node, Prop) else "30"
+
+
+def _check_opaque_compare_types(
     node: Compare, defs_by_path: Mapping[str, Any], *, context: str
 ) -> None:
-    """Row 16's third clause: type mismatch in comparison — a `.prop()`
-    compared against a literal of a different Python type, or against a
-    second `.prop()` of a different declared type. Strict type match, no
+    """Row 16's third clause (`.prop()`) and row 30's comparison clause
+    (`ds.value`): type mismatch in comparison — an opaque leaf compared
+    against a literal of a different Python type, or against a second
+    opaque leaf of a different declared/returned type. Strict type match, no
     int/float leniency (DECISIONS.md D-34 precedent: type-tagged equality
-    throughout)."""
-    for prop_side, other_side in ((node.left, node.right), (node.right, node.left)):
-        if not isinstance(prop_side, Prop):
+    throughout). The cited row follows whichever side is being checked, so a
+    mixed `.prop()`-vs-`ds.value()` mismatch still names a real error-table
+    row on either side."""
+    for this_side, other_side in ((node.left, node.right), (node.right, node.left)):
+        if not isinstance(this_side, Prop | Value):
             continue
-        declared_type = prop_type(prop_side, defs_by_path, context=context)
+        declared_type = _opaque_scalar_type(this_side, defs_by_path, context=context)
+        assert declared_type is not None
         if isinstance(other_side, Literal):
             if type(other_side.value) is not declared_type:
                 raise ResolutionError(
-                    f"{context}: prop({prop_side.name!r}) is "
+                    f"{context}: {_describe_opaque(this_side)} is "
                     f"{declared_type.__name__!r}-typed, compared against "
-                    f"{other_side.value!r} ({type(other_side.value).__name__!r}) (row 16)"
+                    f"{other_side.value!r} ({type(other_side.value).__name__!r}) "
+                    f"(row {_opaque_row(this_side)})"
                 )
-        elif isinstance(other_side, Prop):
-            other_type = prop_type(other_side, defs_by_path, context=context)
-            if other_type is not declared_type:
+        elif isinstance(other_side, Prop | Value):
+            other_type = _opaque_scalar_type(other_side, defs_by_path, context=context)
+            if other_type is not None and other_type is not declared_type:
                 raise ResolutionError(
-                    f"{context}: prop({prop_side.name!r}) ({declared_type.__name__!r}) "
-                    f"compared against prop({other_side.name!r}) "
-                    f"({other_type.__name__!r}) (row 16)"
+                    f"{context}: {_describe_opaque(this_side)} ({declared_type.__name__!r}) "
+                    f"compared against {_describe_opaque(other_side)} "
+                    f"({other_type.__name__!r}) (row {_opaque_row(this_side)})"
                 )
 
 
@@ -375,7 +407,7 @@ def check_expr_types(
                             f"{context}: orders categorical param "
                             f"{path!r} (categoricals support only ==, !=, is_in)"
                         )
-            _check_prop_compare_types(node, defs_by_path, context=context)
+            _check_opaque_compare_types(node, defs_by_path, context=context)
             left, right = node.left, node.right
             if (
                 isinstance(left, ParamExpr)

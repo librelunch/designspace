@@ -20,7 +20,9 @@ on how a leaf value or an expression node is spelled.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass, field
 from typing import Any
+from typing import Literal as TypingLiteral
 
 from designspace.build._paramexpr import ParamExpr
 from designspace.errors import SerializationError
@@ -52,6 +54,7 @@ from designspace.expr import (
     Size,
     Sum,
     SumOver,
+    Value,
 )
 
 TAG_KEY = "$t"
@@ -62,6 +65,35 @@ _TAG_BOOL = "bool"
 _TAG_INT = "int"
 _TAG_FLOAT = "float"
 _TAG_STR = "str"
+
+# -- Non-serializable-site handling --------------------------------------
+#
+# Moved here from identity/_ir_codec.py at M10.8: `ds.value`'s `fn` is the
+# first non-serializable site *inside an expression tree* (an external
+# Prior/`.custom` shorthand are whole-domain sites), so `encode_expr` itself
+# now needs this context — and `_ir_codec` already imports from `_tags`,
+# never the reverse, so the shared type has to live on this side of that
+# edge. Re-exported from `_ir_codec` so every pre-existing import of
+# `EncodeContext`/`OnUnserializable` from that module keeps working verbatim.
+
+OnUnserializable = TypingLiteral["raise", "mark", "drop"]
+
+_OPAQUE_MARKER = {"kind": "opaque", "$opaque": True}
+
+
+@dataclass
+class EncodeContext:
+    """Threaded through every encoder that might hit a non-serializable
+    site. Through M7 the only such site was an external `Prior` (DECISIONS.md
+    D-31); M9 adds the `.custom(sampler, validator)` shorthand; M10.8 adds
+    `ds.value`'s `fn`, encountered by `encode_expr` rather than
+    `encode_domain`/`encode_prior`. The three remaining sites the spec
+    enumerates (`code`/`symbolic` validators, `symbolic` sampler,
+    `Primitive.fn`) still have no builder surface (M12), so no IR they'd
+    appear in can exist yet."""
+
+    mode: OnUnserializable
+    dropped: list[str] = field(default_factory=list)
 
 
 def _tag_float(value: float) -> float:
@@ -178,11 +210,27 @@ def decode_default_value(tree: Any) -> Any:
 # `BoolLiteral` — rather than by kind alone.
 
 
-def _enc_children(children: tuple[Expr, ...]) -> list[Any]:
-    return [encode_expr(c) for c in children]
+def _enc_children(
+    children: tuple[Expr, ...], ctx: EncodeContext | None, site: str
+) -> list[Any]:
+    return [encode_expr(c, ctx, site=site) for c in children]
 
 
-def encode_expr(node: Expr) -> dict[str, Any]:
+def encode_expr(
+    node: Expr, ctx: EncodeContext | None = None, *, site: str = "expression"
+) -> dict[str, Any]:
+    """`ctx`/`site` exist only for the one opaque leaf (`Value`, below) —
+    every other node is fully structural and ignores them, so every
+    pre-M10.8 call site (a direct `encode_expr(node)`, e.g.
+    `build/_space.py`'s structural-equality check) is unaffected. `ctx=None`
+    behaves as `"raise"` — the same safe default `on_unserializable` has
+    everywhere else — so a caller that never threads a context still fails
+    loudly on an opaque node rather than silently. `site` is a
+    pre-formatted description of where this expression tree came from
+    (`"constraint 3"`, `"param 'x' condition"`), prefixed onto the opaque
+    leaf's message; it does not vary with tree depth, since the message
+    only needs to name the site an author would recognize, not the exact
+    node."""
     if isinstance(node, ParamExpr):  # ref leaf; check before Literal/BoolLiteral
         # (ParamExpr is not one of those, but check first defensively since
         # it is also an ArithExpr/BoolExpr and could shadow a future subclass)
@@ -197,69 +245,95 @@ def encode_expr(node: Expr) -> dict[str, Any]:
         # DECISIONS.md D-47) without a dedicated codec.
         return {"kind": "literal", "value": encode_default_value(node.value)}
     if isinstance(node, ArithOp | Compare | BoolOp):
-        return {"kind": node.kind, "children": _enc_children(node.children)}
+        return {"kind": node.kind, "children": _enc_children(node.children, ctx, site)}
     if isinstance(node, Not):
-        return {"kind": "not", "children": _enc_children(node.children)}
+        return {"kind": "not", "children": _enc_children(node.children, ctx, site)}
     if isinstance(node, Implies):
-        return {"kind": "implies", "children": _enc_children(node.children)}
+        return {"kind": "implies", "children": _enc_children(node.children, ctx, site)}
     if isinstance(node, IsIn):
         return {
             "kind": "is_in",
-            "children": _enc_children(node.children),
+            "children": _enc_children(node.children, ctx, site),
             "values": [tag_value(v) for v in node.values],
         }
     if isinstance(node, IsActive):
-        return {"kind": "is_active", "children": _enc_children(node.children)}
+        return {"kind": "is_active", "children": _enc_children(node.children, ctx, site)}
     if isinstance(node, Count):
-        return {"kind": "count", "children": _enc_children(node.children)}
+        return {"kind": "count", "children": _enc_children(node.children, ctx, site)}
     if isinstance(node, IfInactive):
-        return {"kind": "if_inactive", "children": _enc_children(node.children)}
+        return {"kind": "if_inactive", "children": _enc_children(node.children, ctx, site)}
     if isinstance(node, Contains):
         return {
             "kind": "contains",
-            "children": _enc_children(node.children),
+            "children": _enc_children(node.children, ctx, site),
             "item": tag_value(node.item),
         }
     if isinstance(node, Size):
-        return {"kind": "size", "children": _enc_children(node.children)}
+        return {"kind": "size", "children": _enc_children(node.children, ctx, site)}
     if isinstance(node, SumOver):
         pairs = [(tag_value(k), tag_value(v)) for k, v in node.mapping.items()]
         pairs.sort(key=lambda kv: sort_key(kv[0]))  # step 3: unordered (Mapping) sorts
         return {
             "kind": "sum_over",
-            "children": _enc_children(node.children),
+            "children": _enc_children(node.children, ctx, site),
             "mapping": [[k, v] for k, v in pairs],
         }
     if isinstance(node, PositionOf):
         return {
             "kind": "position_of",
-            "children": _enc_children(node.children),
+            "children": _enc_children(node.children, ctx, site),
             "item": tag_value(node.item),
         }
     if isinstance(node, Length):
-        return {"kind": "length", "children": _enc_children(node.children)}
+        return {"kind": "length", "children": _enc_children(node.children, ctx, site)}
     if isinstance(node, Prop):
-        return {"kind": "prop", "children": _enc_children(node.children), "name": node.name}
+        return {
+            "kind": "prop",
+            "children": _enc_children(node.children, ctx, site),
+            "name": node.name,
+        }
+    if isinstance(node, Value):
+        # The one opaque expression leaf (API.md, "Identity and
+        # Serialization": `ds.value`'s `fn` joins the non-serializable set).
+        # A leaf marker only — operands are never encoded, matching how
+        # `_encode_custom_domain` erases a whole opaque domain rather than
+        # partially encoding it.
+        mode = "raise" if ctx is None else ctx.mode
+        if mode == "raise":
+            raise SerializationError(
+                f"{site}: ds.value()'s fn has no structural encoding (it is "
+                "opaque — API.md's non-serializable set) — pass "
+                "on_unserializable='mark' or 'drop'"
+            )
+        if mode == "mark":
+            return dict(_OPAQUE_MARKER)
+        assert mode == "drop" and ctx is not None
+        ctx.dropped.append(f"{site}: ds.value fn (opaque)")
+        return dict(_OPAQUE_MARKER)
     if isinstance(node, Field):
-        return {"kind": "field", "children": _enc_children(node.children), "name": node.name}
+        return {
+            "kind": "field",
+            "children": _enc_children(node.children, ctx, site),
+            "name": node.name,
+        }
     if isinstance(node, Sum | Min | Max):
-        return {"kind": node.kind, "children": _enc_children(node.children)}
+        return {"kind": node.kind, "children": _enc_children(node.children, ctx, site)}
     if isinstance(node, CountOf):
         return {
             "kind": "count_of",
-            "children": _enc_children(node.children),
+            "children": _enc_children(node.children, ctx, site),
             "values": [tag_value(v) for v in node.values],
         }
     if isinstance(node, IsSorted):
         return {
             "kind": "is_sorted",
-            "children": _enc_children(node.children),
+            "children": _enc_children(node.children, ctx, site),
             "descending": node.descending,
         }
     if isinstance(node, Distinct):
         return {
             "kind": "distinct",
-            "children": _enc_children(node.children),
+            "children": _enc_children(node.children, ctx, site),
             "fields": list(node.fields),
         }
     raise SerializationError(f"no expression codec for node type {type(node).__name__}")
@@ -278,6 +352,12 @@ def decode_expr(tree: dict[str, Any]) -> Expr:
         if "bool" in tree:
             return BoolLiteral(tree["bool"])
         return Literal(decode_default_value(tree["value"]))
+    if kind == "opaque":
+        raise SerializationError(
+            "cannot reconstruct a ds.value() node from a mark-sentinel "
+            "document (its fn is opaque) — from_json only round-trips "
+            "fully serializable spaces"
+        )
     children = [decode_expr(c) for c in tree.get("children", ())]
     if kind in _ARITH_OPS:
         left, right = children

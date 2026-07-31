@@ -41,6 +41,7 @@ from designspace.expr import (
     Size,
     Sum,
     SumOver,
+    Value,
 )
 from designspace.identity._ir_codec import EncodeContext, decode_domain, encode_domain
 from designspace.identity._tags import (
@@ -137,6 +138,46 @@ class TestExprCodecDisambiguation:
         a = SumOver(_x, {"a": 1.0, "b": 2.0})
         b = SumOver(_x, {"b": 2.0, "a": 1.0})
         assert encode_expr(a) == encode_expr(b)
+
+
+class TestValueOpacityCodec:
+    """`Value` (M10.8) is not a generic `EXPR_CASES` round-trip entry above
+    -- it is the one node `decode_expr` deliberately cannot reconstruct
+    (it raises on the mark-sentinel `"opaque"` kind rather than round-
+    tripping), so its codec behavior gets its own class instead."""
+
+    def _node(self) -> Value:
+        return Value(lambda x: x, (_x,), float)
+
+    def test_ctx_none_defaults_to_raise(self):
+        with pytest.raises(SerializationError):
+            encode_expr(self._node())
+
+    def test_raise_mode_names_the_site(self):
+        ctx = EncodeContext(mode="raise")
+        with pytest.raises(SerializationError, match="my_site"):
+            encode_expr(self._node(), ctx, site="my_site")
+
+    def test_mark_mode_yields_the_opaque_marker(self):
+        ctx = EncodeContext(mode="mark")
+        tree = encode_expr(self._node(), ctx, site="s")
+        assert tree == {"kind": "opaque", "$opaque": True}
+        assert ctx.dropped == []
+
+    def test_drop_mode_yields_the_marker_and_manifests_the_site(self):
+        ctx = EncodeContext(mode="drop")
+        tree = encode_expr(self._node(), ctx, site="s")
+        assert tree == {"kind": "opaque", "$opaque": True}
+        assert ctx.dropped == ["s: ds.value fn (opaque)"]
+
+    def test_opaque_node_nested_in_a_larger_tree_still_raises(self):
+        outer = BoolOp("and", Compare("gt", self._node(), Literal(0)), BoolLiteral(True))
+        with pytest.raises(SerializationError):
+            encode_expr(outer)
+
+    def test_decode_opaque_marker_raises(self):
+        with pytest.raises(SerializationError):
+            decode_expr({"kind": "opaque", "$opaque": True})
 
 
 class TestTagValue:

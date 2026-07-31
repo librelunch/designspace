@@ -470,14 +470,27 @@ def _condition_matches_injection(actual: BoolExpr | None, expected: BoolExpr | N
     would inject — i.e. the field/variant carries no independent `.when()`
     of its own. Structural (not identity) comparison via the canonical AST
     encoder, since `relocate_child`'s choice-variant path builds a fresh
-    `and_(...)` composite rather than reusing an existing object."""
+    `and_(...)` composite rather than reusing an existing object.
+
+    A condition referencing a `ds.value(...)` (M10.8) makes `encode_expr`
+    raise (opaque, uncalled-with-no-context here) rather than return a
+    comparable tree — this is a *structural-equality* check, not
+    serialization, so that is degraded to identity comparison instead of
+    propagating the error: an opaque condition can never structurally equal
+    a freshly-built injection object anyway, so `.cardinality()`'s callers
+    (`_struct_cardinality`/`_choice_cardinality`) correctly see "not
+    enumerable" (`None`) for it."""
+    from designspace.errors import SerializationError
     from designspace.identity._tags import encode_expr
 
     if actual is None and expected is None:
         return True
     if actual is None or expected is None:
         return False
-    return encode_expr(actual) == encode_expr(expected)
+    try:
+        return encode_expr(actual) == encode_expr(expected)
+    except SerializationError:
+        return actual is expected
 
 
 def _grid_cardinality(lo: float, hi: float, quantized: QuantizedSpec) -> int:

@@ -23,7 +23,7 @@ from designspace.eval import (
     status_activity_view,
 )
 from designspace.eval._kleene import _apply_compare, _ordinal_index, _values_equal
-from designspace.expr import ArithExpr, BoolExpr, Compare, Contains, Not
+from designspace.expr import ArithExpr, BoolExpr, Compare, Contains, Not, Value
 from designspace.ir import (
     BoolDomain,
     CategoricalDomain,
@@ -142,7 +142,12 @@ def _classify_constraint(
     evaluable: list[ConstraintEval],
     pending: list[Constraint],
 ) -> None:
-    value = evaluate_bool(c.expr, flat, activity, space, status=status)
+    # Shared across the satisfaction walk (evaluate_bool) and the margin
+    # walk (margin(), which independently re-evaluates the same Compare
+    # leaves) so a ds.value node's fn is called once per constraint, not
+    # twice -- eval/_constraint_eval.py::evaluate_constraint's own reason.
+    value_cache: dict[Value, Any] = {}
+    value = evaluate_bool(c.expr, flat, activity, space, status=status, value_cache=value_cache)
     if isinstance(value, Unknown):
         if value.provenance == "pending":
             pending.append(c)
@@ -163,7 +168,7 @@ def _classify_constraint(
             instance_path=instance_path,
             applicable=True,
             satisfied=bool(value),
-            margin=margin(c.expr, flat, activity, space),
+            margin=margin(c.expr, flat, activity, space, value_cache=value_cache),
         )
     )
 

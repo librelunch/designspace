@@ -503,6 +503,52 @@ since that calling convention is the whole contract; `to_json`/`fingerprint` rai
 closed-set message and `mark` yields `{"$opaque": true}`; `dependency_graph` includes the operands'
 params. All prior vectors byte-identical.
 
+**As-built.** The plan's own gate text ("Unknown if any referenced param is inactive") turned out
+to under-specify the guarded case (`ds.value(f, x.if_inactive(0), returns=float)` with `x`
+inactive) — **D-76** resolves this to operand-*value*-driven Unknown (join provenance over what
+the operands *evaluate to*, not a literal scan of their referenced params' activity), which is
+what actually lets `.if_inactive()` compose inside an operand as the prose promises; `fn`'s own
+exceptions propagate uncaught, deliberately unlike `Prop`'s defensive swallow (no equivalent
+contract law licenses one here). "`encode_expr` raising/marking it like any other callable" needed
+more than a new `isinstance` branch: `encode_expr` had no `EncodeContext`/site-description parameter
+at all before this milestone (every prior opaque site lived in `encode_domain`/`encode_prior`, one
+level up), so it gained `ctx`/`site` params threaded through every recursive call and every
+caller (`encode_constraint`, `encode_condition`, `_encode_count`, `encode_param`'s condition) —
+`EncodeContext`/`OnUnserializable`/`_OPAQUE_MARKER` relocated from `identity/_ir_codec.py` to
+`identity/_tags.py` to avoid a cycle (`_ir_codec` already imports from `_tags`, never the
+reverse), re-exported from `_ir_codec` so no existing import site changed. `on_unserializable=
+"drop"` on an in-tree opaque leaf has no field to omit the way a whole prior/custom param does —
+**D-77** degrades it to the same `mark` sentinel plus a manifest entry naming the site, D-47's
+precedent extended to all three positions a `ds.value` can occupy (constraint, `.when()`
+condition, dynamic repeat count). Row 30 gained a third clause beyond the two named here —
+comparison type mismatch against the declared `returns`, strict and mirroring `.prop()` exactly
+(**D-78**). `resolve/_relocate.py::rewrite_expr` also gained a `Prop` branch alongside `Value`'s:
+`Prop`'s absence was a pre-existing latent `TypeError` for any `.prop()`-based condition on a
+struct/choice payload field (surfacing, in particular, per-instance inside a `.repeat()`
+struct-lift element, via `instantiate_element`'s call to the same function) — a routine
+same-shape fix, not a DECISIONS.md-worthy gap, since it changes no behavior for any space that
+resolved before. **Discovered while testing, then fixed as an immediate follow-up (user-directed,
+same session):** `eval/_kleene.py::_resolve_param_domain`'s bracket-walk branch unconditionally
+`return`ed `None` instead of the domain it had just walked — a one-line regression from M10.5,
+when the function was generalized from single-bracket to multi-level/dotted instance paths. Two
+live, previously-untested consequences: an ordinal comparison between two lift-element instance
+paths (`g[0] > g[1]` on a repeated ordinal, or a chained scalar lift) silently used raw Python
+value comparison instead of declaration position — a silent wrong answer, empirically confirmed
+before the fix and now covered by `tests/conformance/test_kleene.py::
+TestOrdinalOrderingByDeclarationPosition`'s three new lift-element cases; and `.prop()` against a
+custom-typed lift element at an instance path (this milestone's own `.repeat()`-element scenario)
+raised a bare, uncaught `AssertionError` rather than evaluating, now exercised end-to-end by
+`test_opaque_values.py::TestRelocationInsideRepeatElement`. Also fixed: `evaluate_constraint`
+(`eval/_constraint_eval.py`) and `_classify_constraint` (`partial/_partial.py`) each evaluated a
+constraint's expression **twice** — once via `evaluate_bool` for satisfaction, once more via
+`margin()`'s independent re-walk of the same `Compare` leaves — harmless for pure arithmetic but
+meaning a `ds.value` `fn` was called twice per `evaluate_constraints`/`validate`/`is_feasible`
+call. Both now share one call-scoped `value_cache` (identity-keyed on each `Value` node, threaded
+through `evaluate_arith`/`evaluate_bool`/`margin()` alongside `status`), so `fn` runs exactly once
+— including when the same `Value` object is referenced twice within one constraint. No output
+changed for any existing test; `tests/conformance/test_opaque_values.py::TestCallingConvention`
+gained three tests asserting the call count directly.
+
 ### M11 — Representation layer
 **Spec:** *The Representation Layer* (entire section); `Encoding` in Protocols; `Representation` in
 the IR; the Representation conformance bullet; Solver Integration's three shapes; rows 31–32.

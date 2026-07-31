@@ -50,9 +50,11 @@ from designspace.expr import (
     Min,
     Not,
     PositionOf,
+    Prop,
     Size,
     Sum,
     SumOver,
+    Value,
 )
 from designspace.ir import Condition, Constraint, ListDomain, ParamDef
 
@@ -116,6 +118,14 @@ def rewrite_expr(node: Expr, rename: Mapping[str, str]) -> Expr:
         return PositionOf(cast(ArithExpr, rewrite_expr(node.operand, rename)), node.item)
     if isinstance(node, Length):
         return Length(cast(ArithExpr, rewrite_expr(node.operand, rename)))
+    if isinstance(node, Prop):
+        return Prop(cast(ArithExpr, rewrite_expr(node.operand, rename)), node.name)
+    if isinstance(node, Value):
+        return Value(
+            node.fn,
+            tuple(rewrite_expr(o, rename) for o in node.operands),
+            node.returns,
+        )
     if isinstance(node, Field):
         return Field(rewrite_expr(node.operand, rename), node.name)
     if isinstance(node, Sum):

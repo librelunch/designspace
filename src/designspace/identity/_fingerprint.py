@@ -57,11 +57,11 @@ def fingerprint(
         "version": FORMAT_VERSION,
         "scope": scope,
         "params": [encode_param(pd, scope, ctx) for pd in space.params.values()],
-        "conditions": [encode_condition(c) for c in space.conditions],
+        "conditions": [encode_condition(c, ctx) for c in space.conditions],
         "constraints": [
             encoded
-            for c in space.constraints
-            if (encoded := encode_constraint(c, scope)) is not None
+            for i, c in enumerate(space.constraints)
+            if (encoded := encode_constraint(c, scope, ctx, site=f"constraint {i}")) is not None
         ],
     }
     # Anchors/meta are `full`-scope only (API.md's scope table) and omitted

@@ -28,12 +28,15 @@ is byte-identical before and after anchors exist as a concept.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from types import MappingProxyType
 from typing import Any, Literal
 
 from designspace.errors import SerializationError
 from designspace.expr import Compare, Not
+from designspace.identity._tags import _OPAQUE_MARKER as _OPAQUE_MARKER
+from designspace.identity._tags import EncodeContext as EncodeContext
+from designspace.identity._tags import OnUnserializable as OnUnserializable
 from designspace.identity._tags import (
     decode_arith_expr,
     decode_bool_expr,
@@ -70,22 +73,12 @@ from designspace.ir import (
 CustomTypeRegistry = Mapping[str, Any]  # type_key -> factory(describe_dict) -> ParamType
 
 Scope = Literal["document", "full", "sampling"]
-OnUnserializable = Literal["raise", "mark", "drop"]
 
-_OPAQUE_MARKER = {"kind": "opaque", "$opaque": True}
-
-
-@dataclass
-class EncodeContext:
-    """Threaded through every encoder that might hit a non-serializable
-    site. Through M7 the only such site was an external `Prior` (DECISIONS.md
-    D-31); M9 adds the `.custom(sampler, validator)` shorthand. The three
-    remaining sites the spec enumerates (`code`/`symbolic` validators,
-    `symbolic` sampler, `Primitive.fn`) still have no builder surface (M12),
-    so no IR they'd appear in can exist yet."""
-
-    mode: OnUnserializable
-    dropped: list[str] = field(default_factory=list)
+# `EncodeContext`/`OnUnserializable`/`_OPAQUE_MARKER` now live in
+# identity/_tags.py (M10.8: `encode_expr` needs them too, and `_tags` is
+# imported *by* this module, never the reverse) — re-imported here (not just
+# re-exported) so every pre-existing `from designspace.identity._ir_codec
+# import EncodeContext, ...` site keeps working verbatim.
 
 
 # -- QuantizedSpec --------------------------------------------------------
@@ -153,10 +146,11 @@ def decode_prior(tree: Any) -> PriorSpec | None:
 # -- Domain (recursive over ListDomain) -----------------------------------
 
 
-def _encode_count(count: int | Any) -> Any:
+def _encode_count(count: int | Any, ctx: EncodeContext, path: str) -> Any:
     if isinstance(count, int):
         return {"kind": "static", "n": count}
-    return {"kind": "dynamic", "expr": encode_expr(count)}
+    site = f"param {path!r} repeat() count"
+    return {"kind": "dynamic", "expr": encode_expr(count, ctx, site=site)}
 
 
 def _decode_count(tree: Any) -> Any:
@@ -254,7 +248,7 @@ def _encode_list_domain(domain: ListDomain, scope: Scope, ctx: EncodeContext, pa
             domain.element_kind, domain.element_domain, scope, ctx, path
         ),
         "element_periodic": domain.element_periodic,
-        "count": _encode_count(domain.count),
+        "count": _encode_count(domain.count, ctx, path),
     }
     prior_tree = encode_prior(path, domain.element_prior, ctx)
     if prior_tree is not None:
@@ -268,8 +262,13 @@ def _encode_list_domain(domain: ListDomain, scope: Scope, ctx: EncodeContext, pa
         tree["list_default"] = encode_default_value(domain.list_default)
     encoded_constraints = [
         encoded
-        for c in domain.element_constraints
-        if (encoded := encode_constraint(c, scope)) is not None
+        for i, c in enumerate(domain.element_constraints)
+        if (
+            encoded := encode_constraint(
+                c, scope, ctx, site=f"param {path!r} element constraint {i}"
+            )
+        )
+        is not None
     ]
     if encoded_constraints:
         tree["element_constraints"] = encoded_constraints
@@ -397,13 +396,16 @@ def _canonicalize_polarity(c: Constraint) -> Constraint:
     return c
 
 
-def encode_constraint(c: Constraint, scope: Scope) -> Any:
+def encode_constraint(c: Constraint, scope: Scope, ctx: EncodeContext, *, site: str) -> Any:
     """Returns `None` when `c` is excluded at this scope (a declared/soft
-    constraint at `sampling`)."""
+    constraint at `sampling`). `site` (M10.8) names this constraint for a
+    `ds.value` opacity error/manifest entry — caller-supplied since a
+    `Constraint` carries no name/path of its own, only a position in
+    `space.constraints`/`ListDomain.element_constraints`."""
     if scope == "sampling" and not c.hard:
         return None
     expr = c.expr if scope == "document" else _canonicalize_polarity(c).expr
-    tree: dict[str, Any] = {"expr": encode_expr(expr), "hard": c.hard}
+    tree: dict[str, Any] = {"expr": encode_expr(expr, ctx, site=site), "hard": c.hard}
     if scope == "document":
         tree["origin"] = c.origin
     if scope != "sampling":
@@ -431,8 +433,9 @@ def decode_constraint(tree: Any) -> Constraint:
     )
 
 
-def encode_condition(cond: Condition) -> Any:
-    return {"target": cond.target, "expr": encode_expr(cond.expr)}
+def encode_condition(cond: Condition, ctx: EncodeContext) -> Any:
+    site = f"param {cond.target!r} condition"
+    return {"target": cond.target, "expr": encode_expr(cond.expr, ctx, site=site)}
 
 
 def decode_condition(tree: Any) -> Condition:
@@ -457,7 +460,9 @@ def encode_param(pd: ParamDef, scope: Scope, ctx: EncodeContext) -> dict[str, An
     if quantized_tree is not None:
         tree["quantized"] = quantized_tree
     if pd.condition is not None:
-        tree["condition"] = encode_expr(pd.condition)
+        tree["condition"] = encode_expr(
+            pd.condition, ctx, site=f"param {pd.path!r} condition"
+        )
     if scope != "sampling":
         if pd.default is not None:
             # A default can be subset/permutation-shaped (a list of items),
