@@ -36,6 +36,7 @@ from designspace.ir import (
     BoolDomain,
     CategoricalDomain,
     ChoiceDomain,
+    CodeDomain,
     ConstraintEval,
     CustomDomain,
     IntegerDomain,
@@ -46,10 +47,12 @@ from designspace.ir import (
     PermutationDomain,
     RealDomain,
     SubsetDomain,
+    SymbolicDomain,
     ValidationResult,
 )
 from designspace.paths import element_prefix, strip_last_index
 from designspace.paths._grammar import _INDEX_RE
+from designspace.program._validate import program_value_error
 from designspace.resolve._pipeline import check_fully_resolved
 from designspace.resolve._relocate import element_paramdef
 
@@ -150,6 +153,8 @@ def _domain_error_reason(pd: ParamDef, value: Any) -> str | None:
         except Exception:
             return "wrong_type"
         return None if ok else "out_of_bounds"
+    if isinstance(domain, SymbolicDomain | CodeDomain):
+        return program_value_error(domain, value)
     return None  # pragma: no cover - unreachable for M2 scalar kinds
 
 

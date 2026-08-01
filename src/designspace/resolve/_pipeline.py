@@ -36,6 +36,7 @@ from designspace.build._views import (
     BoolParamExpr,
     CategoricalParamExpr,
     ChoiceParamExpr,
+    CodeParamExpr,
     CustomParamExpr,
     IntegerParamExpr,
     ListParamExpr,
@@ -44,6 +45,7 @@ from designspace.build._views import (
     RealParamExpr,
     StructParamExpr,
     SubsetParamExpr,
+    SymbolicParamExpr,
 )
 from designspace.charts import build_chart, build_grid_shape, grid_membership
 from designspace.errors import ResolutionError
@@ -71,6 +73,7 @@ from designspace.ir import (
     CategoricalDomain,
     Chart,
     ChoiceDomain,
+    CodeDomain,
     Condition,
     Constraint,
     CustomDomain,
@@ -84,15 +87,27 @@ from designspace.ir import (
     RealDomain,
     StructDomain,
     SubsetDomain,
+    SymbolicDomain,
     Weights,
 )
 from designspace.paths import element_prefix, instance_prefix
+from designspace.program import FloatLiteral, IntLiteral, Primitive
+from designspace.program._validate import program_value_error
 from designspace.resolve._bounds import bound_deps, check_bound_refs, compute_bound_envelopes
 from designspace.resolve._desugar import desugar_bool
 from designspace.resolve._expr_checks import check_expr_types, check_refs_declared, prop_type
 from designspace.resolve._relocate import and_, relocate_child
 
-_NON_CHART_KINDS = ("subset", "permutation", "choice", "space", "custom", "list")
+_NON_CHART_KINDS = (
+    "subset",
+    "permutation",
+    "choice",
+    "space",
+    "custom",
+    "list",
+    "symbolic",
+    "code",
+)
 
 
 def resolve_space(exprs: tuple[ParamExpr, ...]) -> Space:
@@ -176,9 +191,7 @@ def _check_merged_cycles(space: Space) -> None:
         if path in done:
             return
         if path in visiting:
-            raise ResolutionError(
-                f"cycle detected in condition dependencies involving {path!r}"
-            )
+            raise ResolutionError(f"cycle detected in condition dependencies involving {path!r}")
         visiting.add(path)
         for dep in deps.get(path, frozenset()):
             visit(dep)
@@ -208,6 +221,8 @@ _VIEW_BY_KIND: dict[str, type[ParamExpr]] = {
     "choice": ChoiceParamExpr,
     "space": StructParamExpr,
     "custom": CustomParamExpr,
+    "symbolic": SymbolicParamExpr,
+    "code": CodeParamExpr,
 }
 
 
@@ -325,7 +340,10 @@ def rebuild_list_domain_charts(path: str, domain: ListDomain) -> ListDomain:
         )
     element_chart = (
         build_chart(
-            path, domain.element_kind, domain.element_domain, domain.element_prior,
+            path,
+            domain.element_kind,
+            domain.element_domain,
+            domain.element_prior,
             domain.element_quantized,
         )
         if domain.element_kind in ("real", "integer")
@@ -566,9 +584,7 @@ def _check_condition_cycles(defs: tuple[ParamExpr, ...]) -> None:
 # -- step 7: validate declarations --------------------------------------------
 
 
-def _validate_declarations(
-    defs: tuple[ParamExpr, ...], defs_by_path: dict[str, ParamExpr]
-) -> None:
+def _validate_declarations(defs: tuple[ParamExpr, ...], defs_by_path: dict[str, ParamExpr]) -> None:
     for d in defs:
         if d.lift is not None:
             _validate_lift(d, defs_by_path)
@@ -602,6 +618,10 @@ def _validate_domain(d: ParamExpr) -> None:
         pass
     elif isinstance(domain, CustomDomain):
         _check_custom_domain(d.path, domain)
+    elif isinstance(domain, SymbolicDomain):
+        _check_symbolic_domain(d.path, domain)
+    elif isinstance(domain, CodeDomain):
+        _check_code_domain(d.path, domain)
 
 
 def _check_custom_domain(path: str, domain: CustomDomain) -> None:
@@ -620,12 +640,113 @@ def _check_custom_domain(path: str, domain: CustomDomain) -> None:
         )
     if not full and not shorthand:
         raise ResolutionError(
-            f"param {path!r}: custom domain must set param_type or "
-            "(sampler, validator)"
+            f"param {path!r}: custom domain must set param_type or (sampler, validator)"
         )
     if shorthand and (domain.sampler is None or domain.validator is None):
+        raise ResolutionError(f"param {path!r}: custom(sampler, validator) shorthand requires both")
+
+
+def _check_program_signature(path: str, signature: Any) -> None:
+    for name in signature.args:
+        if not name.isidentifier():
+            raise ResolutionError(
+                f"param {path!r}: symbolic()/code() signature arg name {name!r} "
+                "is not a valid identifier"
+            )
+
+
+def _check_literal_bounds(path: str, lo: Any, hi: Any) -> None:
+    if isinstance(lo, bool) or isinstance(hi, bool):
+        raise ResolutionError(f"param {path!r}: literal bounds must be numeric, not bool")
+    if isinstance(lo, float) and not math.isfinite(lo):
+        raise ResolutionError(f"param {path!r}: literal lo={lo!r} must be finite")
+    if isinstance(hi, float) and not math.isfinite(hi):
+        raise ResolutionError(f"param {path!r}: literal hi={hi!r} must be finite")
+    if lo > hi:
+        raise ResolutionError(f"param {path!r}: literal lo={lo!r} > hi={hi!r}")
+
+
+def _check_primitive_arity(path: str, prim: Primitive) -> None:
+    arity = prim.arity
+    if isinstance(arity, bool):
+        raise ResolutionError(f"param {path!r}: Primitive {prim.name!r} arity must not be bool")
+    if isinstance(arity, int):
+        if arity < 0:
+            raise ResolutionError(f"param {path!r}: Primitive {prim.name!r} arity must be >= 0")
+        return
+    valid_shape = (
+        isinstance(arity, tuple)
+        and len(arity) == 2
+        and isinstance(arity[0], int)
+        and not isinstance(arity[0], bool)
+        and (arity[1] is None or (isinstance(arity[1], int) and not isinstance(arity[1], bool)))
+    )
+    if not valid_shape:
         raise ResolutionError(
-            f"param {path!r}: custom(sampler, validator) shorthand requires both"
+            f"param {path!r}: Primitive {prim.name!r} arity must be an int or "
+            "an (lo, hi) tuple (row 15, D-89)"
+        )
+    lo, hi = arity
+    if lo < 0:
+        raise ResolutionError(f"param {path!r}: Primitive {prim.name!r} arity lo must be >= 0")
+    if hi is not None and hi < lo:
+        raise ResolutionError(
+            f"param {path!r}: Primitive {prim.name!r} arity hi ({hi}) < lo ({lo})"
+        )
+
+
+def _check_program_primitives(path: str, primitives: Any) -> None:
+    """The rewritten row 15's declaration checks (DECISIONS.md D-90): no
+    fixed built-in vocabulary exists any more — any non-empty string names
+    a primitive — so the only checks left are shape/duplicate/arity, never
+    membership in a name set."""
+    seen: set[str] = set()
+    for prim in primitives:
+        if isinstance(prim, str):
+            if not prim:
+                raise ResolutionError(f"param {path!r}: primitive name must not be empty")
+            name = prim
+        elif isinstance(prim, Primitive):
+            if not prim.name:
+                raise ResolutionError(f"param {path!r}: Primitive name must not be empty")
+            _check_primitive_arity(path, prim)
+            name = prim.name
+        elif isinstance(prim, FloatLiteral | IntLiteral):
+            _check_literal_bounds(path, prim.lo, prim.hi)
+            continue
+        else:
+            raise ResolutionError(
+                f"param {path!r}: symbolic() primitives entries must be a str, "
+                f"Primitive, FloatLiteral, or IntLiteral, got {type(prim).__name__}"
+            )
+        if name in seen:
+            raise ResolutionError(f"param {path!r}: duplicate primitive name {name!r}")
+        seen.add(name)
+
+
+def _check_program_max_depth(path: str, max_depth: Any) -> None:
+    if not isinstance(max_depth, int) or isinstance(max_depth, bool) or max_depth < 1:
+        raise ResolutionError(
+            f"param {path!r}: symbolic() max_depth must be a positive int, got {max_depth!r}"
+        )
+
+
+def _check_symbolic_domain(path: str, domain: SymbolicDomain) -> None:
+    """Row 15, rewritten (DECISIONS.md D-90 — a user-directed change to the
+    stated law: the fixed built-in primitive list is dropped, since core
+    assigns no arity or meaning to a primitive name either way). What
+    survives is shape/declaration hygiene: signature arg names,
+    primitives entries (shape/duplicate/arity), and `max_depth`."""
+    _check_program_signature(path, domain.signature)
+    _check_program_primitives(path, domain.primitives)
+    _check_program_max_depth(path, domain.max_depth)
+
+
+def _check_code_domain(path: str, domain: CodeDomain) -> None:
+    _check_program_signature(path, domain.signature)
+    if domain.examples is not None:
+        check_meta_json_serializable(
+            {"examples": list(domain.examples)}, what=f"param {path!r}: code() examples (row 23)"
         )
 
 
@@ -634,8 +755,7 @@ def _check_subset_size_bounds(path: str, domain: SubsetDomain) -> None:
         raise ResolutionError(f"param {path!r}: subset min_size must be >= 0")
     if domain.max_size is not None and domain.max_size < domain.min_size:
         raise ResolutionError(
-            f"param {path!r}: subset max_size ({domain.max_size}) < "
-            f"min_size ({domain.min_size})"
+            f"param {path!r}: subset max_size ({domain.max_size}) < min_size ({domain.min_size})"
         )
     if domain.min_size > len(domain.items):
         raise ResolutionError(
@@ -841,6 +961,8 @@ def _validate_default(d: ParamExpr) -> None:
         else:
             assert domain.validator is not None
             ok = domain.validator(value)
+    elif isinstance(domain, SymbolicDomain | CodeDomain):
+        ok = program_value_error(domain, value) is None
     else:  # pragma: no cover - unreachable: every Domain variant handled above
         ok = True
     if not ok:
@@ -897,8 +1019,7 @@ def _validate_lift(d: ParamExpr, defs_by_path: dict[str, ParamExpr]) -> None:
     _validate_default(element)
     if inner.default_value is not None and any_list_default:
         raise ResolutionError(
-            f"param {d.path!r}: element default and list default are mutually "
-            "exclusive (row 21)"
+            f"param {d.path!r}: element default and list default are mutually exclusive (row 21)"
         )
 
 
@@ -946,8 +1067,7 @@ def _check_count_type_node(node: Expr, defs_by_path: dict[str, ParamExpr], conte
         kind = defs_by_path[node.path].type_kind
         if kind != "integer":
             raise ResolutionError(
-                f"{context}: references {node.path!r}, which is {kind!r}, "
-                "not integer (row 12)"
+                f"{context}: references {node.path!r}, which is {kind!r}, not integer (row 12)"
             )
         return
     if isinstance(node, Prop):
@@ -957,9 +1077,7 @@ def _check_count_type_node(node: Expr, defs_by_path: dict[str, ParamExpr], conte
         # itself (type_kind "custom"), which is correctly not integer-typed
         # — only the extracted prop value needs to be.
         if prop_type(node, defs_by_path, context=context) is not int:
-            raise ResolutionError(
-                f"{context}: prop({node.name!r}) is not integer-typed (row 12)"
-            )
+            raise ResolutionError(f"{context}: prop({node.name!r}) is not integer-typed (row 12)")
         return
     if isinstance(node, Value):
         # A `ds.value(fn, ..., returns=int)`-driven count — only the
@@ -974,9 +1092,7 @@ def _check_count_type_node(node: Expr, defs_by_path: dict[str, ParamExpr], conte
     if isinstance(node, Count | Size | Length | PositionOf | CountOf):
         return  # always int-valued by construction -- no leaf to check
     if isinstance(node, SumOver):
-        if not all(
-            isinstance(v, int) and not isinstance(v, bool) for v in node.mapping.values()
-        ):
+        if not all(isinstance(v, int) and not isinstance(v, bool) for v in node.mapping.values()):
             raise ResolutionError(f"{context}: sum_over() has a non-integer value (row 12)")
         return
     if isinstance(node, Sum | Min | Max):
@@ -1236,14 +1352,12 @@ def _emit(defs: tuple[ParamExpr, ...], charts: dict[str, Chart | None]) -> Space
                 )
             elif leaf.element_class is ChoiceParamExpr:
                 assert isinstance(leaf.domain, ChoiceDomain)
-                variant_params, variant_conditions, variant_constraints = (
-                    _relocate_choice_variants(
-                        f"{d.path}[]",
-                        element_prefix(d.path),
-                        leaf.domain,
-                        leaf.choice_payloads,
-                        None,
-                    )
+                variant_params, variant_conditions, variant_constraints = _relocate_choice_variants(
+                    f"{d.path}[]",
+                    element_prefix(d.path),
+                    leaf.domain,
+                    leaf.choice_payloads,
+                    None,
                 )
                 params.update(variant_params)
                 conditions.extend(variant_conditions)

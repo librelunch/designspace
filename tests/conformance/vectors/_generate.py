@@ -42,6 +42,7 @@ FIXTURES = [
     "compiler_pipeline",
     "vi_family",
     "mixture_stickbreaking",
+    "annealing_schedule",
 ]
 
 

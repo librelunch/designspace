@@ -690,6 +690,68 @@ no public tag.
 **Spec:** `.symbolic()` / `.code()`; generative/non-generative sampling behavior; `Signature`, literals, `Primitive`.
 **Gate:** `SamplingError` iff materialization required (default satisfies; freeze removes; inactive skips); literal domains carry charts; validators run on the AST/source; serialization poisoning matches M9's pattern. Corpus: `annealing_schedule`. **Exit:** internal pre-release checkpoint — **no public tag** (feature-complete for v0.1, which ships at M13 once docs land).
 
+**As-built.** API.md's own coverage of `.symbolic()` was two table rows, four support-type
+signatures, one error row, one config example, and one DataFrame row — no AST grammar, no statement
+of what core checks, no evaluator, no arity semantics for the built-in primitive list. Landed as
+three individually-green stages (declaration/validation/generativity; identity/serialization/
+freeze/slice; corpus/vectors/docs), mirroring M11's precedent for a milestone this size.
+
+Three genuine gaps, resolved before implementation, one of them a deliberate change to a stated law:
+
+- **D-83** — the AST is a core-defined, core-checked JSON node grammar (`{"op","args"}` /
+  `{"var"}` / `{"const"}`), the only way `max_depth`/`primitives`/the literal types mean anything
+  once tree *generation* is Out of Scope; core ships no evaluator (`Primitive.fn` and every
+  primitive name are declared metadata a consumer's own interpreter uses, never called by core).
+- **D-89** — core assigns no arity to a bare built-in string; arity is checked exactly where an
+  author writes it, via `ds.Primitive`, whose `arity` was widened past API.md's literal `int` to
+  `int | tuple[int, int | None]` so a variadic or unary-or-binary operator is declarable and
+  checked rather than silently unchecked.
+- **D-90** — *a user-directed change to a stated law, not a reinterpretation.* Once arity carries
+  no built-in-name-level meaning, the fixed 15-name primitive list constrained nothing a
+  `ds.Primitive` couldn't already extend past, and its own contents were an arbitrary, incomplete
+  snapshot (no `sqrt`, `tan`, `floor`, `where`, no comparisons). The user chose to drop it: any
+  non-empty string names a primitive at declaration time. Error row 15 is **rewritten in place**
+  (the number stays; its content becomes the declaration-hygiene checks that survive — duplicate
+  name, malformed arity, bad `max_depth`, bad literal bounds, bad signature arg name), not deleted.
+  Vocabulary checking is *relocated*, not eliminated: a tree's `op` must still be a name the param
+  declared, so `{"op":"cos"}` against `primitives=["cso"]` is still an invalid value — only the
+  declaration-time membership fence is gone.
+
+Four routine, low-risk implementation completions, each recorded (D-84 through D-88) rather than
+left silent since each shapes the wire format: `.symbolic()`'s value is `{"ast", "source"}` with
+`"source"` optional and never cross-checked against `"ast"` (no printer/parser exists); `.code()`'s
+`description`/`constraints`/`examples` are declared, serialized, fingerprinted metadata for a
+consumer's own backend, never interpreted by core; `Signature.args`/`.returns` normalize a Python
+`type` to `type.__name__` at construction, keeping the type itself and the fingerprint preimage
+canonical; `.freeze()`/`.slice()` on a program param reuse `_pin_custom`'s exact mechanism
+(`require(p == value)` plus `default = value`) with **no shorthand exception** — a program value is
+always a plain, comparable, serializable JSON dict, so `.slice()` (unlike on a custom param, whose
+rejection is specifically about having no `.prop()` substitution target) needed no new code, only a
+law. `validators`/`.symbolic()`'s `sampler`/`Primitive.fn` — the three sites M10.8's
+`EncodeContext` docstring had already named and left unwired — ride raise/mark/drop **per field, in
+place** (D-88), generalizing D-77's `ds.value` precedent from "one opaque leaf inside an expression
+tree" to "one opaque field inside an otherwise-structural domain": unlike the `.custom(sampler,
+validator)` shorthand, which poisons a domain with no structural content to lose, a
+`.symbolic()`/`.code()` domain keeps `signature`/`primitives`' names and arities/`max_depth`/
+`description`/`constraints`/`examples` fully serializable regardless of which opaque field, if any,
+is present.
+
+`frame/_schema.py`/`frame/_rows.py` (`Utf8`/JSON-string, M10-anticipated), `identity/_tags.py`'s
+`EncodeContext` docstring (M10.8-anticipated), and `build/_space.py::has_nongenerative_params`'s own
+docstring (M9-anticipated) needed no correction, only activation — confirming the three-milestone
+forward-anticipation held. One pre-existing gap *was* fixed alongside the new kinds, not merely
+activated: `has_nongenerative_params` scanned `self.params` flat, which silently missed a
+non-generative param living inside a direct (non-struct/-choice) `.repeat()` element — its facts sit
+in `ListDomain.element_*`, never a separate `ParamDef` — a latent bug for the pre-existing custom-
+element case, only surfaced because M12 needed the walk correct for `.code().repeat(n)` too.
+
+`ops/_structural.py`, `partial/_partial.py`, `represent/_build.py`/`_charts.py`, and
+`config/_flatten.py`/`_unflatten.py` needed **zero** code changes beyond the one `_pin_program`
+dispatch branch: every other downstream surface's existing generic-scalar-leaf fallback already
+covered the two new kinds correctly, confirmed by law rather than assumed (`remaining_domain`'s
+path-named `TypeError`; `represent()`'s induced rule declining a chartless param; `.slice()`'s
+generic substitution path). 1451 total (1362 at M11), `ruff`/`mypy --strict`/`pytest` all green.
+
 ### M13 — Extras, docs; ship v0.1 (first public release)
 `to_json_schema` (core, dependency-free); `[pydantic]` extra: `to_pydantic_model`; `to_dataclass() -> type` + `to_python_source()`; `from_callable` + `Annotated` domain literals as `designspace.contrib.signatures`. Guide pages: tier guidance for structured values, mechanism-choosing, rejection hostility, defaults-vs-anchors, solver-integration walkthrough — source material is the spec's Solver Integration section.
 

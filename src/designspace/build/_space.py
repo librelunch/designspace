@@ -29,6 +29,7 @@ from designspace.ir import (
     BoolDomain,
     CategoricalDomain,
     ChoiceDomain,
+    CodeDomain,
     Condition,
     Constraint,
     ConstraintEval,
@@ -46,6 +47,7 @@ from designspace.ir import (
     StructDomain,
     SubsetDomain,
     SubspaceInfo,
+    SymbolicDomain,
     ValidationResult,
 )
 
@@ -116,18 +118,21 @@ class Space:
     @property
     def has_nongenerative_params(self) -> bool:
         """API.md, "Space — Introspection" — replaces `has_code_params`.
-        `True` iff any param is **non-generative**: through M9, that means a
-        full-protocol custom whose `ParamType` declares no `sample()`
-        (`.code()`/`.symbolic()` without `sampler=` join this at M12).
+        `True` iff any param is **non-generative**: a full-protocol custom
+        whose `ParamType` declares no `sample()` (DECISIONS.md D-46), or a
+        `.code()`/`.symbolic()` param without `sampler=` (M12) — `.code()`
+        has no `sampler=` form at all, so it is always non-generative.
         Every other kind, and a shorthand custom (always generative by
-        construction), is generative (DECISIONS.md D-46)."""
-        for pd in self.params.values():
-            if pd.type_kind == "custom":
-                domain = pd.domain
-                assert isinstance(domain, CustomDomain)
-                if domain.param_type is not None and not is_generative(domain.param_type):
-                    return True
-        return False
+        construction), is generative.
+
+        Checks each root param's own kind *and* — since a direct (non-
+        struct/-choice) `.repeat()` element's facts live in
+        `ListDomain.element_*` rather than a separate `ParamDef` — every
+        level of a lift's element chain: a `.code().repeat(3)` (or the
+        analogous custom-element case) is non-generative too, unlike a
+        struct/choice lift element, whose descendants are already their
+        own flat `ParamDef` entries this scan visits directly."""
+        return any(_is_nongenerative_paramdef(pd) for pd in self.params.values())
 
     def cardinality(self) -> int | None:
         """API.md, "Space — Introspection": finite-config count over the
@@ -246,9 +251,7 @@ class Space:
     ) -> Space:
         from designspace.resolve._constraints import add_constraints
 
-        return add_constraints(
-            self, conditions, hard=True, tags=tags, meta=meta, origin="require"
-        )
+        return add_constraints(self, conditions, hard=True, tags=tags, meta=meta, origin="require")
 
     def encourage(
         self, *conditions: BoolExpr, tags: tuple[str, ...] = (), meta: dict[str, Any] | None = None
@@ -405,9 +408,7 @@ class Space:
         return _to_json(self, on_unserializable=on_unserializable)
 
     @classmethod
-    def from_json(
-        cls, data: dict[str, Any], custom_types: dict[str, Any] | None = None
-    ) -> Space:
+    def from_json(cls, data: dict[str, Any], custom_types: dict[str, Any] | None = None) -> Space:
         from designspace.serialize import from_json as _from_json
 
         return _from_json(data, custom_types=custom_types)
@@ -439,6 +440,38 @@ def _build_child_index(params: Mapping[str, ParamDef]) -> dict[str, tuple[str, .
         prefix = path[: path.rfind(".") + 1]
         buckets.setdefault(prefix, []).append(path)
     return {prefix: tuple(paths) for prefix, paths in buckets.items()}
+
+
+def _is_nongenerative_paramdef(pd: ParamDef) -> bool:
+    if pd.type_kind == "custom":
+        domain = pd.domain
+        assert isinstance(domain, CustomDomain)
+        return domain.param_type is not None and not is_generative(domain.param_type)
+    if pd.type_kind == "symbolic":
+        domain = pd.domain
+        assert isinstance(domain, SymbolicDomain)
+        return domain.sampler is None
+    if pd.type_kind == "code":
+        return True
+    if pd.type_kind == "list":
+        domain = pd.domain
+        assert isinstance(domain, ListDomain)
+        return _is_nongenerative_list_domain(domain)
+    return False
+
+
+def _is_nongenerative_list_domain(domain: ListDomain) -> bool:
+    if domain.element_kind == "list":
+        assert isinstance(domain.element_domain, ListDomain)
+        return _is_nongenerative_list_domain(domain.element_domain)
+    if domain.element_kind == "custom":
+        assert isinstance(domain.element_domain, CustomDomain)
+        elem = domain.element_domain
+        return elem.param_type is not None and not is_generative(elem.param_type)
+    if domain.element_kind == "symbolic":
+        assert isinstance(domain.element_domain, SymbolicDomain)
+        return domain.element_domain.sampler is None
+    return domain.element_kind == "code"
 
 
 def _has_dynamic_count(domain: ListDomain) -> bool:
@@ -554,16 +587,29 @@ def _list_cardinality(path: str, domain: ListDomain, space: Space) -> int | None
         elem = _list_cardinality(f"{path}[]", domain.element_domain, space)
     elif domain.element_kind in ("space", "choice"):
         elem_pd = ParamDef(
-            path=f"{path}[]", type_kind=domain.element_kind, domain=domain.element_domain,
-            prior=None, periodic=False, default=None, condition=None, tags=frozenset(),
+            path=f"{path}[]",
+            type_kind=domain.element_kind,
+            domain=domain.element_domain,
+            prior=None,
+            periodic=False,
+            default=None,
+            condition=None,
+            tags=frozenset(),
             meta=MappingProxyType({}),
         )
         elem = _param_cardinality(f"{path}[]", elem_pd, space)
     else:
         elem_pd = ParamDef(
-            path=f"{path}[]", type_kind=domain.element_kind, domain=domain.element_domain,
-            prior=None, periodic=domain.element_periodic, default=None, condition=None,
-            tags=frozenset(), meta=MappingProxyType({}), quantized=domain.element_quantized,
+            path=f"{path}[]",
+            type_kind=domain.element_kind,
+            domain=domain.element_domain,
+            prior=None,
+            periodic=domain.element_periodic,
+            default=None,
+            condition=None,
+            tags=frozenset(),
+            meta=MappingProxyType({}),
+            quantized=domain.element_quantized,
         )
         elem = _param_cardinality(f"{path}[]", elem_pd, space)
     if elem is None:
@@ -600,6 +646,10 @@ def _param_cardinality(path: str, pd: ParamDef, space: Space) -> int | None:
     if isinstance(domain, CustomDomain):
         if domain.param_type is not None and has_cardinality(domain.param_type):
             return cast("int | None", domain.param_type.cardinality())
+        return None
+    if isinstance(domain, SymbolicDomain | CodeDomain):
+        # Opaque, no declared-cardinality capability of any kind (unlike a
+        # custom type's optional `.cardinality()`) — never enumerable.
         return None
     if isinstance(domain, ListDomain):
         return _list_cardinality(path, domain, space)

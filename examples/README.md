@@ -5,11 +5,12 @@ Two arcs, in one directory:
 - **01–04** grow the *shape* of a space — flat, hierarchical (choice),
   variable-length (lifts), and custom-typed — in increasing complexity, the
   way a real design space usually grows.
-- **05–09** hold the shape plain and grow what you *do* with a space
+- **05–10** hold the shape plain and grow what you *do* with a space
   instead — the full expression vocabulary, struct params and charts,
   DataFrame output and sampling diagnostics, the surface a consumer
-  (solver, wizard UI, driver loop) actually calls, and bridging a phenotype
-  space to the genotype a solver actually optimizes over.
+  (solver, wizard UI, driver loop) actually calls, bridging a phenotype
+  space to the genotype a solver actually optimizes over, and declaring
+  (never generating) a tree/program genotype.
 
 Each file is self-contained and runnable:
 
@@ -32,6 +33,7 @@ place; later examples use it freely without re-explaining.
 | Parameter Types — Combinatorial (`subset`/`permutation`) | 03 (subset payload), 05 (`subset` queries, `permutation` queries), 08 (`PermutationRemaining`) |
 | Parameter Types — Structural (`choice`, `.space(...)` struct) | 02 (choice), 06 (struct param, inline and prebuilt) |
 | Parameter Types — Extension (`.custom(...)`) | 04 (full protocol), 08 (`sampler, validator` shorthand) |
+| Parameter Types — Program (`.symbolic(...)`, `.code(...)`) | 10 |
 | Modifiers and Layering (`.prior`, `.log_scale`, `.quantized`, `.default`, `.when`, `.tag`, `.meta`, the lift `.repeat`) | 01 (`.log_scale`, `.quantized(step=)`, `.when`), 03 (`.repeat(count)`, variadic sugar), 06 (nested/variadic `.repeat`, `periodic=True`, `.quantized(factor=)`, explicit `Log`/`Logit`/`Power`, element vs. list `.default`, `.meta`) |
 | Paths and Scoping (path grammar, instance vs. definition paths) | 03 (instance paths into a lift), 06 (nested/negative/mixed instance paths) |
 | Expressions — boolean vocabulary (`==`, `.is_in`, `.is_active`, `&`/`\|`/`~`, `.implies`, `ds.all_`/`ds.any_`/`ds.count`) | 01 (`.is_in`), 02 (`.implies`), 05 (`ds.all_`/`ds.any_`/`ds.count`, `.is_active`) |
@@ -55,5 +57,4 @@ place; later examples use it freely without re-explaining.
 ## Not yet implemented
 
 These appear in `API.md` but not in any example, because they aren't built
-yet (see `PROGRESS.md`): `.symbolic()` / `.code()` (Program params, M12),
-`.to_json_schema()`.
+yet (see `PROGRESS.md`): `.to_json_schema()`.

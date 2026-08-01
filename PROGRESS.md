@@ -1,6 +1,6 @@
 # Progress
 
-Current milestone: **M12 (open)**.
+Current milestone: **M13 (open)**.
 
 | Milestone | Completed | Tests | DECISIONS entries |
 |---|---|---|---|
@@ -27,6 +27,7 @@ Current milestone: **M12 (open)**.
 | M10.9 — `unflatten`/`apply_defaults` static-count hygiene fix | 2026-07-31 | 1258 | _none_ |
 | M10.10 — `ConstraintReport.violation_rate` | 2026-07-31 | 1265 | _none_ |
 | M11 — Representation layer (`space.represent()`, `Representation`, `Encoding`, the induced chart representation) | 2026-07-31 | 1362 | D-79, D-80, D-81, D-82 |
+| M12 — Program types (`.symbolic()`, `.code()`) | 2026-08-01 | 1451 | D-83, D-84, D-85, D-86, D-87, D-88, D-89, D-90 |
 
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
 

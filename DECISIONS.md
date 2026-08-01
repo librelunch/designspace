@@ -679,6 +679,398 @@ representations that build successfully.
 
 ---
 
+## D-83 — The `.symbolic()` AST encoding, core's validation depth, and no evaluator
+
+- Status: Resolved
+- Date: 2026-08-01
+- Spec section: API.md §Parameter Types > "Program"; §Support Types
+- Decided by: User
+
+### Question
+
+`.symbolic()`'s value is `{"ast": ..., "source": str}`, but API.md never defines what `ast` is —
+no node grammar, no statement of what core checks against `max_depth`/`primitives`/`FloatLiteral`/
+`IntLiteral`. Does core define and check a concrete AST shape, or is `ast` an opaque JSON blob core
+only requires to be present and validator-approved? And does core ship an evaluator for the built-in
+primitive vocabulary the table names?
+
+### Why the specification is insufficient
+
+Tree/program generation is explicitly Out of Scope, but the spec still lists `max_depth`, a
+`primitives` vocabulary, and `FloatLiteral`/`IntLiteral` as declared facts about a `.symbolic()`
+param — facts that mean nothing unless *something* checks a submitted tree against them. The spec
+never says what that something is, nor whether it is core or entirely the caller's `validators`.
+
+### Possibilities considered
+
+1. **Core-defined, core-checked AST (chosen).** A concrete JSON node grammar
+   (`{"op", "args"}` / `{"var"}` / `{"const"}`); core structurally validates a value against the
+   declaration before any user `validators` run.
+2. **Opaque AST, validators only.** Core requires only the two keys and JSON-serializability;
+   `max_depth`/`primitives`/`FloatLiteral`/`IntLiteral` become declared-but-unenforced metadata.
+   Smallest surface, but then `.symbolic()` differs from `.code()` only in value shape — nothing
+   distinguishes "structured expression tree" from "freeform source" in what core actually checks.
+3. **Ship an evaluator** alongside the AST checker (`ds.evaluate_symbolic(value, **args)`),
+   implementing the built-in primitives and dispatching to `Primitive.fn` for user-defined ones.
+
+### Answer
+
+Possibility 1 for the AST; possibility 3 rejected — no evaluator ships.
+
+### Reasoning
+
+Possibility 1 is what makes `max_depth`/`primitives`/the literal types mean anything: without a
+core-checked grammar they are declared and serialized but never enforced, silently contradicting
+the "declares the space, validates against it" framing the rest of the type system follows (custom,
+choice, subset all validate a submitted value against their declaration). No evaluator: `API.md`'s
+own Out-of-Scope list already excludes "tree/program generation strategy for `.symbolic()`" and
+"LLM backends for `.code()`" — an evaluator is the missing third leg of the same boundary (structure
+without semantics), and shipping one would require deciding numeric edge-case semantics (division by
+zero, log of a non-positive) the spec never states, for a language it does not otherwise touch.
+
+### Specification update
+
+API.md §Parameter Types > "Program" gains the node grammar, the validation rules (vocabulary, arity
+iff declared — see D-89 — variable names, literal bounds, depth), and an explicit "no evaluator"
+statement.
+
+---
+
+## D-84 — `.symbolic()`/`.code()` value shape
+
+- Status: Resolved
+- Date: 2026-08-01
+- Spec section: API.md §Parameter Types > "Program"
+- Decided by: Agent
+
+### Question
+
+Given D-83's node grammar, what exactly is the value dict's shape — is `"source"` required for
+`.symbolic()`, and is it ever cross-checked against `"ast"`?
+
+### Why the specification is insufficient
+
+The table's `{"ast", "source"}` column notation doesn't say which keys are required, nor whether
+`"source"` must agree with `"ast"` (core owns no printer/parser to check that against).
+
+### Possibilities considered
+
+1. **`"source"` optional, never cross-checked** (chosen) — a str when present, purely a
+   human-readable rendering the author supplies.
+2. **`"source"` required, unchecked.** Forces every symbolic value to carry a string even when
+   nothing consumes it (no printer exists to require one).
+3. **Cross-check `source` against `ast`.** Requires core to own a parser/printer for whatever
+   surface syntax `source` is written in — direct scope creep past "no evaluator" (D-83).
+
+### Answer
+
+Possibility 1. `.code()`'s value is `{"source": <str>}`, `"source"` required (it is the entire
+value there — nothing else exists to hold the definition).
+
+### Reasoning
+
+`"source"` is documentation for a human or an LLM backend reading the space, not load-bearing data
+core validates against anything — optional-and-unchecked is the only reading consistent with "core
+owns no printer/parser." `.code()`'s value has no second field, so its one key is naturally required.
+
+### Specification update
+
+API.md §Parameter Types > "Program" states the value shapes explicitly.
+
+---
+
+## D-85 — `.code()`'s `description`/`constraints`/`examples`
+
+- Status: Resolved
+- Date: 2026-08-01
+- Spec section: API.md §Parameter Types > "Program"
+- Decided by: Agent
+
+### Question
+
+`.code(signature, description="", constraints=None, examples=None, validators=None)` lists three
+parameters (`description`, `constraints`, `examples`) API.md never explains anywhere else. What are
+they for, and does core do anything with them beyond storing them?
+
+### Why the specification is insufficient
+
+No prose anywhere in API.md describes these three parameters' purpose or constraints.
+
+### Possibilities considered
+
+1. **Declared, serialized, fingerprinted metadata for a consumer's backend** (chosen) — core stores
+   and round-trips them, never interprets them (an LLM backend is Out of Scope).
+2. **Core validates against them** (e.g., checks `source` against `constraints` as executable
+   rules). Rejected — this is exactly the "no evaluator" boundary D-83 draws; `constraints` here are
+   natural-language/backend-specific hints, not a core-checkable predicate language.
+
+### Answer
+
+Possibility 1. `examples` entries must be JSON-serializable (row 23's existing rule, reused
+verbatim — the same bar `.meta()` values clear).
+
+### Reasoning
+
+Consistent with `.symbolic()`'s own `validators`/`sampler` treatment: core's job stops at structural
+declaration and value validation, never semantic interpretation of a backend's own convention.
+
+### Specification update
+
+API.md §Parameter Types > "Program" describes all three as consumer-facing metadata.
+
+---
+
+## D-86 — `Signature` normalization
+
+- Status: Resolved
+- Date: 2026-08-01
+- Spec section: API.md §Support Types
+- Decided by: Agent
+
+### Question
+
+`ds.Signature(args: dict[str, type | str], returns: type | str)` accepts either a Python `type` or a
+bare string per argument. How is this stored so the fingerprint preimage stays canonical and the
+support type carries no unserializable object?
+
+### Why the specification is insufficient
+
+The signature's own `type | str` union is stated; nothing says whether a `type` is normalized at
+construction or carried as-is (which would make `Signature` itself non-serializable whenever a
+caller passes `int`/`float`/`bool` directly).
+
+### Possibilities considered
+
+1. **Normalize at construction to `type.__name__`** (chosen) — `args`/`returns` are plain strings
+   from the moment a `Signature` exists; argument order is preserved (`MappingProxyType` over an
+   insertion-ordered dict).
+2. **Carry the raw `type | str` union, normalize only at encode time.** Leaves a `Signature` object
+   holding a `type` object between construction and serialization — an unnecessary latent
+   unserializable state for a value meant to be fully structural.
+
+### Answer
+
+Possibility 1.
+
+### Reasoning
+
+A `type | str` union has exactly one serializable representation (the name), so normalizing
+immediately removes an entire class of "encode-time surprise" and matches how every other support
+type in the codebase (`Log`, `Power`, `Weights`) carries only serializable fields from construction.
+
+### Specification update
+
+API.md §Support Types states the normalization and that argument order is meaningful and preserved.
+
+---
+
+## D-87 — `.freeze()`/`.slice()` on a program param
+
+- Status: Resolved
+- Date: 2026-08-01
+- Spec section: API.md §Space — Structural Operations
+- Decided by: Agent
+
+### Question
+
+The `.freeze`/`.slice` per-kind mechanism paragraph enumerates real/integer/categorical/ordinal/
+bool/custom but predates program types. Does a `.symbolic()`/`.code()` param freeze like a custom
+(with the same shorthand exception), and does `.slice()` support it?
+
+### Why the specification is insufficient
+
+Program types didn't exist when that paragraph was written; nothing says which existing mechanism,
+if any, extends to them.
+
+### Possibilities considered
+
+1. **Mirror `_pin_custom` exactly, no shorthand exception** (chosen) — `require(p == value)` plus
+   `default = value`; `.slice()` supported unconditionally.
+2. **Reject freeze entirely**, treating a program param like the five M9.5 container kinds needing
+   dedicated per-kind machinery. Rejected — a program value is an ordinary JSON dict; there is
+   nothing structurally special about it that the existing opaque-pin mechanism doesn't already
+   handle.
+3. **Mirror custom including the shorthand rejection.** There is no shorthand form for
+   `.symbolic()`/`.code()` at all (no `to_json`-less callback path), so this possibility doesn't
+   actually apply — every program value is unconditionally comparable and serializable.
+
+### Answer
+
+Possibility 1. `.slice()`'s custom-only rejection is grounded specifically in `.prop()` ("no
+substitution target for a `.prop()` expression's operand") — no program param supports `.prop()`,
+so the obstruction never arises and `.slice()` needs no new code at all.
+
+### Reasoning
+
+Reusing `_pin_custom`'s exact mechanism needs zero new machinery beyond a dispatch branch, and a
+program value's always-plain-JSON-dict nature means the one exception custom needs (the shorthand
+has no serializable form) simply doesn't exist here.
+
+### Specification update
+
+API.md's `.freeze`'s per-kind mechanism paragraph and the `.slice()` custom-rejection sentence both
+gain a program-type clause.
+
+---
+
+## D-88 — Per-field opacity for `validators`/`sampler`/`Primitive.fn`
+
+- Status: Resolved
+- Date: 2026-08-01
+- Spec section: API.md §Identity and Serialization (non-serializable set)
+- Decided by: Agent
+
+### Question
+
+The non-serializable set already names `code`/`symbolic` `validators`, `symbolic` `sampler`, and
+`Primitive.fn` (anticipated at M10.8). Given a `.symbolic()`/`.code()` domain is otherwise fully
+structural (`signature`, `primitives`' names/arities, `max_depth`, `description`/`constraints`/
+`examples` all serialize plainly), does raise/mark/drop poison the *whole* domain the way the
+`.custom(sampler, validator)` shorthand does, or degrade only the opaque field?
+
+### Why the specification is insufficient
+
+Every prior opacity precedent (`.custom(sampler, validator)`, an external `Prior`) poisons an entire
+domain/field that has *no* structural content without the opaque part. A `.symbolic()`/`.code()`
+domain is different: it has substantial structural content even when `validators`/`sampler`/`fn` are
+present, so the existing precedent doesn't settle whether opacity should be whole-domain or per-field.
+
+### Possibilities considered
+
+1. **Per-field opacity, in place** (chosen) — each of the three fields independently rides raise/
+   mark/drop; the rest of the domain (and, for `Primitive.fn`, the rest of that one primitive entry)
+   always serializes.
+2. **Whole-domain opacity**, matching `.custom(sampler, validator)` exactly — any one opaque field
+   present degrades the entire `.symbolic()`/`.code()` domain to the marker sentinel.
+
+### Answer
+
+Possibility 1, generalizing the precedent D-77 already set for a `ds.value` site: "one opaque leaf
+inside an otherwise-structural tree degrades in place" — here the tree is a domain instead of an
+expression, but the principle is the same.
+
+### Reasoning
+
+Whole-domain opacity would silently discard a program param's entire declaration (signature,
+vocabulary, depth budget) just because it also happens to carry a validator — a much larger loss of
+information than the custom shorthand's poisoning, which has no structural content to lose in the
+first place. Per-field opacity preserves everything serializable and only marks what genuinely isn't.
+
+### Specification update
+
+API.md's non-serializable-set paragraph gains a sentence distinguishing this per-field precedent
+from the whole-domain one.
+
+---
+
+## D-89 — Arity binds only where declared; `Primitive.arity` accepts a range
+
+- Status: Resolved
+- Date: 2026-08-01
+- Spec section: API.md §Support Types (`ds.Primitive`)
+- Decided by: User
+
+### Question
+
+A tree node `{"op": "+", "args": [...]}` can only be arity-checked if core knows `+`'s arity — but
+API.md never states one for any built-in name, and `ds.Primitive(name, arity, fn=None)`'s `arity`
+reads as a single int. Does core assign an arity to a built-in name, and can an author declare a
+variadic or unary-or-binary primitive at all?
+
+### Why the specification is insufficient
+
+The built-in list (before D-90 dropped it) fixed names only, never arities; arity-checking a bare
+built-in string would require core to invent a fact the spec never states, for a vocabulary an
+author can already extend via `ds.Primitive`. Separately, `arity: int` cannot express "two or more"
+or "one or two" — real tree-language operators (`+`, `-`) commonly need exactly that.
+
+### Possibilities considered
+
+1. **Core assumes no arity for a bare string; `Primitive.arity` widened to `int | (int, int|None)`**
+   (chosen) — arity is checked exactly where an author wrote it, and a range expresses variadic/
+   flexible operators.
+2. **Core ships a fixed built-in arity table.** Rejected in the same exchange that produced D-90 —
+   requires inventing three more facts the spec is silent on (is `-` unary-capable? are `min`/`max`
+   variadic? does a `Primitive` shadowing a built-in override or conflict?), compounding rather than
+   resolving the underlying problem.
+3. **Arity-check nothing, ever — even a declared `Primitive`.** Simplest, but leaves
+   `Primitive.arity` unused by core, contradicting the method's own listed purpose.
+
+### Answer
+
+Possibility 1.
+
+### Reasoning
+
+The user's framing throughout this exchange was consistent: core should assume nothing it isn't
+told. A bare string is genuinely untold information (no arity was ever declared for it); a
+`ds.Primitive` is exactly where an author tells core the arity, so that is exactly where core should
+check it — and checking it precisely requires the range form, since an exact int cannot express a
+variadic or flexible operator at all.
+
+### Specification update
+
+API.md §Parameter Types > "Program" and §Support Types both state: a bare string carries no arity;
+`ds.Primitive.arity` is `int | tuple[int, int | None]`; an int and its `(n, n)` spelling are
+fingerprint-equal.
+
+---
+
+## D-90 — The built-in primitive set is dropped; row 15 is rewritten
+
+- Status: Resolved
+- Date: 2026-08-01
+- Spec section: API.md §Parameter Types > "Program"; §Support Types; Error table row 15
+- Decided by: User
+
+### Question
+
+Once D-89 settles that core assigns no arity to a bare built-in string, does the fixed built-in name
+list (`+ - * / ** % abs min max cos sin exp log pi e`) still serve a purpose? If not, should it be
+dropped — and this is a **stated law** (row 15, "Unknown `.symbolic()` primitive"), so dropping it is
+a deliberate change to normative text, not a routine implementation gap.
+
+### Why the specification is insufficient
+
+This is not a case of the specification being silent — API.md stated the list and row 15's rejection
+plainly. The question raised, directly by the user, was whether that stated law should itself
+change, once its only surviving justification (typo-catching) was weighed against what it costs.
+
+### Possibilities considered
+
+1. **Keep the closed list.** Row 15 stands as written; a name outside the 15 requires
+   `ds.Primitive(name, arity)`. Preserves typo-catching for a bare string; costs one `Primitive(...)`
+   call per non-listed operator, and the list's own 15 names are an arbitrary, incomplete snapshot
+   (no `sqrt`, `tan`, `floor`, `where`, no comparisons) that constrains nothing real once arity is
+   author-declared anyway.
+2. **Drop the fence entirely — any non-empty string names a primitive** (chosen by the user). Row 15
+   is repurposed to the declaration checks that survive (duplicate name, malformed arity, bad
+   `max_depth`, bad literal bounds, bad signature arg name); a `Primitive` may still shadow a common
+   name (that is how its arity gets pinned).
+3. **Keep the list, widen its contents** to cover more real-world operators. Rejected by the user —
+   still an arbitrary, incomplete vocabulary, and cuts against the direction of D-89.
+
+### Answer
+
+Possibility 2, explicitly chosen by the user over the agent's recommended possibility 1.
+
+### Reasoning
+
+Once arity carries no meaning at the built-in-name level, a closed list constrains nothing a
+`ds.Primitive` declaration couldn't already extend past, its contents are demonstrably incomplete
+for real symbolic-regression/tree-search vocabularies, and its only remaining function — catching a
+typo in a bare string — is a narrow benefit purchased at the cost of an arbitrary ceiling on
+`.symbolic()`'s expressiveness. Vocabulary checking is not eliminated, only relocated: a tree's `op`
+must still be a name the param declared (D-83's AST check), so `{"op": "cos"}` against
+`primitives=["cso"]` is still invalid — only the *declaration-time* membership fence is gone.
+
+### Specification update
+
+API.md §Parameter Types > "Program" drops the built-in-list sentence entirely; error table row 15 is
+rewritten from "Unknown `.symbolic()` primitive" to the surviving declaration-hygiene checks.
+
+---
+
 ## Entry template
 
 Copy this template for each genuine specification gap.

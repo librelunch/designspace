@@ -16,6 +16,7 @@ from designspace.ir._domain import (
     BoolDomain,
     CategoricalDomain,
     ChoiceDomain,
+    CodeDomain,
     CustomDomain,
     Domain,
     IntegerDomain,
@@ -26,6 +27,7 @@ from designspace.ir._domain import (
     RealDomain,
     StructDomain,
     SubsetDomain,
+    SymbolicDomain,
 )
 from designspace.ir._param import Condition, Constraint, ParamDef
 from designspace.ir._priors import Log, Logit, Power, Prior, PriorSpec, Weights
@@ -53,6 +55,7 @@ __all__ = [
     "CategoricalDomain",
     "Chart",
     "ChoiceDomain",
+    "CodeDomain",
     "Condition",
     "Constraint",
     "ConstraintEval",
@@ -85,6 +88,7 @@ __all__ = [
     "SubsetDomain",
     "SubsetRemaining",
     "SubspaceInfo",
+    "SymbolicDomain",
     "ValidationResult",
     "ValueRemaining",
     "Weights",

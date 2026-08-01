@@ -39,9 +39,7 @@ from designspace.ir import (
 from designspace.paths import element_prefix
 
 
-def _canonical_grid(
-    domain: Domain, quantized: QuantizedSpec | None, value: Any
-) -> Any:
+def _canonical_grid(domain: Domain, quantized: QuantizedSpec | None, value: Any) -> Any:
     if quantized is None:
         return value
     assert isinstance(domain, RealDomain | IntegerDomain)
@@ -69,11 +67,13 @@ def _encode_scalar_value(
         return sorted((tag_value(v) for v in value), key=sort_key)
     if kind == "permutation":  # order is the payload — never sorted
         return [tag_value(v) for v in value]
-    if kind == "custom":
-        # A custom config leaf is already phenotype (to_json'd) form
-        # (DECISIONS.md D-46) — the same JSON-shaped dict/list/scalar tree
-        # every other Any-typed leaf value uses, so the generic recursive
-        # tagging codec applies uniformly with no per-type hook.
+    if kind in ("custom", "symbolic", "code"):
+        # A custom/symbolic/code config leaf is already phenotype form —
+        # for custom, D-46's to_json'd form; for symbolic/code, the plain
+        # JSON dict `.validate()`/`.default()` already hold (D-84) — the
+        # same JSON-shaped dict/list/scalar tree every other Any-typed leaf
+        # value uses, so the generic recursive tagging codec applies
+        # uniformly with no per-type hook.
         return encode_default_value(value)
     raise SerializationError(f"config encoding: unsupported scalar kind {kind!r}")
 

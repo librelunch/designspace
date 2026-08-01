@@ -41,6 +41,7 @@ from designspace.expr import ArithExpr
 from designspace.ir import (
     CategoricalDomain,
     ChoiceDomain,
+    CodeDomain,
     Constraint,
     CustomDomain,
     IntegerDomain,
@@ -53,6 +54,7 @@ from designspace.ir import (
     Power,
     RealDomain,
     SubsetDomain,
+    SymbolicDomain,
     Weights,
 )
 from designspace.paths import element_prefix, strip_last_index
@@ -152,7 +154,10 @@ def _materialize_scalar(path: str, pd: ParamDef, rng: np.random.Generator) -> An
     non-generative case: a full-protocol custom whose `ParamType` has no
     `sample()` (API.md, "Sampling and Generativity"; DECISIONS.md D-46) —
     `.default()` satisfies materialization (row 26's other half), absent
-    which sampling raises naming the param."""
+    which sampling raises naming the param. M12 adds the second:
+    `.code()`/`.symbolic()` without `sampler=` (a bare `.symbolic(...,
+    sampler=...)` is generative; `.code()` has no `sampler=` form at all,
+    so it is always non-generative unless a `.default()` covers it)."""
     if pd.type_kind == "custom":
         assert isinstance(pd.domain, CustomDomain)
         domain = pd.domain
@@ -164,6 +169,17 @@ def _materialize_scalar(path: str, pd: ParamDef, rng: np.random.Generator) -> An
                 "and no .default() to materialize from (row 26)"
             )
         return _draw_custom(domain, rng)
+    if pd.type_kind in ("symbolic", "code"):
+        assert isinstance(pd.domain, SymbolicDomain | CodeDomain)
+        sampler = pd.domain.sampler if isinstance(pd.domain, SymbolicDomain) else None
+        if sampler is not None:
+            return sampler(rng)
+        if pd.default is not None:
+            return pd.default
+        raise SamplingError(
+            f"param {path!r}: non-generative {pd.type_kind!r} param has no "
+            "sampler and no .default() to materialize from (row 26)"
+        )
     return _draw_value(pd, rng)
 
 

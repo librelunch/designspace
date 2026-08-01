@@ -9,6 +9,7 @@ from designspace.build._views import (
     BoolParamExpr,
     CategoricalParamExpr,
     ChoiceParamExpr,
+    CodeParamExpr,
     CustomParamExpr,
     FreshParamExpr,
     IntegerParamExpr,
@@ -18,6 +19,7 @@ from designspace.build._views import (
     RealParamExpr,
     StructParamExpr,
     SubsetParamExpr,
+    SymbolicParamExpr,
     TypedParamExpr,
 )
 
@@ -25,6 +27,7 @@ __all__ = [
     "BoolParamExpr",
     "CategoricalParamExpr",
     "ChoiceParamExpr",
+    "CodeParamExpr",
     "CustomParamExpr",
     "FreshParamExpr",
     "IntegerParamExpr",
@@ -36,6 +39,7 @@ __all__ = [
     "Space",
     "StructParamExpr",
     "SubsetParamExpr",
+    "SymbolicParamExpr",
     "TypedParamExpr",
     "param",
     "space",

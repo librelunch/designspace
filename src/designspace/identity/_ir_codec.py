@@ -50,6 +50,7 @@ from designspace.ir import (
     BoolDomain,
     CategoricalDomain,
     ChoiceDomain,
+    CodeDomain,
     Condition,
     Constraint,
     CustomDomain,
@@ -67,8 +68,10 @@ from designspace.ir import (
     RealDomain,
     StructDomain,
     SubsetDomain,
+    SymbolicDomain,
     Weights,
 )
+from designspace.program import FloatLiteral, IntLiteral, Primitive, Signature
 
 CustomTypeRegistry = Mapping[str, Any]  # type_key -> factory(describe_dict) -> ParamType
 
@@ -201,6 +204,12 @@ def encode_domain(kind: str, domain: Domain, scope: Scope, ctx: EncodeContext, p
     if kind == "custom":
         assert isinstance(domain, CustomDomain)
         return _encode_custom_domain(domain, ctx, path)
+    if kind == "symbolic":
+        assert isinstance(domain, SymbolicDomain)
+        return _encode_symbolic_domain(domain, ctx, path)
+    if kind == "code":
+        assert isinstance(domain, CodeDomain)
+        return _encode_code_domain(domain, ctx, path)
     if kind == "list":
         assert isinstance(domain, ListDomain)
         return _encode_list_domain(domain, scope, ctx, path)
@@ -238,6 +247,138 @@ def _encode_custom_domain(domain: CustomDomain, ctx: EncodeContext, path: str) -
     assert ctx.mode == "drop"
     ctx.dropped.append(f"param {path!r}: custom type (shorthand, opaque)")
     return dict(_OPAQUE_MARKER)
+
+
+# -- SymbolicDomain / CodeDomain (M12) -------------------------------------
+#
+# Unlike a whole opaque custom, these two kinds are *mostly* structural —
+# `signature`/`primitives`/`max_depth`/`description`/`constraints`/`examples`
+# all serialize plainly. Only three fields are genuinely opaque
+# (DECISIONS.md D-88, the enumerated non-serializable set: "`code`/
+# `symbolic` validators, `symbolic` sampler, `Primitive.fn`"), and each
+# rides raise/mark/drop *in place* rather than poisoning the whole domain —
+# the same in-place-degradation precedent D-77 set for a `ds.value` site,
+# generalized from "one opaque leaf inside an expression tree" to "one
+# opaque field inside an otherwise-structural domain."
+
+
+def _encode_opaque_field(ctx: EncodeContext, site: str) -> Any:
+    if ctx.mode == "raise":
+        raise SerializationError(
+            f"{site} has no structural encoding — pass on_unserializable='mark' or 'drop'"
+        )
+    if ctx.mode == "mark":
+        return dict(_OPAQUE_MARKER)
+    assert ctx.mode == "drop"
+    ctx.dropped.append(f"{site} (opaque)")
+    return dict(_OPAQUE_MARKER)
+
+
+def _decode_opaque_field(tree: Any, key: str, site: str) -> None:
+    if key in tree:
+        raise SerializationError(
+            f"{site}: cannot reconstruct from a mark-sentinel document — "
+            "from_json only round-trips fully serializable spaces"
+        )
+
+
+def _encode_signature(signature: Signature) -> Any:
+    return {"args": [[name, t] for name, t in signature.args.items()], "returns": signature.returns}
+
+
+def _decode_signature(tree: Any) -> Signature:
+    return Signature(dict(tree["args"]), tree["returns"])
+
+
+def _encode_program_primitive(
+    prim: str | Primitive | FloatLiteral | IntLiteral, ctx: EncodeContext, path: str
+) -> Any:
+    if isinstance(prim, str):
+        return {"kind": "name", "name": prim}
+    if isinstance(prim, Primitive):
+        lo, hi = prim.arity_range
+        tree: dict[str, Any] = {
+            "kind": "primitive",
+            "name": prim.name,
+            "arity": {"lo": lo, "hi": hi},
+        }
+        if prim.fn is not None:
+            tree["fn"] = _encode_opaque_field(
+                ctx, f"param {path!r}: symbolic() primitive {prim.name!r} fn"
+            )
+        return tree
+    if isinstance(prim, FloatLiteral):
+        return {"kind": "float_literal", "lo": prim.lo, "hi": prim.hi}
+    assert isinstance(prim, IntLiteral)
+    return {"kind": "int_literal", "lo": prim.lo, "hi": prim.hi}
+
+
+def _decode_program_primitive(tree: Any, path: str) -> str | Primitive | FloatLiteral | IntLiteral:
+    kind = tree["kind"]
+    if kind == "name":
+        return str(tree["name"])
+    if kind == "primitive":
+        _decode_opaque_field(tree, "fn", f"param {path!r}: symbolic() primitive fn")
+        arity = tree["arity"]
+        return Primitive(name=tree["name"], arity=(arity["lo"], arity["hi"]))
+    if kind == "float_literal":
+        return FloatLiteral(float(tree["lo"]), float(tree["hi"]))
+    if kind == "int_literal":
+        return IntLiteral(int(tree["lo"]), int(tree["hi"]))
+    raise SerializationError(f"param {path!r}: unknown symbolic() primitive kind {kind!r}")
+
+
+def _encode_symbolic_domain(domain: SymbolicDomain, ctx: EncodeContext, path: str) -> Any:
+    tree: dict[str, Any] = {
+        "kind": "symbolic",
+        "signature": _encode_signature(domain.signature),
+        "primitives": [_encode_program_primitive(p, ctx, path) for p in domain.primitives],
+        "max_depth": domain.max_depth,
+    }
+    if domain.validators is not None:
+        tree["validators"] = _encode_opaque_field(ctx, f"param {path!r}: symbolic() validators")
+    if domain.sampler is not None:
+        tree["sampler"] = _encode_opaque_field(ctx, f"param {path!r}: symbolic() sampler")
+    return tree
+
+
+def _decode_symbolic_domain(tree: Any, path: str) -> SymbolicDomain:
+    _decode_opaque_field(tree, "validators", f"param {path!r}: symbolic() validators")
+    _decode_opaque_field(tree, "sampler", f"param {path!r}: symbolic() sampler")
+    return SymbolicDomain(
+        signature=_decode_signature(tree["signature"]),
+        primitives=tuple(_decode_program_primitive(p, path) for p in tree["primitives"]),
+        max_depth=tree["max_depth"],
+    )
+
+
+def _encode_code_domain(domain: CodeDomain, ctx: EncodeContext, path: str) -> Any:
+    tree: dict[str, Any] = {
+        "kind": "code",
+        "signature": _encode_signature(domain.signature),
+        "description": domain.description,
+    }
+    if domain.constraints is not None:
+        tree["constraints"] = list(domain.constraints)
+    if domain.examples is not None:
+        tree["examples"] = [encode_default_value(e) for e in domain.examples]
+    if domain.validators is not None:
+        tree["validators"] = _encode_opaque_field(ctx, f"param {path!r}: code() validators")
+    return tree
+
+
+def _decode_code_domain(tree: Any, path: str) -> CodeDomain:
+    _decode_opaque_field(tree, "validators", f"param {path!r}: code() validators")
+    constraints = tuple(tree["constraints"]) if "constraints" in tree else None
+    examples = (
+        tuple(decode_default_value(e) for e in tree["examples"]) if "examples" in tree else None
+    )
+    return CodeDomain(
+        signature=_decode_signature(tree["signature"]),
+        description=tree["description"],
+        constraints=constraints,
+        examples=examples,
+    )
 
 
 def _encode_list_domain(domain: ListDomain, scope: Scope, ctx: EncodeContext, path: str) -> Any:
@@ -304,6 +445,10 @@ def decode_domain(
         return StructDomain()
     if kind == "custom":
         return _decode_custom_domain(tree, path, custom_types)
+    if kind == "symbolic":
+        return _decode_symbolic_domain(tree, path)
+    if kind == "code":
+        return _decode_code_domain(tree, path)
     if kind == "list":
         return _decode_list_domain(tree, path, custom_types)
     raise SerializationError(f"param {path!r}: unknown domain kind {kind!r}")
@@ -337,9 +482,7 @@ def _decode_list_domain(
     element_default = (
         decode_default_value(tree["element_default"]) if "element_default" in tree else None
     )
-    list_default = (
-        decode_default_value(tree["list_default"]) if "list_default" in tree else None
-    )
+    list_default = decode_default_value(tree["list_default"]) if "list_default" in tree else None
     return ListDomain(
         element_kind=element_kind,
         element_domain=decode_domain(element_kind, tree["element_domain"], path, custom_types),
@@ -460,9 +603,7 @@ def encode_param(pd: ParamDef, scope: Scope, ctx: EncodeContext) -> dict[str, An
     if quantized_tree is not None:
         tree["quantized"] = quantized_tree
     if pd.condition is not None:
-        tree["condition"] = encode_expr(
-            pd.condition, ctx, site=f"param {pd.path!r} condition"
-        )
+        tree["condition"] = encode_expr(pd.condition, ctx, site=f"param {pd.path!r} condition")
     if scope != "sampling":
         if pd.default is not None:
             # A default can be subset/permutation-shaped (a list of items),

@@ -88,10 +88,11 @@ class EncodeContext:
     site. Through M7 the only such site was an external `Prior` (DECISIONS.md
     D-31); M9 adds the `.custom(sampler, validator)` shorthand; M10.8 adds
     `ds.value`'s `fn`, encountered by `encode_expr` rather than
-    `encode_domain`/`encode_prior`. The three remaining sites the spec
-    enumerates (`code`/`symbolic` validators, `symbolic` sampler,
-    `Primitive.fn`) still have no builder surface (M12), so no IR they'd
-    appear in can exist yet."""
+    `encode_domain`/`encode_prior`; M12 adds the last three the spec
+    enumerates — `code`/`symbolic` `validators`, `symbolic` `sampler`,
+    `Primitive.fn` — each opaque *per field* rather than poisoning the
+    whole domain (DECISIONS.md D-88), encountered by
+    `identity/_ir_codec.py`'s `_encode_symbolic_domain`/`_encode_code_domain`."""
 
     mode: OnUnserializable
     dropped: list[str] = field(default_factory=list)

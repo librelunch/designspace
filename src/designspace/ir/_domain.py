@@ -109,6 +109,42 @@ class CustomDomain:
 
 
 @dataclass(frozen=True)
+class SymbolicDomain:
+    """`.symbolic(signature, primitives, max_depth, validators=None,
+    sampler=None)` — a structured expression tree (API.md, "Parameter
+    Types" > "Program"). Value shape `{"ast": <node>, "source": <str>}`,
+    `"source"` optional (DECISIONS.md D-84). `signature`/`primitives`/
+    `validators`/`sampler` typed `Any` to avoid a cycle: `designspace.program`
+    imports `ir`/`charts` (for `FloatLiteral`/`IntLiteral`'s `.chart`), so
+    the reverse import is unavailable — mirrors `CustomDomain`'s same
+    avoidance. **Non-generative** unless `sampler` is given (API.md,
+    "Sampling and Generativity")."""
+
+    signature: Any  # designspace.program.Signature
+    primitives: Any  # tuple[str | Primitive | FloatLiteral | IntLiteral, ...]
+    max_depth: int
+    validators: Any = None  # tuple[Callable[[Any], bool], ...] | None
+    sampler: Any = None  # Callable[[Any], Any] | None
+
+
+@dataclass(frozen=True)
+class CodeDomain:
+    """`.code(signature, description="", constraints=None, examples=None,
+    validators=None)` — freeform source (API.md, "Parameter Types" >
+    "Program"). Value shape `{"source": <str>}` (DECISIONS.md D-84).
+    `description`/`constraints`/`examples` are declared, serialized,
+    fingerprinted metadata for a consumer's own backend (DECISIONS.md
+    D-85) — core never interprets them. **Always non-generative** (no
+    `sampler=` form exists for `.code()`)."""
+
+    signature: Any  # designspace.program.Signature
+    description: str = ""
+    constraints: Any = None  # tuple[str, ...] | None
+    examples: Any = None  # tuple[Any, ...] | None
+    validators: Any = None  # tuple[Callable[[str], bool], ...] | None
+
+
+@dataclass(frozen=True)
 class ListDomain:
     """`.repeat(count)` (the lift). Recursive — `element_domain` is another
     `ListDomain` for a chained/variadic `.repeat().repeat()`. Every fact
@@ -149,5 +185,7 @@ Domain = (
     | ChoiceDomain
     | StructDomain
     | CustomDomain
+    | SymbolicDomain
+    | CodeDomain
     | ListDomain
 )

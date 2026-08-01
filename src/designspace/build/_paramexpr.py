@@ -69,6 +69,8 @@ _TYPE_METHOD_NAMES = frozenset(
         "choice",
         "space",
         "custom",
+        "symbolic",
+        "code",
     }
 )
 _NUMERIC_ONLY_MODIFIERS = frozenset({"log_scale", "quantized"})
@@ -197,8 +199,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
                         "to the list, not the element — call it before .repeat() (row 11)"
                     )
                 raise ResolutionError(
-                    f"param {self.path!r}: {name}() only applies to real or integer "
-                    "params (row 11)"
+                    f"param {self.path!r}: {name}() only applies to real or integer params (row 11)"
                 )
             raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
 

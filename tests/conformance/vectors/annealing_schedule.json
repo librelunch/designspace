@@ -1,0 +1,286 @@
+{
+  "fingerprint_full": "1:full:9f0eb7e6a7bce6a9bed0bd71588fe3b0149a3d4d4d89d50f07f96d9989970d01",
+  "fingerprint_sampling": "1:sampling:5b4f664d1d4d2fca0e4581d6c5a76c01235893f08513c4fe62e2b2dbcfdb91a0",
+  "to_json": {
+    "conditions": [
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "use_custom_schedule"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "bool",
+                "v": true
+              }
+            }
+          ],
+          "kind": "eq"
+        },
+        "target": "schedule"
+      }
+    ],
+    "constraints": [
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "min_temp"
+            },
+            {
+              "kind": "ref",
+              "path": "initial_temp"
+            }
+          ],
+          "kind": "lt"
+        },
+        "hard": true,
+        "origin": "require"
+      },
+      {
+        "expr": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "total_steps"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "int",
+                "v": 100
+              }
+            }
+          ],
+          "kind": "ge"
+        },
+        "hard": false,
+        "origin": "user",
+        "tags": [
+          "convergence"
+        ]
+      }
+    ],
+    "params": [
+      {
+        "domain": {
+          "hi": 1000.0,
+          "kind": "real",
+          "lo": 1.0
+        },
+        "kind": "real",
+        "path": "initial_temp",
+        "periodic": false,
+        "prior": {
+          "kind": "log"
+        }
+      },
+      {
+        "domain": {
+          "hi": 1.0,
+          "kind": "real",
+          "lo": 0.001
+        },
+        "kind": "real",
+        "path": "min_temp",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "hi": 1000,
+          "kind": "integer",
+          "lo": 10
+        },
+        "kind": "integer",
+        "path": "total_steps",
+        "periodic": false
+      },
+      {
+        "domain": {
+          "kind": "bool"
+        },
+        "kind": "bool",
+        "path": "use_custom_schedule",
+        "periodic": false
+      },
+      {
+        "condition": {
+          "children": [
+            {
+              "kind": "ref",
+              "path": "use_custom_schedule"
+            },
+            {
+              "kind": "literal",
+              "value": {
+                "$t": "bool",
+                "v": true
+              }
+            }
+          ],
+          "kind": "eq"
+        },
+        "default": {
+          "ast": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [],
+                    "op": {
+                      "$t": "str",
+                      "v": "pi"
+                    }
+                  },
+                  {
+                    "args": [
+                      {
+                        "var": {
+                          "$t": "str",
+                          "v": "step"
+                        }
+                      },
+                      {
+                        "var": {
+                          "$t": "str",
+                          "v": "total"
+                        }
+                      }
+                    ],
+                    "op": {
+                      "$t": "str",
+                      "v": "/"
+                    }
+                  }
+                ],
+                "op": {
+                  "$t": "str",
+                  "v": "*"
+                }
+              }
+            ],
+            "op": {
+              "$t": "str",
+              "v": "cos"
+            }
+          },
+          "source": {
+            "$t": "str",
+            "v": "cos(pi * (step / total))"
+          }
+        },
+        "domain": {
+          "kind": "symbolic",
+          "max_depth": 4,
+          "primitives": [
+            {
+              "kind": "name",
+              "name": "cos"
+            },
+            {
+              "kind": "name",
+              "name": "exp"
+            },
+            {
+              "kind": "name",
+              "name": "pi"
+            },
+            {
+              "kind": "name",
+              "name": "/"
+            },
+            {
+              "arity": {
+                "hi": 2,
+                "lo": 2
+              },
+              "kind": "primitive",
+              "name": "*"
+            },
+            {
+              "arity": {
+                "hi": null,
+                "lo": 2
+              },
+              "kind": "primitive",
+              "name": "+"
+            },
+            {
+              "hi": 1.0,
+              "kind": "float_literal",
+              "lo": 0.0
+            }
+          ],
+          "signature": {
+            "args": [
+              [
+                "step",
+                "int"
+              ],
+              [
+                "total",
+                "int"
+              ]
+            ],
+            "returns": "float"
+          }
+        },
+        "kind": "symbolic",
+        "path": "schedule",
+        "periodic": false
+      },
+      {
+        "default": {
+          "source": {
+            "$t": "str",
+            "v": "delta < 0 or random() < exp(-delta / temperature)"
+          }
+        },
+        "domain": {
+          "constraints": [
+            "must be a pure function of delta and temperature"
+          ],
+          "description": "Metropolis acceptance criterion",
+          "examples": [
+            {
+              "accept": {
+                "$t": "bool",
+                "v": true
+              },
+              "delta": {
+                "$t": "float",
+                "v": -1.0
+              },
+              "temperature": {
+                "$t": "float",
+                "v": 0.5
+              }
+            }
+          ],
+          "kind": "code",
+          "signature": {
+            "args": [
+              [
+                "delta",
+                "float"
+              ],
+              [
+                "temperature",
+                "float"
+              ]
+            ],
+            "returns": "bool"
+          }
+        },
+        "kind": "code",
+        "path": "acceptance_predicate",
+        "periodic": false
+      }
+    ],
+    "version": 1
+  }
+}

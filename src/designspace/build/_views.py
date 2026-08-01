@@ -1,8 +1,9 @@
 """Builder view types (API.md, "Builder view types"; DECISIONS.md D-27,
 D-28).
 
-`ds.param(name)` returns a `FreshParamExpr` — a `ParamExpr` carrying the 9
-type methods. Each type method narrows to a type-specific view that omits
+`ds.param(name)` returns a `FreshParamExpr` — a `ParamExpr` carrying the 12
+type methods (M12 adds `.symbolic()`/`.code()` to M9's `.custom()`-updated
+10). Each type method narrows to a type-specific view that omits
 the type methods, so a second one is a static type error (and, via
 `ParamExpr.__getattr__`, still the path-named row-2 `ResolutionError` at
 runtime — never a bare `AttributeError`). `.repeat()` — available on any
@@ -19,7 +20,7 @@ D-27). It was already the shared implementation base of every narrowed view
 Class shape, bottom to top:
     ParamExpr                     (build/_paramexpr.py — no type methods, no .repeat();
                                     type_kind: ClassVar[str | None] = None)
-    +-- FreshParamExpr            9 type methods only; inherits type_kind = None
+    +-- FreshParamExpr            12 type methods only; inherits type_kind = None
     +-- TypedParamExpr            .repeat() only — shared by every narrowed view
         +-- _NumericParamExpr     + .log_scale()/.quantized() — Real/Integer only
         |   +-- RealParamExpr     type_kind = "real"
@@ -31,10 +32,13 @@ Class shape, bottom to top:
         +-- PermutationParamExpr  type_kind = "permutation"
         +-- ChoiceParamExpr       type_kind = "choice"
         +-- StructParamExpr       type_kind = "space"
+        +-- CustomParamExpr       type_kind = "custom"
+        +-- SymbolicParamExpr     type_kind = "symbolic"
+        +-- CodeParamExpr         type_kind = "code"
         +-- ListParamExpr         type_kind = "list"
 
 None of these subclasses add fields (API.md: "they add no state beyond
-ParamExpr"); each is a thin method surface (plus, on the 10 leaves, a fixed
+ParamExpr"); each is a thin method surface (plus, on the 13 leaves, a fixed
 `type_kind` override) over the same dataclass fields, constructed via
 `ParamExpr._as()`. None needs `@dataclass` redecoration — `type_kind` was
 declared `ClassVar` on `ParamExpr` itself, so dataclass field processing
@@ -59,6 +63,7 @@ from designspace.ir import (
     BoolDomain,
     CategoricalDomain,
     ChoiceDomain,
+    CodeDomain,
     CustomDomain,
     IntegerDomain,
     Log,
@@ -68,7 +73,9 @@ from designspace.ir import (
     RealDomain,
     StructDomain,
     SubsetDomain,
+    SymbolicDomain,
 )
+from designspace.program import FloatLiteral, IntLiteral, Primitive, Signature
 
 
 class FreshParamExpr(ParamExpr):
@@ -96,16 +103,12 @@ class FreshParamExpr(ParamExpr):
     def subset(
         self, items: Sequence[Any], min_size: int = 0, max_size: int | None = None
     ) -> SubsetParamExpr:
-        return self._as(
-            SubsetParamExpr, domain=SubsetDomain(tuple(items), min_size, max_size)
-        )
+        return self._as(SubsetParamExpr, domain=SubsetDomain(tuple(items), min_size, max_size))
 
     def permutation(self, items: Sequence[Any]) -> PermutationParamExpr:
         return self._as(PermutationParamExpr, domain=PermutationDomain(tuple(items)))
 
-    def choice(
-        self, *variants: str | tuple[str, Any], **keyword_variants: Any
-    ) -> ChoiceParamExpr:
+    def choice(self, *variants: str | tuple[str, Any], **keyword_variants: Any) -> ChoiceParamExpr:
         names: list[str] = []
         payloads: dict[str, Any] = {}
         has_payload: set[str] = set()
@@ -159,6 +162,54 @@ class FreshParamExpr(ParamExpr):
         return self._as(
             CustomParamExpr,
             domain=CustomDomain(param_type=param_type, sampler=sampler, validator=validator),
+        )
+
+    def symbolic(
+        self,
+        signature: Signature,
+        primitives: Sequence[str | Primitive | FloatLiteral | IntLiteral],
+        max_depth: int,
+        validators: Sequence[Callable[[Any], builtins.bool]] | None = None,
+        sampler: Callable[[Any], Any] | None = None,
+    ) -> SymbolicParamExpr:
+        """`.symbolic(signature, primitives, max_depth, validators=None,
+        sampler=None)` — API.md, "Parameter Types" > "Program". Structured
+        expression trees; variables auto-derived from `signature.args`.
+        **Non-generative** unless `sampler=` opts in a generator (which is
+        then non-serializable, riding the closed non-serializable set like
+        `validators`/`Primitive.fn`)."""
+        return self._as(
+            SymbolicParamExpr,
+            domain=SymbolicDomain(
+                signature=signature,
+                primitives=tuple(primitives),
+                max_depth=max_depth,
+                validators=tuple(validators) if validators is not None else None,
+                sampler=sampler,
+            ),
+        )
+
+    def code(
+        self,
+        signature: Signature,
+        description: str = "",
+        constraints: Sequence[str] | None = None,
+        examples: Sequence[Any] | None = None,
+        validators: Sequence[Callable[[str], builtins.bool]] | None = None,
+    ) -> CodeParamExpr:
+        """`.code(signature, description="", constraints=None,
+        examples=None, validators=None)` — API.md, "Parameter Types" >
+        "Program". Freeform source. **Always non-generative** (no
+        `sampler=` form)."""
+        return self._as(
+            CodeParamExpr,
+            domain=CodeDomain(
+                signature=signature,
+                description=description,
+                constraints=tuple(constraints) if constraints is not None else None,
+                examples=tuple(examples) if examples is not None else None,
+                validators=tuple(validators) if validators is not None else None,
+            ),
         )
 
     def space(self, *exprs: Any) -> StructParamExpr:
@@ -299,6 +350,21 @@ class CustomParamExpr(TypedParamExpr):
     (DECISIONS.md D-45) — not on this view."""
 
     type_kind: ClassVar[str] = "custom"
+
+
+class SymbolicParamExpr(TypedParamExpr):
+    """`.symbolic()`'s return type — a thin leaf view, mirroring
+    `CustomParamExpr` (API.md, "Parameter Types" > "Program"). Non-
+    generative unless `sampler=` was given."""
+
+    type_kind: ClassVar[str] = "symbolic"
+
+
+class CodeParamExpr(TypedParamExpr):
+    """`.code()`'s return type — a thin leaf view; always non-generative
+    (no `sampler=` form exists for `.code()`)."""
+
+    type_kind: ClassVar[str] = "code"
 
 
 class ListParamExpr(TypedParamExpr):

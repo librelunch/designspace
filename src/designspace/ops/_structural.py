@@ -103,8 +103,7 @@ def _validate_fixed_value(space: Space, path: str, value: Any, *, call: str) -> 
     pd = space.params[path]
     if "[]" in path or pd.type_kind in ("space", "list"):
         raise ResolutionError(
-            f"{call}: {path!r} is a {pd.type_kind!r} container — only a leaf "
-            "param can be fixed"
+            f"{call}: {path!r} is a {pd.type_kind!r} container — only a leaf param can be fixed"
         )
     result = space.validate_param(path, value)
     if not result.valid:
@@ -420,8 +419,7 @@ def _apply_keep_set(space: Space, keep: set[str], *, strict: bool, call: str) ->
         )
         if strict:
             raise ResolutionError(
-                f"{call}: constraint(s) reference excluded param(s) {excluded} "
-                "(strict=True)"
+                f"{call}: constraint(s) reference excluded param(s) {excluded} (strict=True)"
             )
         warnings.warn(
             f"{call}: dropped {len(dropped_constraints)} constraint(s) referencing "
@@ -439,8 +437,11 @@ def _apply_keep_set(space: Space, keep: set[str], *, strict: bool, call: str) ->
         )
 
     result = _build_space_from_ir(
-        new_params, new_conditions, new_constraints,
-        anchors=stripped_anchors, meta=dict(space.meta_map),
+        new_params,
+        new_conditions,
+        new_constraints,
+        anchors=stripped_anchors,
+        meta=dict(space.meta_map),
     )
     return _drop_invalid_anchors(result, call=call)
 
@@ -533,8 +534,12 @@ def _require_pin(expr: BoolExpr) -> Constraint:
     `check_expr_types`/`desugar_bool` has anything left to check.
     """
     return Constraint(
-        expr=expr, hard=True, origin="require", tags=frozenset(),
-        meta=MappingProxyType({}), params=expr.params,
+        expr=expr,
+        hard=True,
+        origin="require",
+        tags=frozenset(),
+        meta=MappingProxyType({}),
+        params=expr.params,
     )
 
 
@@ -740,9 +745,7 @@ def _expand_list_body(
                 _require_pin(Compare("eq", ParamExpr(path=inst_path), Literal(elem_value)))
             )
         selected = set(value)
-        removed_prefixes = tuple(
-            f"{path}[].{v}." for v in el_domain.variants if v not in selected
-        )
+        removed_prefixes = tuple(f"{path}[].{v}." for v in el_domain.variants if v not in selected)
         removed_paths = {
             p for p in space.params if any(p.startswith(pre) for pre in removed_prefixes)
         }
@@ -818,9 +821,7 @@ def _expand_leaf_or_container(
     if kind == "space":
         assert isinstance(pd.domain, StructDomain)
         if not isinstance(value, dict):
-            raise ResolutionError(
-                f"{call}: {path!r} is a struct — expected a dict of field values"
-            )
+            raise ResolutionError(f"{call}: {path!r} is a struct — expected a dict of field values")
         return _expand_struct(space, path, value, call=call)
     if kind == "list":
         assert isinstance(pd.domain, ListDomain)
@@ -878,12 +879,19 @@ def _narrow_or_pin(pd: ParamDef, value: Any, *, call: str) -> tuple[ParamDef, Co
     kind = pd.type_kind
     if kind == "real":
         assert isinstance(pd.domain, RealDomain)
-        return replace(pd, domain=RealDomain(value, value), periodic=False, prior=None,
-                        quantized=None, default=value), None
+        return replace(
+            pd,
+            domain=RealDomain(value, value),
+            periodic=False,
+            prior=None,
+            quantized=None,
+            default=value,
+        ), None
     if kind == "integer":
         assert isinstance(pd.domain, IntegerDomain)
-        return replace(pd, domain=IntegerDomain(value, value), prior=None,
-                        quantized=None, default=value), None
+        return replace(
+            pd, domain=IntegerDomain(value, value), prior=None, quantized=None, default=value
+        ), None
     if kind == "categorical":
         assert isinstance(pd.domain, CategoricalDomain)
         return replace(pd, domain=CategoricalDomain((value,)), prior=None, default=value), None
@@ -893,12 +901,18 @@ def _narrow_or_pin(pd: ParamDef, value: Any, *, call: str) -> tuple[ParamDef, Co
     if kind == "bool":
         expr: BoolExpr = ParamExpr(path=pd.path) if value else Not(ParamExpr(path=pd.path))
         constraint = Constraint(
-            expr=expr, hard=True, origin="require", tags=frozenset(),
-            meta=MappingProxyType({}), params=expr.params,
+            expr=expr,
+            hard=True,
+            origin="require",
+            tags=frozenset(),
+            meta=MappingProxyType({}),
+            params=expr.params,
         )
         return replace(pd, default=value), constraint
     if kind == "custom":
         return _pin_custom(pd, value, call=call)
+    if kind in ("symbolic", "code"):
+        return _pin_program(pd, value)
     raise AssertionError(f"unreachable: {kind!r} is dispatched before _narrow_or_pin (D-50)")
 
 
@@ -930,8 +944,32 @@ def _pin_custom(pd: ParamDef, value: Any, *, call: str) -> tuple[ParamDef, Const
         )
     expr: BoolExpr = Compare("eq", ParamExpr(path=pd.path), Literal(value))
     constraint = Constraint(
-        expr=expr, hard=True, origin="require", tags=frozenset(),
-        meta=MappingProxyType({}), params=expr.params,
+        expr=expr,
+        hard=True,
+        origin="require",
+        tags=frozenset(),
+        meta=MappingProxyType({}),
+        params=expr.params,
+    )
+    return replace(pd, default=value), constraint
+
+
+def _pin_program(pd: ParamDef, value: Any) -> tuple[ParamDef, Constraint | None]:
+    """Freeze-on-`.symbolic()`/`.code()` (DECISIONS.md D-87, generalizing
+    `_pin_custom`): a `require(p == value)` hard pin plus `default = value`
+    — same mechanism, same rationale (no domain to narrow for an opaque
+    value; a non-generative program param has no other route to a value at
+    `sample()` time). **No shorthand exception** — unlike a custom type, a
+    program value is always a plain, comparable, serializable JSON dict
+    (D-84), so freezing is unconditionally available."""
+    expr: BoolExpr = Compare("eq", ParamExpr(path=pd.path), Literal(value))
+    constraint = Constraint(
+        expr=expr,
+        hard=True,
+        origin="require",
+        tags=frozenset(),
+        meta=MappingProxyType({}),
+        params=expr.params,
     )
     return replace(pd, default=value), constraint
 
@@ -1037,8 +1075,11 @@ def slice_space(space: Space, to_remove: dict[str, Any]) -> Space:
 
     new_anchors = _strip_and_check_anchors_after_slice(space, new_params, to_remove)
     result = space_from_ir(
-        new_params, new_conditions, new_constraints,
-        anchors=new_anchors, meta=dict(space.meta_map),
+        new_params,
+        new_conditions,
+        new_constraints,
+        anchors=new_anchors,
+        meta=dict(space.meta_map),
     )
     for name, config in result.anchors.items():
         if not result.validate(config).valid:
