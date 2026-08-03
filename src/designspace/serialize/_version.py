@@ -2,7 +2,7 @@
 "fingerprint()"): "The JSON document carries a single integer format
 version... Output: preimage-format version (shared with to_json's version
 counter)..." One counter, bumped deliberately per the freeze-discipline
-version-bump protocol (PLAN.md.md) — never on a whim.
+version-bump protocol (PLAN.md) — never on a whim.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""`wind_farm_grid` corpus fixture (PLAN.md.md corpus table,
+"""`wind_farm_grid` corpus fixture (PLAN.md corpus table,
 added M3).
 
 Exercises: subset + machine-generated pairwise forbids (static unrolling)

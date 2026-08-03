@@ -47,11 +47,12 @@ Before every commit, run these exact commands from the repository root:
 
 ```console
 uv run ruff check
+uv run ruff format --check
 uv run mypy --strict src/
 uv run pytest -q
 ```
 
-All three must pass. Do not skip a gate, weaken strictness, add broad ignores, hide a
+All four must pass. Do not skip a gate, weaken strictness, add broad ignores, hide a
 failure, or change these commands to make a commit pass. The same commands must run in
 CI.
 

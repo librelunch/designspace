@@ -1,4 +1,4 @@
-"""`solver_portfolio` corpus fixture (PLAN.md.md corpus table, M4).
+"""`solver_portfolio` corpus fixture (PLAN.md corpus table, M4).
 
 Exercises: bool + `ds.count()`, `if_inactive`, inactive-vs-empty (the
 spec's own worked example pattern, API.md "Three-valued semantics"
@@ -23,9 +23,10 @@ def build_space() -> Space:
             *solver_flags,
             ds.param("use_ensemble").bool(),
             ds.param("n_workers").integer(0, MAX_WORKERS),
-            ds.param("workers").space(worker).repeat(ds.param("n_workers")).when(
-                ds.param("use_ensemble")
-            ),
+            ds.param("workers")
+            .space(worker)
+            .repeat(ds.param("n_workers"))
+            .when(ds.param("use_ensemble")),
         )
         .forbid(
             # At least one solver must be enabled — a forbid (feasibility),

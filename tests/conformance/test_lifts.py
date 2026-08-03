@@ -16,7 +16,7 @@ aggregates"; "Three-valued semantics" rules 1 and 6; "Paths and Scoping").
 - `unflatten(flatten(c)) == c` over lifted configs.
 - Variadic sugar `.repeat(a, b)` is structurally identical to the chained
   form `.repeat(b).repeat(a)` (fingerprint equality is M7; structural
-  equality is asserted now, per PLAN.md.md's M4 gate).
+  equality is asserted now, per PLAN.md's M4 gate).
 - Instance paths in expressions: an out-of-range index is Unknown.
 - `.field(name)` on a non-struct lift, or naming an undeclared element
   field, is a resolution error (row 6) — not a silent Unknown cascade
@@ -177,9 +177,7 @@ class TestRow6FieldProjection:
 
     def test_field_on_non_lift_raises(self):
         with pytest.raises(ResolutionError, match="'x'"):
-            ds.space(ds.param("x").real(0.0, 1.0)).encourage(
-                ds.param("x").field("y").sum() > 0
-            )
+            ds.space(ds.param("x").real(0.0, 1.0)).encourage(ds.param("x").field("y").sum() > 0)
 
     def test_undeclared_field_name_raises(self):
         item = ds.space(ds.param("width").real(0.0, 1.0))
@@ -198,7 +196,7 @@ class TestRow6FieldProjection:
 
 
 class TestPerInstanceConstraintInstantiation:
-    """"Constraints declared inside a repeated element `Space` are
+    """ "Constraints declared inside a repeated element `Space` are
     instantiated per element": introspection lists them once under the
     definition path; evaluation reports one `ConstraintEval` per instance
     path."""
@@ -339,7 +337,7 @@ class TestIsSortedDepthRestriction:
 
 
 class TestNestedLiftLeafFlattening:
-    """"Numeric and equality aggregates... operate over the leaves,
+    """ "Numeric and equality aggregates... operate over the leaves,
     flattened across all levels.\""""
 
     def test_sum_flattens_across_nesting_levels(self):
@@ -368,9 +366,9 @@ class TestFlattenUnflattenRoundTripWithLifts:
         return ds.space(
             ds.param("dropout").real(0.0, 0.6).repeat(4),
             ds.param("layers").space(ds.param("width").integer(16, 1024)).repeat(3),
-            ds.param("pipeline").choice(
-                "shuffle", pmx=ds.space(ds.param("swap_p").real(0.0, 1.0))
-            ).repeat(2),
+            ds.param("pipeline")
+            .choice("shuffle", pmx=ds.space(ds.param("swap_p").real(0.0, 1.0)))
+            .repeat(2),
         )
 
     def test_round_trip_over_sampled_configs(self):
@@ -394,13 +392,13 @@ class TestVariadicSugarStructuralEquality:
 
 
 class TestInstancePathOutOfRange:
-    """"Instance paths are legal in expressions... An out-of-range index
+    """ "Instance paths are legal in expressions... An out-of-range index
     makes the leaf inactive (-> Unknown)"."""
 
     def _space(self):
-        return ds.space(
-            ds.param("stops").space(ds.param("dwell").integer(0, 60)).repeat(2)
-        ).forbid(ds.param("stops[1].dwell") > 10)
+        return ds.space(ds.param("stops").space(ds.param("dwell").integer(0, 60)).repeat(2)).forbid(
+            ds.param("stops[1].dwell") > 10
+        )
 
     def test_in_range_index_is_evaluated(self):
         space = self._space()

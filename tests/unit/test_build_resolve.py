@@ -352,9 +352,7 @@ class TestLastWriteWinsVsAccumulate:
         assert condition.kind == "and"
 
     def test_quantized_last_write_wins(self):
-        space = ds.space(
-            ds.param("x").real(0.0, 1.0).quantized(step=0.1).quantized(step=0.2)
-        )
+        space = ds.space(ds.param("x").real(0.0, 1.0).quantized(step=0.1).quantized(step=0.2))
         assert space.params["x"].quantized.step == 0.2
 
 

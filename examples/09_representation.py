@@ -53,10 +53,7 @@ def build_space() -> ds.Space:
         ds.param("lr").real(1e-5, 1.0).log_scale(),
         ds.param("weight_decay").real(1e-6, 1e-2).log_scale(),
         ds.param("n_layers").integer(1, 5),
-        ds.param("width")
-        .integer(8, 256)
-        .log_scale()
-        .repeat(ds.param("n_layers")),
+        ds.param("width").integer(8, 256).log_scale().repeat(ds.param("n_layers")),
         ds.param("optimizer").categorical("adam", "sgd"),
     ).forbid(ds.param("lr") > 0.5)
 
@@ -72,22 +69,30 @@ def main() -> None:
     print(f"  excluded_by_prop: {rep.excluded_by_prop}  (n_layers -- a repeat() count)")
     print(f"  invertible: {rep.invertible}   measure_preserving: {rep.measure_preserving}")
     print(f"  target params: {list(rep.target.params)}")
-    print(f"  target['lr']: {rep.target.params['lr'].type_kind}, "
-          f"domain={rep.target.params['lr'].domain}")
+    print(
+        f"  target['lr']: {rep.target.params['lr'].type_kind}, "
+        f"domain={rep.target.params['lr'].domain}"
+    )
 
     genotype = rep.target.sample_one(seed=0)
     print(f"\n  a genotype draw: {genotype}")
     phenotype = rep.decode(genotype)
     print(f"  decoded phenotype: {phenotype}")
-    print(f"  source.validate(phenotype).param_errors == (): "
-          f"{space.validate(phenotype).param_errors == ()}")
-    print(f"  target.is_feasible(genotype) == source.is_feasible(phenotype): "
-          f"{rep.target.is_feasible(genotype) == space.is_feasible(phenotype)}")
+    print(
+        f"  source.validate(phenotype).param_errors == (): "
+        f"{space.validate(phenotype).param_errors == ()}"
+    )
+    print(
+        f"  target.is_feasible(genotype) == source.is_feasible(phenotype): "
+        f"{rep.target.is_feasible(genotype) == space.is_feasible(phenotype)}"
+    )
 
     back = rep.encode(phenotype)
-    print(f"\n  encode(decode(genotype)) == genotype: {back == genotype}   "
-          "(expected False here -- width's integer chart is many-to-one, "
-          "API.md: 'encode(decode(g)) == g' is explicitly not a law)")
+    print(
+        f"\n  encode(decode(genotype)) == genotype: {back == genotype}   "
+        "(expected False here -- width's integer chart is many-to-one, "
+        "API.md: 'encode(decode(g)) == g' is explicitly not a law)"
+    )
 
     # -- rep.check(): the conformance laws as a tool --------------------------
     print("\n--- rep.check(n=200, seed=1) ---")
@@ -105,8 +110,12 @@ def main() -> None:
 
         def target(self, param: ds.ParamDef) -> ds.ParamDef:
             return replace(
-                param, type_kind="real", domain=ds.RealDomain(0.0, 1.0),
-                prior=None, quantized=None, chart=None,
+                param,
+                type_kind="real",
+                domain=ds.RealDomain(0.0, 1.0),
+                prior=None,
+                quantized=None,
+                chart=None,
             )
 
         def decode(self, param: ds.ParamDef, value: float) -> float:
@@ -122,8 +131,10 @@ def main() -> None:
 
     mixed = space.represent(only_lr)
     print(f"  encoded: {mixed.encoded}")
-    print(f"  target['weight_decay'] domain (untouched, still phenotype units): "
-          f"{mixed.target.params['weight_decay'].domain}")
+    print(
+        f"  target['weight_decay'] domain (untouched, still phenotype units): "
+        f"{mixed.target.params['weight_decay'].domain}"
+    )
 
     # -- A supplied morphism: hierarchy flattening ----------------------------
     print("\n--- A supplied morphism: hierarchy flattening ---")
@@ -162,8 +173,10 @@ def main() -> None:
     original_config = nested_space.sample_one(seed=2)
     print(f"  original: {original_config}")
     print(f"  encode -> {flattening_rep.encode(original_config)}")
-    print(f"  decode(encode(original)) == original: "
-          f"{flattening_rep.decode(flattening_rep.encode(original_config)) == original_config}")
+    print(
+        f"  decode(encode(original)) == original: "
+        f"{flattening_rep.decode(flattening_rep.encode(original_config)) == original_config}"
+    )
     flattening_check = flattening_rep.check(n=100, seed=3)
     print(f"  flattening_rep.check(): ok={flattening_check.ok}")
 

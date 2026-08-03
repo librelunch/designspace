@@ -195,9 +195,7 @@ class TestRule5UnknownProvenance:
         space = ds.space(ds.param("xs").real(0.0, 1.0).repeat(0))
         config = {"xs": 0}
         activity = compute_activity(space, config)
-        guarded = evaluate_arith(
-            ds.param("xs").min().if_inactive(-999.0), config, activity, space
-        )
+        guarded = evaluate_arith(ds.param("xs").min().if_inactive(-999.0), config, activity, space)
         assert isinstance(guarded, Unknown)
 
 
@@ -246,9 +244,7 @@ class TestRule7BoundCouplingsFollowRule4:
         )
         result = space.validate({"flag": False, "y": 3.0})
         assert result.valid
-        bound_evals = [
-            ce for ce in result.constraint_evals if ce.constraint.origin == "bound"
-        ]
+        bound_evals = [ce for ce in result.constraint_evals if ce.constraint.origin == "bound"]
         assert bound_evals and all(ce.applicable is False for ce in bound_evals)
 
 

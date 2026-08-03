@@ -28,7 +28,7 @@ from designspace.eval import compute_activity
 
 
 class TestRelocatability:
-    """"nesting a space under a variant or struct never rewrites its
+    """ "nesting a space under a variant or struct never rewrites its
     internal references" — a subspace's own conditional-activation logic
     behaves identically whether resolved standalone or embedded."""
 
@@ -148,9 +148,7 @@ class TestUpReferenceFromEnclosingScope:
     def test_up_reference_governs_activation(self):
         space = self._spec_example()
         # global_flag True + svm selected -> gamma active (present required).
-        assert space.validate(
-            {"global_flag": True, "algo": {"svm": {"C": 50, "gamma": 1.0}}}
-        ).valid
+        assert space.validate({"global_flag": True, "algo": {"svm": {"C": 50, "gamma": 1.0}}}).valid
         # global_flag False -> gamma inactive (present is an error).
         assert space.validate({"global_flag": False, "algo": {"svm": {"C": 50}}}).valid
         assert not space.validate(
@@ -356,12 +354,8 @@ class TestRow18CombinatorialExpressionChecks:
 
     def test_ordinal_compare_against_non_member_literal_raises(self):
         with pytest.raises(ResolutionError, match="'size'"):
-            ds.space(ds.param("size").ordinal("s", "m", "l")).encourage(
-                ds.param("size") > "xl"
-            )
+            ds.space(ds.param("size").ordinal("s", "m", "l")).encourage(ds.param("size") > "xl")
 
     def test_ordinal_compare_against_declared_literal_is_legal(self):
-        space = ds.space(ds.param("size").ordinal("s", "m", "l")).encourage(
-            ds.param("size") > "s"
-        )
+        space = ds.space(ds.param("size").ordinal("s", "m", "l")).encourage(ds.param("size") > "s")
         assert space.n_params == 1

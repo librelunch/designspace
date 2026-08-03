@@ -117,9 +117,7 @@ def sampling_report(
         ConstraintReport(
             constraint=c,
             applicable=scalar_applicable[i] / n,
-            satisfied=(
-                scalar_satisfied[i] / scalar_applicable[i] if scalar_applicable[i] else 0.0
-            ),
+            satisfied=(scalar_satisfied[i] / scalar_applicable[i] if scalar_applicable[i] else 0.0),
         )
         for i, c in enumerate(space.constraints)
     ]
@@ -128,9 +126,7 @@ def sampling_report(
             constraint=element_templates[key],
             applicable=element_applicable[key] / n,
             satisfied=(
-                element_satisfied[key] / element_applicable[key]
-                if element_applicable[key]
-                else 0.0
+                element_satisfied[key] / element_applicable[key] if element_applicable[key] else 0.0
             ),
         )
         for key in element_templates

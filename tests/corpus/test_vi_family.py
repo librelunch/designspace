@@ -68,9 +68,7 @@ def test_non_generative_custom_needs_default_or_freeze():
     with pytest.raises(SamplingError):
         space.sample_one(seed=0)
 
-    defaulted = ds.space(
-        ds.param("fixed").custom(FixedTopology(n_nodes=3)).default([[0, 1]])
-    )
+    defaulted = ds.space(ds.param("fixed").custom(FixedTopology(n_nodes=3)).default([[0, 1]]))
     assert defaulted.sample_one(seed=0) == {"fixed": [[0, 1]]}
 
 

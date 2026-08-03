@@ -183,9 +183,7 @@ def evaluate_partial(space: Space, config: dict[str, Any]) -> PartialEval:
     pending: list[Constraint] = []
     for c in space.constraints:
         _classify_constraint(c, flat, status, activity, space, None, evaluable, pending)
-    inst_evaluable, inst_pending = _instance_constraint_evals_partial(
-        space, flat, status, activity
-    )
+    inst_evaluable, inst_pending = _instance_constraint_evals_partial(space, flat, status, activity)
     evaluable.extend(inst_evaluable)
     pending.extend(inst_pending)
 
@@ -207,7 +205,10 @@ def _base_descriptor(pd: ParamDef) -> RemainingDomain:
         lo, hi = domain.lo, domain.hi
         assert isinstance(lo, int | float) and isinstance(hi, int | float)
         return RealRemaining(
-            lo=float(lo), hi=float(hi), lo_inclusive=True, hi_inclusive=not pd.periodic,
+            lo=float(lo),
+            hi=float(hi),
+            lo_inclusive=True,
+            hi_inclusive=not pd.periodic,
             grid=pd.quantized,
         )
     if isinstance(domain, IntegerDomain):
@@ -223,8 +224,11 @@ def _base_descriptor(pd: ParamDef) -> RemainingDomain:
     if isinstance(domain, SubsetDomain):
         max_size = domain.max_size if domain.max_size is not None else len(domain.items)
         return SubsetRemaining(
-            forced_in=(), forced_out=(), free=domain.items,
-            min_size=domain.min_size, max_size=max_size,
+            forced_in=(),
+            forced_out=(),
+            free=domain.items,
+            min_size=domain.min_size,
+            max_size=max_size,
         )
     if isinstance(domain, PermutationDomain):
         return PermutationRemaining(items=domain.items)
@@ -330,15 +334,21 @@ def _narrow_subset(base: SubsetRemaining, *, forced_in: bool, item: Any) -> Subs
             return base
         free = tuple(v for v in base.free if not _values_equal(v, item))
         return SubsetRemaining(
-            forced_in=(*base.forced_in, item), forced_out=base.forced_out,
-            free=free, min_size=base.min_size, max_size=base.max_size,
+            forced_in=(*base.forced_in, item),
+            forced_out=base.forced_out,
+            free=free,
+            min_size=base.min_size,
+            max_size=base.max_size,
         )
     if any(_values_equal(item, v) for v in base.forced_out):
         return base
     free = tuple(v for v in base.free if not _values_equal(v, item))
     return SubsetRemaining(
-        forced_in=base.forced_in, forced_out=(*base.forced_out, item),
-        free=free, min_size=base.min_size, max_size=base.max_size,
+        forced_in=base.forced_in,
+        forced_out=(*base.forced_out, item),
+        free=free,
+        min_size=base.min_size,
+        max_size=base.max_size,
     )
 
 
@@ -413,9 +423,7 @@ def remaining_domain(space: Space, path: str, config: dict[str, Any]) -> Remaini
     check_fully_resolved(space)
     pd = _lookup_param_shape(space, path)
     if pd.type_kind in ("space", "list"):
-        raise TypeError(
-            f"remaining_domain: {path!r} is a struct/list container, not a leaf param"
-        )
+        raise TypeError(f"remaining_domain: {path!r} is a struct/list container, not a leaf param")
     flat = flatten(config, space)
     status, _order, _deps = compute_activity_partial(space, flat)
     if status.get(path, "inactive") == "inactive":

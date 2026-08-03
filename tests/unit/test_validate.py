@@ -205,16 +205,16 @@ class TestValidateParam:
         assert raised
 
     def test_validate_param_without_context_omits_multi_param_constraint(self):
-        space = ds.space(
-            ds.param("x").real(0.0, 10.0), ds.param("y").real(0.0, 10.0)
-        ).forbid(ds.param("x") + ds.param("y") > 15)  # type: ignore[operator]
+        space = ds.space(ds.param("x").real(0.0, 10.0), ds.param("y").real(0.0, 10.0)).forbid(
+            ds.param("x") + ds.param("y") > 15
+        )  # type: ignore[operator]
         result = space.validate_param("x", 5.0)
         assert result.constraint_evals == ()
 
     def test_validate_param_with_context_evaluates_multi_param_constraint(self):
-        space = ds.space(
-            ds.param("x").real(0.0, 10.0), ds.param("y").real(0.0, 10.0)
-        ).forbid(ds.param("x") + ds.param("y") > 15)  # type: ignore[operator]
+        space = ds.space(ds.param("x").real(0.0, 10.0), ds.param("y").real(0.0, 10.0)).forbid(
+            ds.param("x") + ds.param("y") > 15
+        )  # type: ignore[operator]
         result = space.validate_param("x", 10.0, context={"y": 10.0})
         assert len(result.constraint_evals) == 1
         assert result.valid is False

@@ -170,9 +170,7 @@ def _reject_lift_valued_bool_operand(
 
 def _referenced_domain(node: Any, defs_by_path: Mapping[str, Any], *, context: str) -> Any:
     if not isinstance(node, ParamExpr):
-        raise ResolutionError(
-            f"{context}: expects a bare param reference, got {node.kind!r}"
-        )
+        raise ResolutionError(f"{context}: expects a bare param reference, got {node.kind!r}")
     return _resolve_entry(node.path, defs_by_path).domain
 
 
@@ -181,9 +179,7 @@ def _require_subset_domain(
 ) -> SubsetDomain:
     domain = _referenced_domain(node, defs_by_path, context=context)
     if not isinstance(domain, SubsetDomain):
-        raise ResolutionError(
-            f"{context}: {what} on {node.path!r}, which is not a subset param"
-        )
+        raise ResolutionError(f"{context}: {what} on {node.path!r}, which is not a subset param")
     return domain
 
 
@@ -267,9 +263,7 @@ def prop_type(node: Prop, defs_by_path: Mapping[str, Any], *, context: str) -> t
     return declared_type
 
 
-def _opaque_scalar_type(
-    node: Any, defs_by_path: Mapping[str, Any], *, context: str
-) -> type | None:
+def _opaque_scalar_type(node: Any, defs_by_path: Mapping[str, Any], *, context: str) -> type | None:
     """The declared/returned scalar type of an opaque leaf (`Prop` or
     `Value`), or `None` for anything else — the two dual-typed leaves API.md
     says are checked "identically" (row 16's scalar restriction "applies
@@ -326,9 +320,7 @@ def _check_opaque_compare_types(
                 )
 
 
-def _check_field_declared(
-    node: Field, defs_by_path: Mapping[str, Any], *, context: str
-) -> None:
+def _check_field_declared(node: Field, defs_by_path: Mapping[str, Any], *, context: str) -> None:
     """Row 6: `.field(name)` requires a struct lift whose element declares
     `name`. `node.operand` is checked only when it is itself a direct lift
     reference — a chained `.field().field()` would need to trace through an
@@ -348,8 +340,7 @@ def _check_field_declared(
     field_path = f"{base.path}[].{node.name}"
     if field_path not in defs_by_path:
         raise ResolutionError(
-            f"{context}: field({node.name!r}) on {base.path!r} is not a declared "
-            "element field"
+            f"{context}: field({node.name!r}) on {base.path!r} is not a declared element field"
         )
 
 
@@ -387,9 +378,7 @@ def check_expr_types(
         # is fine list-typed and must not raise).
         _reject_lift_valued_bool_operand(expr, defs_by_path, context=context)
     for node in iter_nodes(expr):
-        if tolerate_undeclared and any(
-            not _is_declared(p, defs_by_path) for p in node.params
-        ):
+        if tolerate_undeclared and any(not _is_declared(p, defs_by_path) for p in node.params):
             # A node touching an enclosing-scope up-reference cannot be typed
             # standalone (its referenced def is not in this scope); deferred to
             # finalization over the merged space (D-26).
@@ -485,9 +474,7 @@ def check_expr_types(
                     "single repeat() level (row 24) — a nested lift has no canonical order"
                 )
         elif isinstance(node, Sum | Min | Max | CountOf | Distinct):
-            _require_lift_domain(
-                node.operand, defs_by_path, context=context, what=f"{node.kind}()"
-            )
+            _require_lift_domain(node.operand, defs_by_path, context=context, what=f"{node.kind}()")
         elif isinstance(node, ParamExpr):
             # Row 29: a static out-of-range instance index (item 2, M10.5).
             # Runs for *every* bare ParamExpr regardless of its surrounding

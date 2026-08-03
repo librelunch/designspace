@@ -1,5 +1,5 @@
 """Corpus: `pump_configurator` — a scripted driver loop over
-`next_assignable` + `remaining_domain` (PLAN.md.md, M6)."""
+`next_assignable` + `remaining_domain` (PLAN.md, M6)."""
 
 from __future__ import annotations
 
@@ -103,9 +103,7 @@ def test_remaining_domain_soundness_over_many_valid_configs():
         assert rd_impeller is not None
         assert rd_impeller.lo <= cfg["impeller_diameter_mm"] <= rd_impeller.hi
 
-        rd_pressure = space.remaining_domain(
-            "max_pressure_bar", {"num_stages": cfg["num_stages"]}
-        )
+        rd_pressure = space.remaining_domain("max_pressure_bar", {"num_stages": cfg["num_stages"]})
         assert rd_pressure is not None
         assert rd_pressure.lo <= cfg["max_pressure_bar"] <= rd_pressure.hi
     assert checked > 0

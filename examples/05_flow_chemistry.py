@@ -59,9 +59,7 @@ def build_space() -> ds.Space:
         ds.space(
             # Independent inclusion probabilities (not normalized weights):
             # catalyst is included half the time, absent the rest.
-            ds.param("reagents")
-            .subset(REAGENTS, min_size=1)
-            .prior(weights=[0.9, 0.5, 0.2, 0.8]),
+            ds.param("reagents").subset(REAGENTS, min_size=1).prior(weights=[0.9, 0.5, 0.2, 0.8]),
             ds.param("order").permutation(STEPS),
             ds.param("temp_c").real(20.0, 200.0),
             ds.param("residence_min").real(1.0, 60.0).log_scale(),
@@ -139,8 +137,9 @@ def build_space() -> ds.Space:
 
 def main() -> None:
     space = build_space()
-    print(f"Flow Chemistry space: {space.n_params} parameters, "
-          f"conditional={space.is_conditional}\n")
+    print(
+        f"Flow Chemistry space: {space.n_params} parameters, conditional={space.is_conditional}\n"
+    )
 
     config = space.sample_one(seed=0)
     print("A sampled configuration:")
@@ -153,8 +152,10 @@ def main() -> None:
         c = ce.constraint
         tag = ", ".join(sorted(c.tags)) or "-"
         margin = f"{ce.margin:+.4f}" if ce.margin is not None else "  n/a "
-        print(f"  {c.kind:10}[{tag:28}] applicable={ce.applicable!s:5} "
-              f"satisfied={ce.satisfied!s:5} margin={margin}")
+        print(
+            f"  {c.kind:10}[{tag:28}] applicable={ce.applicable!s:5} "
+            f"satisfied={ce.satisfied!s:5} margin={margin}"
+        )
 
     # Rule 4 in the flesh: the unguarded thermal-budget constraint is
     # inapplicable (and therefore silently accepted) on every draw where
@@ -174,10 +175,14 @@ def main() -> None:
         for ce in space.evaluate_constraints(c)
         if "thermal-budget-guarded" in ce.constraint.tags and ce.applicable
     )
-    print(f"  unguarded applicable: {unguarded_applicable}/{len(off_configs)} "
-          "(Unknown-swallowed the rest)")
-    print(f"  guarded   applicable: {guarded_applicable}/{len(off_configs)} "
-          "(the `.if_inactive(0.0)` fallback keeps it evaluable)")
+    print(
+        f"  unguarded applicable: {unguarded_applicable}/{len(off_configs)} "
+        "(Unknown-swallowed the rest)"
+    )
+    print(
+        f"  guarded   applicable: {guarded_applicable}/{len(off_configs)} "
+        "(the `.if_inactive(0.0)` fallback keeps it evaluable)"
+    )
 
     # ds.value's construction-time guard: a non-scalar `returns=` is a
     # row-30 ResolutionError, caught here rather than left to resolution.

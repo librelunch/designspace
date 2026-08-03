@@ -1,6 +1,8 @@
 # Progress
 
-Current milestone: **M13 (open)**.
+Current milestone: **M12.5 (open)**. Next: M13 (`to_json_schema`), M14 (documentation), M15 (v0.1
+release), M16 (optional extras, v0.2) — split out of the former single M13 on the 2026-08-03
+documentation pass; see `PLAN.md`.
 
 | Milestone | Completed | Tests | DECISIONS entries |
 |---|---|---|---|
@@ -33,6 +35,9 @@ One row per completed milestone: date, total test count at completion, IDs of an
 
 The "DECISIONS entries" column above is a **historical** record: once an entry's answer is folded
 into `API.md`, the entry itself is removed from the ledger and recovered from git history. D-1
-through D-70 have been through that fold, so every ID above resolves via `git log -- DECISIONS.md`
-rather than the current file. D-52–D-70 are the exception to the one-milestone-per-row mapping —
-they came from a spec pass on 2026-07-30, before M10.5 opened, and fed M10.5 through M11.
+through D-90 have been through that fold, so every ID above resolves via `git log -- DECISIONS.md`
+rather than the current file (D-71 through D-90 were pruned on the 2026-08-03 documentation pass,
+alongside the M13 split recorded above). D-52–D-70 are the exception to the one-milestone-per-row
+mapping — they came from a spec pass on 2026-07-30, before M10.5 opened, and fed M10.5 through M12.
+D-91 is open (`to_json_schema`'s output contract) and lives in the current `DECISIONS.md`, pending
+resolution at M13's open.

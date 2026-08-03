@@ -198,8 +198,10 @@ def build_space() -> ds.Space:
 
 def main() -> None:
     space = build_space()
-    print(f"Distributed Training space: {space.n_params} parameters, "
-          f"conditional={space.is_conditional}\n")
+    print(
+        f"Distributed Training space: {space.n_params} parameters, "
+        f"conditional={space.is_conditional}\n"
+    )
 
     # -- .custom() + .prop() ---------------------------------------------------
     print("--- Custom types and .prop() ---")
@@ -213,16 +215,17 @@ def main() -> None:
 
     n_links = len(config["topology"])
     n_knobs = len(config["link_bandwidth_gbps"])
-    print(f"\n.prop()-driven repeat: {n_knobs} bandwidth knob(s) == "
-          f"{n_links} topology link(s): {n_knobs == n_links}")
+    print(
+        f"\n.prop()-driven repeat: {n_knobs} bandwidth knob(s) == "
+        f"{n_links} topology link(s): {n_knobs == n_links}"
+    )
 
     # -- .require() -------------------------------------------------------------
     print("\n--- .require() ---")
     disconnected = dict(config)
     disconnected["topology"] = [[0, 1], [2, 3]]  # two islands, device 4 stranded
     disconnected["link_bandwidth_gbps"] = config["link_bandwidth_gbps"][:2]
-    print(f"  hand-built disconnected topology is_feasible: "
-          f"{space.is_feasible(disconnected)}")
+    print(f"  hand-built disconnected topology is_feasible: {space.is_feasible(disconnected)}")
     for reason in space.infeasibility_reasons(disconnected):
         print(f"  reason: {reason}")
 
@@ -232,27 +235,34 @@ def main() -> None:
     # the Space needs a `custom_types` registry mapping type_key -> factory.
     doc = space.to_json()
     restored = ds.Space.from_json(doc, custom_types=CUSTOM_TYPES)
-    print(f"  to_json() -> from_json(custom_types=...): "
-          f"fingerprint equal: {restored.fingerprint() == space.fingerprint()}")
+    print(
+        f"  to_json() -> from_json(custom_types=...): "
+        f"fingerprint equal: {restored.fingerprint() == space.fingerprint()}"
+    )
 
     # A value's own stable key, independent of the space's fingerprint —
     # `(space.fingerprint(), config_hash(config, space))` is a globally
     # unique observation key.
     same_config_on_restored = restored.validate(config).valid
-    print(f"  the same config validates against the restored space: "
-          f"{same_config_on_restored}")
-    print(f"  config_hash matches across the round-tripped space: "
-          f"{ds.config_hash(config, space) == ds.config_hash(config, restored)}")
+    print(f"  the same config validates against the restored space: {same_config_on_restored}")
+    print(
+        f"  config_hash matches across the round-tripped space: "
+        f"{ds.config_hash(config, space) == ds.config_hash(config, restored)}"
+    )
 
     # `scope="sampling"` identifies feasible set + measure + chart geometry
     # only; `scope="full"` (the default) is full document identity. A change
     # that touches only identity-level bookkeeping (tags, not the sampling
     # surface) moves one and not the other.
     tagged = space.meta(experiment="baseline")  # identity-level bookkeeping only
-    print(f"  a .meta()-only change: sampling-scope fingerprint equal: "
-          f"{space.fingerprint(scope='sampling') == tagged.fingerprint(scope='sampling')}")
-    print(f"  a .meta()-only change: full-scope fingerprint equal:     "
-          f"{space.fingerprint(scope='full') == tagged.fingerprint(scope='full')}")
+    print(
+        f"  a .meta()-only change: sampling-scope fingerprint equal: "
+        f"{space.fingerprint(scope='sampling') == tagged.fingerprint(scope='sampling')}"
+    )
+    print(
+        f"  a .meta()-only change: full-scope fingerprint equal:     "
+        f"{space.fingerprint(scope='full') == tagged.fingerprint(scope='full')}"
+    )
 
     # -- Partial configs ------------------------------------------------------
     print("\n--- Partial configs ---")
@@ -275,8 +285,9 @@ def main() -> None:
         if "[" in path:
             list_path = path[: path.index("[")]
             partial[list_path] = config[list_path]
-            print(f"  step {step}: assign {list_path} "
-                  f"(all {len(config[list_path])} link(s) at once)")
+            print(
+                f"  step {step}: assign {list_path} (all {len(config[list_path])} link(s) at once)"
+            )
         else:
             partial[path] = config[path]
             print(f"  step {step}: assign {path} = {config[path]!r}")
@@ -285,21 +296,24 @@ def main() -> None:
     # -- Introspection ----------------------------------------------------------
     print("\n--- Introspection ---")
     print(f"  has_nongenerative_params: {space.has_nongenerative_params}")
-    print(f"  cardinality(): {space.cardinality()!r}  "
-          "(None -- an unquantized real and an opaque custom both prevent an exact count)")
+    print(
+        f"  cardinality(): {space.cardinality()!r}  "
+        "(None -- an unquantized real and an opaque custom both prevent an exact count)"
+    )
 
     # A custom type with no sample() is non-generative: it can only be
     # supplied, never searched, unless a .default()/.freeze() gives it one.
     fixed_space = ds.space(ds.param("topology").custom(FixedDeviceTopology(n_devices=5)))
-    print(f"\n  a space with a sample()-less custom: "
-          f"has_nongenerative_params={fixed_space.has_nongenerative_params}")
+    print(
+        f"\n  a space with a sample()-less custom: "
+        f"has_nongenerative_params={fixed_space.has_nongenerative_params}"
+    )
     try:
         fixed_space.sample_one(seed=0)
     except ds.SamplingError as e:
         print(f"  sample_one() raises SamplingError: {e}")
     provided = fixed_space.freeze(topology=[[0, 1], [1, 2]])
-    print(f"  freeze(topology=[[0, 1], [1, 2]]).sample_one() = "
-          f"{provided.sample_one(seed=0)}")
+    print(f"  freeze(topology=[[0, 1], [1, 2]]).sample_one() = {provided.sample_one(seed=0)}")
 
 
 if __name__ == "__main__":

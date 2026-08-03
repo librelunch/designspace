@@ -82,9 +82,7 @@ def _flatten_level(
             assert isinstance(pd.domain, ListDomain)
             if not isinstance(value, list):
                 if errors is not None:
-                    errors.append(
-                        ParamError(param=concrete_path, reason="wrong_type", value=value)
-                    )
+                    errors.append(ParamError(param=concrete_path, reason="wrong_type", value=value))
                 continue
             out[concrete_path] = len(value)
             for i, item in enumerate(value):

@@ -1,7 +1,7 @@
 """`.sample_one()` / `.sample_dicts()` (API.md, "Sampling and Generativity").
 
 `sample_dicts` is M2's stand-in for the spec's `.sample(n) -> pl.DataFrame`
-— PLAN.md.md's M10 line: "`sample(n)` return type switches to
+— PLAN.md's M10 line: "`sample(n)` return type switches to
 `pl.DataFrame`... (`sample_dicts` retained as the M2 path)". `.sample_one()`
 keeps its final spec signature (dict output) throughout.
 

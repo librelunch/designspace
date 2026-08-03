@@ -1,7 +1,7 @@
 """designspace: declarative algorithm design spaces.
 
 Public surface grows strictly with implemented milestones; see
-PLAN.md.md. Nothing speculative is exported.
+PLAN.md. Nothing speculative is exported.
 """
 
 from designspace.build import (

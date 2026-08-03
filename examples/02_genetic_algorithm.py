@@ -62,15 +62,11 @@ def build_space() -> ds.Space:
             ds.param("mutation_rate").real(1e-4, 0.5).log_scale(),
             # Adaptive mutation adds a decay knob, active only when enabled.
             ds.param("adaptive_mutation").bool(),
-            ds.param("mutation_decay")
-            .real(0.90, 0.999)
-            .when(ds.param("adaptive_mutation")),
+            ds.param("mutation_decay").real(0.90, 0.999).when(ds.param("adaptive_mutation")),
             # Elitism carries the fraction of the population preserved intact;
             # that fraction only exists when elitism is on.
             ds.param("elitism").bool(),
-            ds.param("elite_fraction")
-            .real(0.0, 0.3)
-            .when(ds.param("elitism")),
+            ds.param("elite_fraction").real(0.0, 0.3).when(ds.param("elitism")),
         )
         # Feasibility: rank selection is O(n log n) per generation, so forbid
         # pairing it with a very large population. Note the discriminator
@@ -112,8 +108,10 @@ def describe(config: dict[str, object]) -> str:
 
 def main() -> None:
     space = build_space()
-    print(f"Genetic Algorithm space: {space.n_params} parameters, "
-          f"conditional={space.is_conditional}\n")
+    print(
+        f"Genetic Algorithm space: {space.n_params} parameters, "
+        f"conditional={space.is_conditional}\n"
+    )
 
     # A choice's payload-bearing variants are what make a space
     # *hierarchical* -- each relocates its own descendants under a
@@ -168,8 +166,7 @@ def main() -> None:
             print(f"  forbid  [{tag:18}] {verdict}")
         else:
             margin = f"{ce.margin:+.4f}" if ce.margin is not None else "  n/a "
-            print(f"  declare [{tag:18}] satisfied={ce.satisfied!s:5} "
-                  f"margin={margin}")
+            print(f"  declare [{tag:18}] satisfied={ce.satisfied!s:5} margin={margin}")
 
     # -- Structural operations: reshaping an already-built Space -------------
     print("\n--- Structural operations ---")
@@ -195,8 +192,7 @@ def main() -> None:
     cfg2 = space.sample_one(seed=5)
     active = space.active_subspace(cfg2)
     print(f"\nactive_subspace(...) for one draw ({describe(cfg2).strip()}):")
-    print(f"  {active.n_params} of {space.n_params} declared params active: "
-          f"{list(active.params)}")
+    print(f"  {active.n_params} of {space.n_params} declared params active: {list(active.params)}")
 
 
 if __name__ == "__main__":

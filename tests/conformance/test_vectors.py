@@ -1,11 +1,11 @@
-"""Known-answer digest vectors (PLAN.md.md M7 gate: "known-
+"""Known-answer digest vectors (PLAN.md M7 gate: "known-
 answer digest vectors ... for every corpus fixture").
 
 Purely read + assert — **never regenerates**. A missing vector file is a
 hard failure (`FileNotFoundError` propagates), not a silent "compute and
 write" fallback: that would make the vectors detect nothing. To add or
 update a vector deliberately (only per the version-bump protocol —
-PLAN.md.md: "bump the shared integer, add — never replace —
+PLAN.md: "bump the shared integer, add — never replace —
 known-answer vectors"), run `tests/conformance/vectors/_generate.py` by hand.
 
 The `to_json` vector is compared as a parsed dict, not a string — JCS (and

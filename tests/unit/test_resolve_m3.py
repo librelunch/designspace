@@ -77,9 +77,7 @@ class TestChoiceDomain:
         assert space.params["algo"].prior.values == (1.0, 2.0, 3.0)
 
     def test_nested_choice_paths_are_fully_qualified(self):
-        space = ds.space(
-            ds.param("algo").choice(svm=ds.space(ds.param("gamma").real(0.0, 1.0)))
-        )
+        space = ds.space(ds.param("algo").choice(svm=ds.space(ds.param("gamma").real(0.0, 1.0))))
         assert "algo.svm.gamma" in space.params
         assert space.params["algo.svm.gamma"].type_kind == "real"
 

@@ -113,9 +113,7 @@ def _unflatten_level(
             # else: struct is inactive (no descendant present) -- omit.
         elif pd.type_kind == "choice":
             assert isinstance(pd.domain, ChoiceDomain)
-            value = _unflatten_choice(
-                flat, pd.domain, space, template_path, concrete_path
-            )
+            value = _unflatten_choice(flat, pd.domain, space, template_path, concrete_path)
             if value is not None:
                 result[local_name] = value
         elif pd.type_kind == "list":

@@ -69,10 +69,7 @@ def build_space() -> ds.Space:
             ds.param("population_size").integer(10, 200).quantized(step=10),
             # A restart schedule: three decreasing "intensities" (a scalar
             # lift of fixed length). Log-scaled because they span decades.
-            ds.param("restart_intensity")
-            .real(0.01, 5.0)
-            .log_scale()
-            .repeat(RESTART_STAGES),
+            ds.param("restart_intensity").real(0.01, 5.0).log_scale().repeat(RESTART_STAGES),
         )
         # Feasibility: a *memetic* algorithm is evolution + local search, so a
         # pipeline with no local_search step is not a memetic algorithm at all.
@@ -125,22 +122,27 @@ def build_space() -> ds.Space:
 
 def main() -> None:
     space = build_space()
-    print(f"Memetic Algorithm space: {space.n_params} parameters, "
-          f"conditional={space.is_conditional}\n")
+    print(
+        f"Memetic Algorithm space: {space.n_params} parameters, "
+        f"conditional={space.is_conditional}\n"
+    )
 
     # Batch sampling. Every config below is feasible by construction: the
     # sampler rejects any pipeline lacking a local_search step (the forbid).
     configs = space.sample_dicts(500, seed=0)
     lengths = [len(c["pipeline"]) for c in configs]
     with_local = sum(
-        any(isinstance(op, dict) and "local_search" in op for op in c["pipeline"])
-        for c in configs
+        any(isinstance(op, dict) and "local_search" in op for op in c["pipeline"]) for c in configs
     )
     print(f"Sampled {len(configs)} configs:")
-    print(f"  pipeline length: min={min(lengths)}, max={max(lengths)}, "
-          f"mean={sum(lengths) / len(lengths):.2f}")
-    print(f"  configs with >=1 local_search step: {with_local}/{len(configs)} "
-          f"(the forbid guarantees 100%)")
+    print(
+        f"  pipeline length: min={min(lengths)}, max={max(lengths)}, "
+        f"mean={sum(lengths) / len(lengths):.2f}"
+    )
+    print(
+        f"  configs with >=1 local_search step: {with_local}/{len(configs)} "
+        f"(the forbid guarantees 100%)"
+    )
 
     # Show one concrete pipeline in full.
     cfg = configs[0]
@@ -210,14 +212,18 @@ def main() -> None:
         for p, pd in coarsened.params.items()
         if space.params[p].quantized is None and pd.quantized is not None
     ]
-    print(f"\nmap_params(coarsen): {len(newly_coarsened)} previously-unquantized real param(s) "
-          f"now on a 0.05 grid: {newly_coarsened}")
+    print(
+        f"\nmap_params(coarsen): {len(newly_coarsened)} previously-unquantized real param(s) "
+        f"now on a 0.05 grid: {newly_coarsened}"
+    )
 
     # The diversity cap was a suggestion for early exploration; a later,
     # focused run drops it and reports fewer declared constraints.
     relaxed = space.without_constraints(tags=("diversity-cap",))
-    print(f"\nwithout_constraints(tags=('diversity-cap',)): "
-          f"{len(relaxed.constraints)} constraint(s), was {len(space.constraints)}")
+    print(
+        f"\nwithout_constraints(tags=('diversity-cap',)): "
+        f"{len(relaxed.constraints)} constraint(s), was {len(space.constraints)}"
+    )
 
 
 if __name__ == "__main__":

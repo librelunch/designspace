@@ -105,14 +105,15 @@ def main() -> None:
     print(f"  {len(paths)} coordinates: {paths}")
     vector = [flat[p] for p in paths]
     restored = unflatten(dict(zip(paths, vector, strict=True)), space)
-    print(f"  positional vector -> unflatten round-trips to the same config: "
-          f"{restored == config}")
+    print(f"  positional vector -> unflatten round-trips to the same config: {restored == config}")
 
-    print("\n  A hand-rolled filter fails silently -- it can't tell 'x' (a "
-          "coordinate) from 'x' being a count-bookkeeping entry without "
-          "walking the ListDomain chain, which is exactly what this method "
-          "does for you. And it is only defined when the layout doesn't "
-          "depend on the config:")
+    print(
+        "\n  A hand-rolled filter fails silently -- it can't tell 'x' (a "
+        "coordinate) from 'x' being a count-bookkeeping entry without "
+        "walking the ListDomain chain, which is exactly what this method "
+        "does for you. And it is only defined when the layout doesn't "
+        "depend on the config:"
+    )
     conditional_space = ds.space(
         ds.param("flag").bool(),
         ds.param("x").real(0.0, 1.0).when(ds.param("flag")),
@@ -127,34 +128,47 @@ def main() -> None:
     partial: dict[str, Any] = {}
     print(f"  param_activity({{}}): {space.param_activity(partial)}")
     pe = space.evaluate_partial(partial)
-    print(f"  evaluate_partial({{}}): n_remaining={pe.n_remaining}, "
-          f"pending_constraints={len(pe.pending_constraints)}")
+    print(
+        f"  evaluate_partial({{}}): n_remaining={pe.n_remaining}, "
+        f"pending_constraints={len(pe.pending_constraints)}"
+    )
 
     print("\n  remaining_domain, one call per descriptor kind:")
-    print(f"    flow_rate_lpm                        -> "
-          f"{space.remaining_domain('flow_rate_lpm', {})}")
-    print(f"    impeller_diameter_mm | flow=300       -> "
-          f"{space.remaining_domain('impeller_diameter_mm', {'flow_rate_lpm': 300.0})}")
-    print(f"    seal_type                             -> "
-          f"{space.remaining_domain('seal_type', {})}")
-    print(f"    certifications | seal_type=magnetic   -> "
-          f"{space.remaining_domain('certifications', {'seal_type': 'magnetic'})}"
-          "   (unreduced -- the compound coupling above, sound not complete)")
-    print(f"    stage_order                           -> "
-          f"{space.remaining_domain('stage_order', {})}")
+    print(
+        f"    flow_rate_lpm                        -> {space.remaining_domain('flow_rate_lpm', {})}"
+    )
+    print(
+        f"    impeller_diameter_mm | flow=300       -> "
+        f"{space.remaining_domain('impeller_diameter_mm', {'flow_rate_lpm': 300.0})}"
+    )
+    print(f"    seal_type                             -> {space.remaining_domain('seal_type', {})}")
+    print(
+        f"    certifications | seal_type=magnetic   -> "
+        f"{space.remaining_domain('certifications', {'seal_type': 'magnetic'})}"
+        "   (unreduced -- the compound coupling above, sound not complete)"
+    )
+    print(
+        f"    stage_order                           -> {space.remaining_domain('stage_order', {})}"
+    )
 
-    print("\n  validate_param(..., context=...): the bound-origin coupling only "
-          "evaluates once flow_rate_lpm is in context --")
-    print(f"    impeller=350, no context      -> valid="
-          f"{space.validate_param('impeller_diameter_mm', 350.0).valid} "
-          "(constraint omitted -- under-determined, not guessed)")
+    print(
+        "\n  validate_param(..., context=...): the bound-origin coupling only "
+        "evaluates once flow_rate_lpm is in context --"
+    )
+    print(
+        f"    impeller=350, no context      -> valid="
+        f"{space.validate_param('impeller_diameter_mm', 350.0).valid} "
+        "(constraint omitted -- under-determined, not guessed)"
+    )
     ctx_result = space.validate_param(
         "impeller_diameter_mm", 350.0, context={"flow_rate_lpm": 300.0}
     )
     print(f"    impeller=350, flow=300 context -> valid={ctx_result.valid}")
 
-    print("\n  Driver loop -- next_assignable -> missing_params -> is_complete, "
-          "revealing the sampled config's own values one step at a time:")
+    print(
+        "\n  Driver loop -- next_assignable -> missing_params -> is_complete, "
+        "revealing the sampled config's own values one step at a time:"
+    )
     partial = {}
     step = 0
     while not space.is_complete(partial):
@@ -163,13 +177,17 @@ def main() -> None:
         if "[" in path:
             list_path = path[: path.index("[")]
             partial[list_path] = config[list_path]
-            print(f"    step {step}: assign {list_path} (all "
-                  f"{len(config[list_path])} element(s) at once)")
+            print(
+                f"    step {step}: assign {list_path} (all "
+                f"{len(config[list_path])} element(s) at once)"
+            )
         else:
             partial[path] = flat[path]
             print(f"    step {step}: assign {path} = {flat[path]!r}")
-    print(f"  is_complete: {space.is_complete(partial)}, "
-          f"missing_params: {space.missing_params(partial)}")
+    print(
+        f"  is_complete: {space.is_complete(partial)}, "
+        f"missing_params: {space.missing_params(partial)}"
+    )
 
     # -- Metaprogramming ------------------------------------------------------
     print("\n--- Metaprogramming ---")
@@ -181,14 +199,18 @@ def main() -> None:
     # `.params`) -- the facility a rewrite tool builds on. Walk the compound
     # "magnetic seals aren't ATEX-rated" forbid one level deep.
     compound = space.constraints[-1].expr
-    print(f"  {compound.kind!r} node over {sorted(compound.params)}, "
-          f"{len(compound.children)} children:")
+    print(
+        f"  {compound.kind!r} node over {sorted(compound.params)}, "
+        f"{len(compound.children)} children:"
+    )
     for child in compound.children:
         print(f"    {child.kind!r} node over {sorted(child.params)}")
 
     rebuilt_space = ds.space_from_ir(space.params, space.conditions, space.constraints)
-    print(f"  space_from_ir(...) fingerprint-equal to the original: "
-          f"{rebuilt_space.fingerprint() == space.fingerprint()}")
+    print(
+        f"  space_from_ir(...) fingerprint-equal to the original: "
+        f"{rebuilt_space.fingerprint() == space.fingerprint()}"
+    )
 
     # A registry-driven generation loop: one bool flag per manufacturing
     # step, `require`d against its own prerequisites via `ds.all_(*prereqs)`
@@ -206,9 +228,11 @@ def main() -> None:
         build_order_space = build_order_space.require(
             flags[name].implies(ds.all_(*(flags[p] for p in prereqs)))
         )
-    print(f"  registry-generated space: {build_order_space.n_params} bool flags, "
-          f"{len(build_order_space.constraints)} generated `require`s "
-          f"(cast_housing's is `all_()` -> trivially satisfied)")
+    print(
+        f"  registry-generated space: {build_order_space.n_params} bool flags, "
+        f"{len(build_order_space.constraints)} generated `require`s "
+        f"(cast_housing's is `all_()` -> trivially satisfied)"
+    )
 
     # -- .custom(sampler, validator) shorthand --------------------------------
     print("\n--- .custom(sampler, validator) shorthand ---")

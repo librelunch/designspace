@@ -181,9 +181,7 @@ class TestValueOpacityCodec:
 
 
 class TestTagValue:
-    @pytest.mark.parametrize(
-        "value", [1, 1.0, True, False, "s", None, 0.0, -0.0]
-    )
+    @pytest.mark.parametrize("value", [1, 1.0, True, False, "s", None, 0.0, -0.0])
     def test_round_trip(self, value):
         assert untag_value(tag_value(value)) == value
 

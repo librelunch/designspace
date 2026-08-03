@@ -140,9 +140,11 @@ class TestDefaultedCountParamCascade:
     def test_count_default_determines_materialized_length(self):
         space = ds.space(
             ds.param("n_layers").integer(0, 8).default(2),
-            ds.param("layers").space(
+            ds.param("layers")
+            .space(
                 ds.param("width").integer(16, 1024).default(64),
-            ).repeat(ds.param("n_layers")),
+            )
+            .repeat(ds.param("n_layers")),
         )
         assert space.apply_defaults({}) == {
             "n_layers": 2,
@@ -152,18 +154,22 @@ class TestDefaultedCountParamCascade:
     def test_zero_count_materializes_empty_list(self):
         space = ds.space(
             ds.param("n_layers").integer(0, 8).default(0),
-            ds.param("layers").space(
+            ds.param("layers")
+            .space(
                 ds.param("width").integer(16, 1024).default(64),
-            ).repeat(ds.param("n_layers")),
+            )
+            .repeat(ds.param("n_layers")),
         )
         assert space.apply_defaults({}) == {"n_layers": 0, "layers": []}
 
     def test_no_element_defaults_leaves_lift_implicit(self):
         space = ds.space(
             ds.param("n_layers").integer(0, 8).default(2),
-            ds.param("layers").space(
+            ds.param("layers")
+            .space(
                 ds.param("width").integer(16, 1024),  # no default anywhere
-            ).repeat(ds.param("n_layers")),
+            )
+            .repeat(ds.param("n_layers")),
         )
         assert space.apply_defaults({}) == {"n_layers": 2}
 
@@ -187,9 +193,11 @@ class TestStaticCountLiftLeftImplicit:
 
     def test_struct_lift_with_no_default_leaves_lift_implicit(self):
         space = ds.space(
-            ds.param("layers").space(
+            ds.param("layers")
+            .space(
                 ds.param("width").integer(16, 1024),  # no default anywhere
-            ).repeat(3),
+            )
+            .repeat(3),
         )
         assert space.apply_defaults({}) == {}
 
@@ -209,22 +217,26 @@ class TestStaticCountLiftLeftImplicit:
 class TestFieldWiseFill:
     def test_choice_default_fills_named_variant_field_wise(self):
         space = ds.space(
-            ds.param("heating").choice(
+            ds.param("heating")
+            .choice(
                 "electric",
                 gas=ds.space(ds.param("pilot_light").bool().default(True)),
-            ).default("gas"),
+            )
+            .default("gas"),
         )
         assert space.apply_defaults({}) == {"heating": {"gas": {"pilot_light": True}}}
 
     def test_supplied_variant_wins_and_is_filled_field_wise(self):
-        """"If a config already supplies a choice's variant, partial input
+        """ "If a config already supplies a choice's variant, partial input
         wins — that variant's payload is filled from its own members'
         defaults."" (API.md, "Defaults")."""
         space = ds.space(
-            ds.param("heating").choice(
+            ds.param("heating")
+            .choice(
                 "electric",
                 gas=ds.space(ds.param("pilot_light").bool().default(True)),
-            ).default("electric"),
+            )
+            .default("electric"),
         )
         assert space.apply_defaults({"heating": "gas"}) == {
             "heating": {"gas": {"pilot_light": True}}

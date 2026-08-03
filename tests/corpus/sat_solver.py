@@ -1,4 +1,4 @@
-"""`sat_solver` corpus fixture (PLAN.md.md corpus table, added
+"""`sat_solver` corpus fixture (PLAN.md corpus table, added
 M3).
 
 Exercises: choice+ordinal, ordinal comparisons. `build_space()` stays

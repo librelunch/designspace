@@ -192,9 +192,7 @@ def build_space() -> Space:
     topology = GraphTopology(n_nodes=5, max_degree=3, connected=True)
     return ds.space(
         ds.param("topology").custom(topology),
-        ds.param("edge_weight")
-        .real(0.0, 1.0)
-        .repeat(ds.param("topology").prop("n_edges")),
+        ds.param("edge_weight").real(0.0, 1.0).repeat(ds.param("topology").prop("n_edges")),
     ).require(ds.param("topology").prop("is_connected"))
 
 

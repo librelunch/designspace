@@ -121,9 +121,7 @@ class TestFeasibilityAgreement:
         # disagree -- confirms the test above is not trivially true.
         source = ds.space(ds.param("x").real(0.0, 10.0)).forbid(ds.param("x") > 8.0)
         target = ds.space(ds.param("x").real(0.0, 1.0))  # no mirrored forbid
-        rep = Representation(
-            source=source, target=target, decode=lambda g: {"x": g["x"] * 10.0}
-        )
+        rep = Representation(source=source, target=target, decode=lambda g: {"x": g["x"] * 10.0})
         disagreements = sum(
             1
             for g in target.sample_dicts(300, seed=2)
@@ -588,21 +586,16 @@ class TestDefaultsAndAnchorsSettling:
         assert rep.target.params["y"].default == pytest.approx(0.5)
 
     def test_default_drops_when_the_chart_is_not_invertible(self):
-        space = ds.space(
-            ds.param("x").real(0.0, 1.0).prior(self._ExternalPrior()).default(0.3)
-        )
+        space = ds.space(ds.param("x").real(0.0, 1.0).prior(self._ExternalPrior()).default(0.3))
         rep = space.represent()
         assert rep.dropped_defaults == ("x",)
         assert rep.target.params["x"].default is None
 
     def test_anchor_drops_whole_when_one_key_cannot_encode(self):
-        space = (
-            ds.space(
-                ds.param("x").real(0.0, 1.0).prior(self._ExternalPrior()),
-                ds.param("y").real(0.0, 10.0),
-            )
-            .anchor({"baseline": {"x": 0.3, "y": 5.0}})
-        )
+        space = ds.space(
+            ds.param("x").real(0.0, 1.0).prior(self._ExternalPrior()),
+            ds.param("y").real(0.0, 10.0),
+        ).anchor({"baseline": {"x": 0.3, "y": 5.0}})
         rep = space.represent()
         assert rep.dropped_anchors == ("baseline",)
         assert dict(rep.target.anchors) == {}

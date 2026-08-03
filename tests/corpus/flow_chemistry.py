@@ -1,4 +1,4 @@
-"""`flow_chemistry` corpus fixture (PLAN.md.md corpus table,
+"""`flow_chemistry` corpus fixture (PLAN.md corpus table,
 added M3).
 
 Exercises: subset inclusion priors, `contains`, `sum_over`, implications.

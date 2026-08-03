@@ -66,9 +66,7 @@ class TestTypeMethodsReturnTypeSpecificViews:
         assert isinstance(ds.param("x").choice("a", "b"), ChoiceParamExpr)
 
     def test_space(self):
-        assert isinstance(
-            ds.param("x").space(ds.param("y").bool()), StructParamExpr
-        )
+        assert isinstance(ds.param("x").space(ds.param("y").bool()), StructParamExpr)
 
     def test_every_view_is_still_a_paramexpr(self):
         views = [
@@ -113,13 +111,7 @@ class TestModifiersPreserveView:
         assert isinstance(chained, RealParamExpr)
 
     def test_tag_when_meta_default_preserve_view(self):
-        chained = (
-            ds.param("x")
-            .categorical("a", "b")
-            .tag("t")
-            .meta(k=1)
-            .default("a")
-        )
+        chained = ds.param("x").categorical("a", "b").tag("t").meta(k=1).default("a")
         assert isinstance(chained, CategoricalParamExpr)
 
     def test_when_preserves_view(self):

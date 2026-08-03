@@ -180,9 +180,7 @@ class TestReducerPositiveAndNegative:
         assert rd_num is not None and rd_num.hi == 5.0
 
         # categorical
-        cat_space = ds.space(ds.param("c").categorical("a", "b", "c")).forbid(
-            ds.param("c") == "a"
-        )
+        cat_space = ds.space(ds.param("c").categorical("a", "b", "c")).forbid(ds.param("c") == "a")
         rd_cat = cat_space.remaining_domain("c", {})
         assert rd_cat is not None and "a" not in rd_cat.values
 

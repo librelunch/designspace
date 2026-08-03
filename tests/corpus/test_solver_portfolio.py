@@ -54,9 +54,7 @@ def test_active_empty_worker_pool_vs_inactive_lift():
     for cfg in (inactive, active_empty):
         result = space.validate(cfg)
         assert result.valid
-        budget_ce = next(
-            ce for ce in result.constraint_evals if ce.constraint.expr.kind == "gt"
-        )
+        budget_ce = next(ce for ce in result.constraint_evals if ce.constraint.expr.kind == "gt")
         assert budget_ce.applicable is True
         assert budget_ce.satisfied is False  # "> budget" not satisfied: not violated
 

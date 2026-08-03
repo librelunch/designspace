@@ -144,17 +144,15 @@ class TestSlice:
 
 class TestSliceAnchors:
     def test_matching_anchor_key_is_stripped_and_kept(self):
-        space = (
-            ds.space(ds.param("x").real(0.0, 1.0), ds.param("y").integer(0, 10))
-            .anchor({"a": {"x": 0.5, "y": 5}})
+        space = ds.space(ds.param("x").real(0.0, 1.0), ds.param("y").integer(0, 10)).anchor(
+            {"a": {"x": 0.5, "y": 5}}
         )
         sliced = space.slice(y=5)
         assert sliced.anchors == {"a": {"x": 0.5}}
 
     def test_conflicting_anchor_value_raises(self):
-        space = (
-            ds.space(ds.param("x").real(0.0, 1.0), ds.param("y").integer(0, 10))
-            .anchor({"a": {"x": 0.5, "y": 5}})
+        space = ds.space(ds.param("x").real(0.0, 1.0), ds.param("y").integer(0, 10)).anchor(
+            {"a": {"x": 0.5, "y": 5}}
         )
         with pytest.raises(ResolutionError, match=r"anchor 'a'.*row 22"):
             space.slice(y=3)
@@ -636,9 +634,8 @@ class TestFilter:
 
 class TestSelectFilterAnchors:
     def test_conflicting_anchor_key_dropped_with_warning(self):
-        space = (
-            ds.space(ds.param("x").real(0.0, 1.0), ds.param("y").integer(0, 10))
-            .anchor({"a": {"x": 0.5, "y": 5}})
+        space = ds.space(ds.param("x").real(0.0, 1.0), ds.param("y").integer(0, 10)).anchor(
+            {"a": {"x": 0.5, "y": 5}}
         )
         with pytest.warns(UserWarning):
             sel = space.select("x")
@@ -675,9 +672,7 @@ class TestExtend:
         # not invalidate the anchor -- `.validate()` never requires an
         # inactive param's value.
         space = ds.space(ds.param("x").real(0.0, 1.0)).anchor({"a": {"x": 0.5}})
-        extended = space.extend(
-            ds.param("y").integer(0, 10).when(ds.param("x") > 100.0)
-        )
+        extended = space.extend(ds.param("y").integer(0, 10).when(ds.param("x") > 100.0))
         assert extended.anchors == {"a": {"x": 0.5}}
 
     def test_extend_with_new_required_param_invalidates_anchor(self):

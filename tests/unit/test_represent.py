@@ -298,9 +298,7 @@ class TestRepresentationThen:
         space_b = _genotype_space(2.0)
         unrelated = ds.space(ds.param("y").real(0.0, 1.0))
         rep1 = Representation(source=space_a, target=space_b, decode=_scale_decode(2.0))
-        rep_unrelated_source = Representation(
-            source=unrelated, target=space_a, decode=lambda g: g
-        )
+        rep_unrelated_source = Representation(source=unrelated, target=space_a, decode=lambda g: g)
         with pytest.raises(TypeError, match="fingerprint-equal"):
             rep1.then(rep_unrelated_source)
 

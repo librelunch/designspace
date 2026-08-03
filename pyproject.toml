@@ -3,7 +3,7 @@ name = "designspace"
 version = "0.0.0"
 description = "Declarative algorithm design spaces with a polars-like expression API"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "numpy>=1.26",
     "rfc8785==0.1.4",
@@ -37,7 +37,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.mypy]
 strict = true
-python_version = "3.14"
+python_version = "3.12"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

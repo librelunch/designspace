@@ -212,9 +212,7 @@ def decode_default_value(tree: Any) -> Any:
 # `BoolLiteral` — rather than by kind alone.
 
 
-def _enc_children(
-    children: tuple[Expr, ...], ctx: EncodeContext | None, site: str
-) -> list[Any]:
+def _enc_children(children: tuple[Expr, ...], ctx: EncodeContext | None, site: str) -> list[Any]:
     return [encode_expr(c, ctx, site=site) for c in children]
 
 

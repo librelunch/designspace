@@ -99,9 +99,9 @@ class TestBoolBareUsage:
         assert not space.is_feasible({"x": 0.6, "gate": False})
 
     def test_none_absorbs_through_composition(self):
-        space = ds.space(
-            ds.param("x").real(0.0, 1.0), ds.param("y").real(0.0, 1.0)
-        ).require(ds.value(self._ok, ds.param("x"), returns=bool) & (ds.param("y") <= 0.5))
+        space = ds.space(ds.param("x").real(0.0, 1.0), ds.param("y").real(0.0, 1.0)).require(
+            ds.value(self._ok, ds.param("x"), returns=bool) & (ds.param("y") <= 0.5)
+        )
         (ce,) = space.evaluate_constraints({"x": 0.6, "y": 0.3})
         assert ce.margin is None  # min(None, 0.2) -> None (Margins composition rule)
 
@@ -117,9 +117,9 @@ class TestIntDrivesRepeat:
     def test_returns_int_count_works(self):
         space = ds.space(
             ds.param("k").integer(0, 3),
-            ds.param("edges").real(0.0, 1.0).repeat(
-                ds.value(self._n_edges, ds.param("k"), returns=int)
-            ),
+            ds.param("edges")
+            .real(0.0, 1.0)
+            .repeat(ds.value(self._n_edges, ds.param("k"), returns=int)),
         )
         cfg = space.sample_one(seed=0)
         assert len(cfg["edges"]) == self._n_edges(cfg["k"])
@@ -128,9 +128,9 @@ class TestIntDrivesRepeat:
         with pytest.raises(ResolutionError, match="row 12"):
             ds.space(
                 ds.param("k").integer(0, 3),
-                ds.param("edges").real(0.0, 1.0).repeat(
-                    ds.value(lambda k: float(k), ds.param("k"), returns=float)
-                ),
+                ds.param("edges")
+                .real(0.0, 1.0)
+                .repeat(ds.value(lambda k: float(k), ds.param("k"), returns=float)),
             )
 
 
@@ -145,9 +145,9 @@ class TestCallingConvention:
             calls.append((a, b))
             return a + b
 
-        space = ds.space(
-            ds.param("x").real(0.0, 1.0), ds.param("y").real(0.0, 1.0)
-        ).require(ds.value(spy, ds.param("x"), ds.param("y"), returns=float) <= 1.0)
+        space = ds.space(ds.param("x").real(0.0, 1.0), ds.param("y").real(0.0, 1.0)).require(
+            ds.value(spy, ds.param("x"), ds.param("y"), returns=float) <= 1.0
+        )
         space.evaluate_constraints({"x": 0.3, "y": 0.4})
         assert calls == [(0.3, 0.4)]
 
@@ -223,9 +223,9 @@ class TestCallingConvention:
             calls += 1
             return x
 
-        space = ds.space(
-            ds.param("x").real(0.0, 1.0), ds.param("y").real(0.0, 1.0)
-        ).require(ds.value(spy, ds.param("x"), returns=float) <= 0.5)
+        space = ds.space(ds.param("x").real(0.0, 1.0), ds.param("y").real(0.0, 1.0)).require(
+            ds.value(spy, ds.param("x"), returns=float) <= 0.5
+        )
         pe = space.evaluate_partial({"x": 0.3})
         assert len(pe.evaluable_constraints) == 1
         assert calls == 1
@@ -259,9 +259,7 @@ class TestKleeneProvenance:
         space = ds.space(
             ds.param("gate").bool(),
             ds.param("x").real(0.0, 1.0).when(ds.param("gate")),
-        ).require(
-            ds.value(self._spy_ok(calls), ds.param("x").if_inactive(0.9), returns=bool)
-        )
+        ).require(ds.value(self._spy_ok(calls), ds.param("x").if_inactive(0.9), returns=bool))
         (ce,) = space.evaluate_constraints({"gate": False})
         assert ce.applicable is True
         assert ce.satisfied is True
@@ -413,9 +411,9 @@ class TestOpacity:
     def test_opacity_in_dynamic_repeat_count(self):
         space = ds.space(
             ds.param("k").integer(0, 3),
-            ds.param("edges").real(0.0, 1.0).repeat(
-                ds.value(lambda k: k, ds.param("k"), returns=int)
-            ),
+            ds.param("edges")
+            .real(0.0, 1.0)
+            .repeat(ds.value(lambda k: k, ds.param("k"), returns=int)),
         )
         with pytest.raises(SerializationError, match="'edges'"):
             space.to_json()
@@ -444,9 +442,7 @@ class TestBoundHullRow20:
 
 class TestDependencyGraph:
     def _space(self) -> ds.Space:
-        return ds.space(
-            ds.param("a").real(0.0, 1.0), ds.param("b").real(0.0, 1.0)
-        ).require(
+        return ds.space(ds.param("a").real(0.0, 1.0), ds.param("b").real(0.0, 1.0)).require(
             ds.value(lambda a, b: a + b, ds.param("a"), ds.param("b"), returns=float) <= 1.0
         )
 

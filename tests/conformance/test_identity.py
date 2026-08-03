@@ -200,12 +200,8 @@ class TestRoundTrip:
                 ds.param("b").bool(),
                 ds.param("s").subset(["a", "b", "c"], min_size=1),
                 ds.param("p").permutation(["a", "b", "c"]),
-                ds.param("choice").choice(
-                    "off", on=ds.space(ds.param("level").real(0, 1))
-                ),
-                ds.param("group").space(
-                    ds.param("inner").real(0, 1), ds.param("flag").bool()
-                ),
+                ds.param("choice").choice("off", on=ds.space(ds.param("level").real(0, 1))),
+                ds.param("group").space(ds.param("inner").real(0, 1), ds.param("flag").bool()),
                 ds.param("lifted").real(0, 1).default(0.5).repeat(3),
             )
             .forbid(ds.param("lr") < 1e-4)
@@ -339,9 +335,7 @@ class TestFormatVersion:
 class TestConfigHash:
     def test_subset_order_independent(self):
         space = ds.space(ds.param("s").subset(["a", "b", "c"], min_size=0))
-        assert ds.config_hash({"s": ["a", "b"]}, space) == ds.config_hash(
-            {"s": ["b", "a"]}, space
-        )
+        assert ds.config_hash({"s": ["a", "b"]}, space) == ds.config_hash({"s": ["b", "a"]}, space)
 
     def test_permutation_order_dependent(self):
         space = ds.space(ds.param("p").permutation(["a", "b", "c"]))
@@ -352,9 +346,7 @@ class TestConfigHash:
     def test_quantized_grid_canonicalizes(self):
         space = ds.space(ds.param("x").real(0.0, 1.0).quantized(step=0.1))
         # 0.30000000000000004 and 0.3 both round to the same grid point.
-        assert ds.config_hash({"x": 0.1 + 0.1 + 0.1}, space) == ds.config_hash(
-            {"x": 0.3}, space
-        )
+        assert ds.config_hash({"x": 0.1 + 0.1 + 0.1}, space) == ds.config_hash({"x": 0.3}, space)
 
     def test_does_not_embed_space_fingerprint(self):
         space_a = ds.space(ds.param("x").real(0, 1))
@@ -365,11 +357,7 @@ class TestConfigHash:
 
 class TestConfigDiff:
     def test_variant_switch_decomposes(self):
-        space = ds.space(
-            ds.param("opt").choice(
-                "sgd", adam=ds.space(ds.param("beta1").real(0, 1))
-            )
-        )
+        space = ds.space(ds.param("opt").choice("sgd", adam=ds.space(ds.param("beta1").real(0, 1))))
         a = {"opt": {"adam": {"beta1": 0.9}}}
         b = {"opt": "sgd"}
         diffs = {d.param: d for d in ds.config_diff(a, b, space)}

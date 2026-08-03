@@ -1,4 +1,4 @@
-"""`pump_configurator` corpus fixture (PLAN.md.md corpus table, M6).
+"""`pump_configurator` corpus fixture (PLAN.md corpus table, M6).
 
 Exercises: the driver loop — `next_assignable` + `remaining_domain`. A
 bound-origin coupling (`impeller_diameter_mm` <= `flow_rate_lpm`, `max_pressure_bar`

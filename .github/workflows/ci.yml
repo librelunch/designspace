@@ -5,12 +5,38 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      - run: uv run mypy --strict src/
+      - run: uv run pytest -q
+
+  core-only:
+    # Proves the core install path (numpy + rfc8785 only, no `polars` extra)
+    # actually works rather than assuming it from the guarded import in
+    # frame/_frame.py. Excludes the test files that call `space.sample()`
+    # or import polars directly — they need the extra and are already
+    # covered by the `checks` matrix above.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - run: uv sync
-      - run: uv run ruff check
-      - run: uv run mypy --strict src/
-      - run: uv run pytest -q
+      - run: uv sync --no-install-package polars
+      - run: uv run python -c "import designspace"
+      - run: >
+          uv run pytest -q
+          --ignore=tests/conformance/test_dataframe.py
+          --ignore=tests/corpus/test_delivery_routes.py
+          --ignore=tests/corpus/test_flat_hpo.py
+          --ignore=tests/corpus/test_memetic_pipeline.py
+          --ignore=tests/unit/test_frame.py

@@ -150,9 +150,11 @@ def build_space() -> ds.Space:
 
 def main() -> None:
     space = build_space()
-    print(f"Thermal Controller space: {space.n_params} parameters, "
-          f"hierarchical={space.is_hierarchical}, "
-          f"variable_length={space.has_variable_length}\n")
+    print(
+        f"Thermal Controller space: {space.n_params} parameters, "
+        f"hierarchical={space.is_hierarchical}, "
+        f"variable_length={space.has_variable_length}\n"
+    )
 
     config = space.sample_one(seed=0)
     print("A sampled configuration:")
@@ -174,20 +176,26 @@ def main() -> None:
         c = ce.constraint
         tag = ", ".join(sorted(c.tags)) or "-"
         margin = f"{ce.margin:+.3f}" if ce.margin is not None else "  n/a "
-        print(f"  {c.kind:10}[{tag:20}] applicable={ce.applicable!s:5} "
-              f"satisfied={ce.satisfied!s:5} margin={margin}")
+        print(
+            f"  {c.kind:10}[{tag:20}] applicable={ce.applicable!s:5} "
+            f"satisfied={ce.satisfied!s:5} margin={margin}"
+        )
 
     # Expression bounds are sugar: `cap`'s declared upper bound is a param
     # reference, but it desugars to the same envelope-plus-constraint shape
     # a hand-written `.forbid(cap > n_stages)` would produce.
-    print(f"\ncap's declared bound tracks n_stages: cap={config['cap']} <= "
-          f"n_stages={config['n_stages']}: {config['cap'] <= config['n_stages']}")
+    print(
+        f"\ncap's declared bound tracks n_stages: cap={config['cap']} <= "
+        f"n_stages={config['n_stages']}: {config['cap'] <= config['n_stages']}"
+    )
 
     # Defaults: `stages`' element default (setpoint_c=20.0) applies
     # per-instance; the shipped anchor demonstrates the list-default shape
     # for a static-count lift (`bias`), derived rather than duplicated.
-    print("\napply_defaults({})['stages']: n/a until n_stages is known "
-          "-- element defaults fill each instance once the count is set")
+    print(
+        "\napply_defaults({})['stages']: n/a until n_stages is known "
+        "-- element defaults fill each instance once the count is set"
+    )
     partial = space.apply_defaults({"n_stages": 2})
     print(f"  apply_defaults({{'n_stages': 2}})['stages'] = {partial.get('stages')}")
     print(f"  anchors: {list(space.anchors)}")

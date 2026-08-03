@@ -7,7 +7,7 @@ declarations, build charts, emit IR. M3 adds choice/struct/subset/permutation;
 lifts are M4's work.
 
 Each numbered step is a plain function over the previous step's output,
-per PLAN.md.md's "each pass a function over an explicit
+per PLAN.md's "each pass a function over an explicit
 intermediate."
 
 Structural expansion (choice/struct) happens in step 8 (`_emit`), not

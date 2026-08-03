@@ -46,9 +46,7 @@ def _one_of_each() -> dict[str, Space]:
         "require": base().require(ds.param("x") <= ds.param("y")),
         "encourage": base().encourage(ds.param("x") <= ds.param("y")),
         "discourage": base().discourage(ds.param("x") > ds.param("y")),
-        "bound": ds.space(
-            ds.param("y").real(0.0, 1.0), ds.param("x").real(0.0, ds.param("y"))
-        ),
+        "bound": ds.space(ds.param("y").real(0.0, 1.0), ds.param("x").real(0.0, ds.param("y"))),
     }
 
 

@@ -84,8 +84,7 @@ def build_space() -> ds.Space:
             tags=("budget-unguarded",),
         )
         .encourage(
-            ds.param("warm_start_frac").if_inactive(0.0) + ds.param("time_limit_s") / 3600.0
-            <= 1.0,
+            ds.param("warm_start_frac").if_inactive(0.0) + ds.param("time_limit_s") / 3600.0 <= 1.0,
             tags=("budget-guarded",),
         )
     )
@@ -104,14 +103,18 @@ def main() -> None:
         print(f"  {name:22} {dtype}")
 
     soft_rejecting = space.sample(6, seed=0, reject_soft=True)
-    print(f"\nsample(reject_soft=True): {soft_rejecting.height} rows, "
-          "every declared (.encourage) violation also rejected")
+    print(
+        f"\nsample(reject_soft=True): {soft_rejecting.height} rows, "
+        "every declared (.encourage) violation also rejected"
+    )
 
     # -- Sampling diagnostics ----------------------------------------------------
     print("\n--- sampling_report() ---")
     report = space.sampling_report(n=500, seed=0)
-    print(f"acceptance_rate: {report.acceptance_rate:.3f}  (fraction of {report.n} "
-          "unconditioned draws that would survive rejection)")
+    print(
+        f"acceptance_rate: {report.acceptance_rate:.3f}  (fraction of {report.n} "
+        "unconditioned draws that would survive rejection)"
+    )
     for row in report.constraints:
         tag = ", ".join(sorted(row.constraint.tags)) or "-"
         # `satisfied` is raw: a forbid/discourage names a *bad* state (a
@@ -122,19 +125,27 @@ def main() -> None:
         # the polarity-resolved reading -- the aggregate analog of
         # `ConstraintEval.violated` -- so it means "unhealthy fraction" the
         # same way regardless of which verb produced the row.
-        print(f"  {row.constraint.kind:10}[{tag:20}] applicable={row.applicable:.3f} "
-              f"satisfied={row.satisfied:.3f} violation_rate={row.violation_rate:.3f}")
-    print("\nUnknown-swallowing: the unguarded budget constraint is inapplicable "
-          "whenever warm_start is off; its .if_inactive()-guarded twin stays "
-          "applicable throughout -- same space, same draws, only the guard differs.")
-    print(f"activity['warm_start_frac']: {report.activity['warm_start_frac']:.3f}  "
-          "(the fraction of draws where warm_start was on)")
+        print(
+            f"  {row.constraint.kind:10}[{tag:20}] applicable={row.applicable:.3f} "
+            f"satisfied={row.satisfied:.3f} violation_rate={row.violation_rate:.3f}"
+        )
+    print(
+        "\nUnknown-swallowing: the unguarded budget constraint is inapplicable "
+        "whenever warm_start is off; its .if_inactive()-guarded twin stays "
+        "applicable throughout -- same space, same draws, only the guard differs."
+    )
+    print(
+        f"activity['warm_start_frac']: {report.activity['warm_start_frac']:.3f}  "
+        "(the fraction of draws where warm_start was on)"
+    )
 
     tightened = space.sampling_report(n=500, seed=0, tighten_bounds=True)
     print(f"\ntighten_bounds=False (default) acceptance_rate: {report.acceptance_rate:.3f}")
     print(f"tighten_bounds=True            acceptance_rate: {tightened.acceptance_rate:.3f}")
-    print("(off by default (D-74): this space has no bound-origin coupling to tighten, "
-          "so the two agree here; tighten_bounds only ever matters when one exists.)")
+    print(
+        "(off by default (D-74): this space has no bound-origin coupling to tighten, "
+        "so the two agree here; tighten_bounds only ever matters when one exists.)"
+    )
 
     # -- config_diff --------------------------------------------------------------
     print("\n--- ds.config_diff ---")
@@ -148,11 +159,15 @@ def main() -> None:
     print("\n--- Introspection ---")
     print(f"dependency_graph['warm_start_frac']: {space.dependency_graph['warm_start_frac']}")
     print(f"topological_order[:5]: {space.topological_order[:5]}")
-    print(f"param_constraints('warm_start_frac'): "
-          f"{len(space.param_constraints('warm_start_frac'))} constraint(s) reference it")
-    print(f"param_conditions('warm_start_frac'): "
-          f"{len(space.param_conditions('warm_start_frac'))} condition(s) (its own .when, "
-          "plus any that merely reference it)")
+    print(
+        f"param_constraints('warm_start_frac'): "
+        f"{len(space.param_constraints('warm_start_frac'))} constraint(s) reference it"
+    )
+    print(
+        f"param_conditions('warm_start_frac'): "
+        f"{len(space.param_conditions('warm_start_frac'))} condition(s) (its own .when, "
+        "plus any that merely reference it)"
+    )
     print(f"is_finite: {space.is_finite}  (an unquantized real makes it so)")
     print(f"cardinality(): {space.cardinality()!r}")
     print(f"has_complete_defaults: {space.has_complete_defaults}")
@@ -167,10 +182,14 @@ def main() -> None:
     # -- fingerprint scopes -----------------------------------------------------
     print("\n--- fingerprint(scope=...) ---")
     tagged = space.meta(experiment="portfolio-v2")  # identity-level, not sampling-level
-    print(f"sampling-scope equal after .meta(): "
-          f"{space.fingerprint(scope='sampling') == tagged.fingerprint(scope='sampling')}")
-    print(f"full-scope equal after .meta():     "
-          f"{space.fingerprint(scope='full') == tagged.fingerprint(scope='full')}")
+    print(
+        f"sampling-scope equal after .meta(): "
+        f"{space.fingerprint(scope='sampling') == tagged.fingerprint(scope='sampling')}"
+    )
+    print(
+        f"full-scope equal after .meta():     "
+        f"{space.fingerprint(scope='full') == tagged.fingerprint(scope='full')}"
+    )
 
 
 if __name__ == "__main__":

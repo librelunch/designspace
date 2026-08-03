@@ -27,9 +27,7 @@ class TestRepeatDomain:
         assert domain.element_chart is not None
 
     def test_struct_lift_relocates_descendants_under_bracket_prefix(self):
-        space = ds.space(
-            ds.param("layers").space(ds.param("width").integer(16, 1024)).repeat(3)
-        )
+        space = ds.space(ds.param("layers").space(ds.param("width").integer(16, 1024)).repeat(3))
         assert "layers[].width" in space.params
         assert space.params["layers[].width"].type_kind == "integer"
         assert space.params["layers"].domain.element_kind == "space"
@@ -71,9 +69,9 @@ class TestRepeatDomain:
 
 class TestPrebuiltSpaceForm:
     def test_space_prebuilt_carries_its_own_constraints_as_element_templates(self):
-        edge = ds.space(
-            ds.param("src").integer(0, 10), ds.param("dst").integer(0, 10)
-        ).forbid(ds.param("src") == ds.param("dst"))
+        edge = ds.space(ds.param("src").integer(0, 10), ds.param("dst").integer(0, 10)).forbid(
+            ds.param("src") == ds.param("dst")
+        )
         space = ds.space(ds.param("edges").space(edge).repeat(3))
         assert len(space.params["edges"].domain.element_constraints) == 1
 
@@ -137,9 +135,7 @@ class TestRow13NegativeEvaluatedCount:
 class TestRow21Defaults:
     def test_element_and_list_default_together_raises(self):
         with pytest.raises(ResolutionError, match="row 21"):
-            ds.space(
-                ds.param("x").real(0.0, 1.0).default(0.5).repeat(3).default([0.1, 0.2, 0.3])
-            )
+            ds.space(ds.param("x").real(0.0, 1.0).default(0.5).repeat(3).default([0.1, 0.2, 0.3]))
 
     def test_list_default_under_dynamic_count_raises(self):
         with pytest.raises(ResolutionError, match="row 21"):
@@ -167,9 +163,7 @@ class TestD24NestedStructChoiceLiftBoundary:
 
     def test_double_nested_struct_element_raises(self):
         with pytest.raises(ResolutionError, match="D-24"):
-            ds.space(
-                ds.param("grid").space(ds.param("w").integer(0, 5)).repeat(3).repeat(2)
-            )
+            ds.space(ds.param("grid").space(ds.param("w").integer(0, 5)).repeat(3).repeat(2))
 
     def test_double_nested_scalar_element_is_fine(self):
         ds.space(ds.param("mask").bool().repeat(3).repeat(2))

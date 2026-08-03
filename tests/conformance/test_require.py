@@ -91,9 +91,9 @@ class TestRequireFingerprint:
         # DIFFERENT fingerprints — `require` negates the whole expression
         # (`~(x<=y)` = `Not(Compare le)`), not the operator-flipped `x>y`.
         require_le, _, _ = _xy()
-        forbid_gt = ds.space(
-            ds.param("x").real(0.0, 1.0), ds.param("y").real(0.0, 1.0)
-        ).forbid(ds.param("x") > ds.param("y"))
+        forbid_gt = ds.space(ds.param("x").real(0.0, 1.0), ds.param("y").real(0.0, 1.0)).forbid(
+            ds.param("x") > ds.param("y")
+        )
         for cfg in ({"x": 0.2, "y": 0.8}, {"x": 0.8, "y": 0.2}, {"x": 0.5, "y": 0.5}):
             assert require_le.is_feasible(cfg) == forbid_gt.is_feasible(cfg)
         assert require_le.fingerprint("full") != forbid_gt.fingerprint("full")

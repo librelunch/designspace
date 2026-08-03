@@ -96,9 +96,7 @@ class TestParamFromDefList:
         assert rebuilt.to_json() == original.to_json()
 
     def test_repeat_with_list_default_round_trips(self):
-        original = _single_param_space(
-            ds.param("x").integer(0, 10).repeat(3).default([1, 2, 3])
-        )
+        original = _single_param_space(ds.param("x").integer(0, 10).repeat(3).default([1, 2, 3]))
         pd = original.params["x"]
         rebuilt = _single_param_space(ds.param_from_def(pd))
         assert rebuilt.fingerprint("full") == original.fingerprint("full")
@@ -168,9 +166,7 @@ class TestSpaceFromIrRoundTrip:
 
     def test_preserves_anchors_and_meta(self):
         original = (
-            ds.space(ds.param("x").real(0.0, 1.0))
-            .anchor({"baseline": {"x": 0.5}})
-            .meta(note="hi")
+            ds.space(ds.param("x").real(0.0, 1.0)).anchor({"baseline": {"x": 0.5}}).meta(note="hi")
         )
         rebuilt = ds.space_from_ir(
             original.params,
@@ -236,7 +232,5 @@ class TestWithoutConstraints:
         assert stripped.constraints[0].tags == frozenset({"perf"})
 
     def test_empty_tags_is_a_no_op(self):
-        space = ds.space(ds.param("x").real(0.0, 1.0)).forbid(
-            ds.param("x") > 0.9, tags=("safety",)
-        )
+        space = ds.space(ds.param("x").real(0.0, 1.0)).forbid(ds.param("x") > 0.9, tags=("safety",))
         assert space.without_constraints().fingerprint("full") == space.fingerprint("full")

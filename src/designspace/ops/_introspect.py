@@ -38,9 +38,7 @@ def subspaces(space: Space) -> dict[str, SubspaceInfo]:
                 prefix = f"{path}.{variant}."
                 discriminator_eq: BoolExpr = Compare("eq", ParamExpr(path=path), Literal(variant))
                 condition = (
-                    discriminator_eq
-                    if pd.condition is None
-                    else pd.condition & discriminator_eq
+                    discriminator_eq if pd.condition is None else pd.condition & discriminator_eq
                 )
                 result[prefix] = SubspaceInfo(
                     prefix=prefix,

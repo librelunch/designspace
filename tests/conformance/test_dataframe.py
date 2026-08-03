@@ -1,4 +1,4 @@
-"""Conformance laws: DataFrame output (PLAN.md.md M10 gate: "dtype table
+"""Conformance laws: DataFrame output (PLAN.md M10 gate: "dtype table
 asserted per corpus fixture; null-for-inactive; column names == path
 grammar").
 

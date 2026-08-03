@@ -13,9 +13,7 @@ from designspace.expr._ast import SCALAR_TYPES, BoolExpr, BoolLiteral, Count, Ex
 def _check_bool_exprs(fn_name: str, exprs: tuple[BoolExpr, ...]) -> None:
     for e in exprs:
         if not isinstance(e, BoolExpr):
-            raise TypeError(
-                f"ds.{fn_name}() requires BoolExpr arguments, got {type(e).__name__}"
-            )
+            raise TypeError(f"ds.{fn_name}() requires BoolExpr arguments, got {type(e).__name__}")
 
 
 def all_(*exprs: BoolExpr) -> BoolExpr:
@@ -66,7 +64,5 @@ def value(fn: Callable[..., Any], *operands: Expr, returns: type) -> Value:
         )
     for operand in operands:
         if not isinstance(operand, Expr):
-            raise ResolutionError(
-                f"ds.value(): operand {operand!r} is not an expression (row 30)"
-            )
+            raise ResolutionError(f"ds.value(): operand {operand!r} is not an expression (row 30)")
     return Value(fn, operands, returns)

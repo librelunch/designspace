@@ -44,9 +44,9 @@ class TestStructDefaultRejected:
 class TestChoiceDefaultValidation:
     def test_valid_variant_name_accepted(self):
         space = ds.space(
-            ds.param("algo").choice("sgd", adam=ds.space(ds.param("lr").real(0.0, 1.0))).default(
-                "adam"
-            ),
+            ds.param("algo")
+            .choice("sgd", adam=ds.space(ds.param("lr").real(0.0, 1.0)))
+            .default("adam"),
         )
         assert space.params["algo"].default == "adam"
 
@@ -162,9 +162,7 @@ class TestListDefaultItemValidation:
 
     def test_off_grid_item_rejected(self):
         with pytest.raises(ResolutionError, match=r"'x'.*list default.*outside its domain"):
-            ds.space(
-                ds.param("x").integer(10, 100).quantized(step=10).repeat(2).default([20, 25])
-            )
+            ds.space(ds.param("x").integer(10, 100).quantized(step=10).repeat(2).default([20, 25]))
 
     def test_valid_scalar_list_default_accepted(self):
         space = ds.space(
@@ -206,9 +204,7 @@ class TestListDefaultItemValidation:
             .repeat(2)
             .default(["shuffle", {"pmx": {"swap_p": 0.2}}]),
         )
-        assert space.apply_defaults({}) == {
-            "pipeline": ["shuffle", {"pmx": {"swap_p": 0.2}}]
-        }
+        assert space.apply_defaults({}) == {"pipeline": ["shuffle", {"pmx": {"swap_p": 0.2}}]}
 
     def test_apply_defaults_output_now_validates(self):
         space = ds.space(
@@ -222,7 +218,7 @@ class TestListDefaultItemValidation:
 
 
 class TestIntermediateListDefaultItemValidation:
-    """The deferred gap (PLAN.md.md M6, `4fda87b`): a
+    """The deferred gap (PLAN.md M6, `4fda87b`): a
     `list_default` set at an *intermediate* nesting level of a chained lift
     (`.repeat(a).default([...]).repeat(b)`) was still only shape/length-
     checked, not deep-item-validated, because `list_default[i]` at that

@@ -15,11 +15,7 @@ import pytest
 EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "examples"
 
 
-@pytest.mark.parametrize(
-    "path", sorted(EXAMPLES_DIR.glob("*.py")), ids=lambda p: p.stem
-)
+@pytest.mark.parametrize("path", sorted(EXAMPLES_DIR.glob("*.py")), ids=lambda p: p.stem)
 def test_example_runs(path: Path) -> None:
-    result = subprocess.run(
-        [sys.executable, str(path)], capture_output=True, text=True, timeout=60
-    )
+    result = subprocess.run([sys.executable, str(path)], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr

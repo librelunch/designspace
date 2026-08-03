@@ -33,9 +33,7 @@ class TestStaticOutOfRangeIndexIsResolutionError:
             space.require(ds.param("y[-7]") > 0.99)
 
     def test_in_range_resolves_and_is_feasibility_load_bearing(self):
-        space = ds.space(ds.param("y").real(0.0, 1.0).repeat(3)).require(
-            ds.param("y[2]") > 0.99
-        )
+        space = ds.space(ds.param("y").real(0.0, 1.0).repeat(3)).require(ds.param("y[2]") > 0.99)
         assert space.is_feasible({"y": [0.1, 0.2, 0.995]})
         assert not space.is_feasible({"y": [0.1, 0.2, 0.5]})
 
@@ -86,9 +84,7 @@ class TestNegativeIndexResolvesAtEvaluation:
     referenced value), since no config key is ever literally `"x[-1]"`."""
 
     def test_last_element_is_feasibility_load_bearing(self):
-        space = ds.space(ds.param("x").real(0.0, 1.0).repeat(3)).require(
-            ds.param("x[-1]") > 0.5
-        )
+        space = ds.space(ds.param("x").real(0.0, 1.0).repeat(3)).require(ds.param("x[-1]") > 0.5)
         assert space.is_feasible({"x": [0.1, 0.2, 0.9]})
         assert not space.is_feasible({"x": [0.9, 0.9, 0.1]})
 
@@ -170,9 +166,7 @@ class TestBooleanOperatorOnLiftValuedOperandIsResolutionError:
 
     def test_bool_op_over_still_list_typed_operand_raises(self):
         with pytest.raises(ResolutionError, match=r"still a lift.*row 29"):
-            ds.space(ds.param("g").bool().repeat(4, 4)).require(
-                ds.param("g[0]") & ds.param("g[1]")
-            )
+            ds.space(ds.param("g").bool().repeat(4, 4)).require(ds.param("g[0]") & ds.param("g[1]"))
 
     def test_bare_condition_over_still_list_typed_operand_raises(self):
         with pytest.raises(ResolutionError, match=r"still a lift.*row 29"):
@@ -200,9 +194,7 @@ class TestChoicePayloadMustBeASpace:
             ds.space(ds.param("c").choice(("a", ds.param("x").real(0.0, 1.0)), "b"))
 
     def test_valid_space_payload_still_works(self):
-        space = ds.space(
-            ds.param("c").choice(("a", ds.space(ds.param("x").real(0.0, 1.0))), "b")
-        )
+        space = ds.space(ds.param("c").choice(("a", ds.space(ds.param("x").real(0.0, 1.0))), "b"))
         assert space.is_feasible({"c": "b"})
 
 
@@ -257,8 +249,6 @@ class TestCheckFullyResolvedAlsoWalksConstraints:
             ds.space_from_ir(base.params, base.conditions, (bad_constraint,))
 
     def test_valid_constraint_round_trips_through_space_from_ir(self):
-        space = ds.space(ds.param("y").real(0.0, 1.0).repeat(3)).require(
-            ds.param("y[2]") > 0.5
-        )
+        space = ds.space(ds.param("y").real(0.0, 1.0).repeat(3)).require(ds.param("y[2]") > 0.5)
         rebuilt = ds.space_from_ir(space.params, space.conditions, space.constraints)
         assert rebuilt.is_feasible({"y": [0.1, 0.2, 0.9]})

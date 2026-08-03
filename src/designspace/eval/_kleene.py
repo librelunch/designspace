@@ -205,8 +205,7 @@ def _gather_instance_paths(path: str, domain: Any, config: dict[str, Any]) -> An
         return []
     if domain.element_kind == "list":
         return [
-            _gather_instance_paths(f"{path}[{i}]", domain.element_domain, config)
-            for i in range(n)
+            _gather_instance_paths(f"{path}[{i}]", domain.element_domain, config) for i in range(n)
         ]
     return [f"{path}[{i}]" for i in range(n)]
 
@@ -1218,8 +1217,10 @@ def topological_order(space: Space) -> list[str]:
             return
         condition = conditions_by_target.get(path)
         deps = condition.params if condition is not None else frozenset[str]()
-        deps = deps | _lift_count_deps(space.params[path].domain) | _bound_order_deps(
-            bound_targets, path
+        deps = (
+            deps
+            | _lift_count_deps(space.params[path].domain)
+            | _bound_order_deps(bound_targets, path)
         )
         for dep in deps:
             visit(dep)

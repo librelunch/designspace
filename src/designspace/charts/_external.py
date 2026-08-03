@@ -52,9 +52,7 @@ def build_external_chart(
     if math_hi is None:
         math_hi = hi
     p0, p1 = prior.ppf(0.0), prior.ppf(1.0)
-    contained = (
-        math.isfinite(p0) and math.isfinite(p1) and lo <= p0 <= hi and lo <= p1 <= hi
-    )
+    contained = math.isfinite(p0) and math.isfinite(p1) and lo <= p0 <= hi and lo <= p1 <= hi
     if contained:
         return ExternalPriorChart(prior=prior, lo=lo, hi=math_hi, truncated=False)
     if not hasattr(prior, "cdf"):

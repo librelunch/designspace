@@ -68,8 +68,7 @@ def build_space() -> ds.Space:
         # only pay off with a long enough inner loop, so forbid pairing
         # either with a very short one.
         .forbid(
-            ds.param("neighborhood").is_in("insert", "reverse")
-            & (ds.param("steps_per_temp") < 5),
+            ds.param("neighborhood").is_in("insert", "reverse") & (ds.param("steps_per_temp") < 5),
         )
         # A soft preference, not a rule: flag schedules that cool aggressively.
         # Declared constraints never change feasibility or the sampler; they
@@ -84,8 +83,10 @@ def build_space() -> ds.Space:
 
 def main() -> None:
     space = build_space()
-    print(f"Simulated Annealing space: {space.n_params} parameters, "
-          f"conditional={space.is_conditional}\n")
+    print(
+        f"Simulated Annealing space: {space.n_params} parameters, "
+        f"conditional={space.is_conditional}\n"
+    )
 
     # One reproducible draw from the declared measure.
     config = space.sample_one(seed=0)
@@ -125,11 +126,15 @@ def main() -> None:
     # KEEPS the param (still present in every config) but narrows its domain
     # to that single value, so a submitted config can never disagree with it.
     tuned = space.freeze(initial_temp=50.0, cooling_rate=0.85)
-    print(f"\nfreeze(initial_temp=50.0, cooling_rate=0.85): still {tuned.n_params} params "
-          f"(kept, domain narrowed):")
+    print(
+        f"\nfreeze(initial_temp=50.0, cooling_rate=0.85): still {tuned.n_params} params "
+        f"(kept, domain narrowed):"
+    )
     for cfg in tuned.sample_dicts(8, seed=2):
-        print(f"  initial_temp={cfg['initial_temp']}, cooling_rate={cfg['cooling_rate']}, "
-              f"neighborhood={cfg['neighborhood']!r}")
+        print(
+            f"  initial_temp={cfg['initial_temp']}, cooling_rate={cfg['cooling_rate']}, "
+            f"neighborhood={cfg['neighborhood']!r}"
+        )
 
     # Reheating never paid off in practice -- remove it permanently. .slice()
     # REMOVES the param and substitutes its fixed value at every reference
@@ -137,8 +142,10 @@ def main() -> None:
     # (`False == False`), so it stays declared but can never be sampled.
     no_reheat = space.slice(reheat=False)
     still_absent = all("reheat_factor" not in c for c in no_reheat.sample_dicts(20, seed=3))
-    print(f"\nslice(reheat=False): {no_reheat.n_params} params (down from {space.n_params}); "
-          f"reheat_factor never sampled: {still_absent}")
+    print(
+        f"\nslice(reheat=False): {no_reheat.n_params} params (down from {space.n_params}); "
+        f"reheat_factor never sampled: {still_absent}"
+    )
 
     # Just the cooling schedule, for a report that only discusses those knobs.
     # This *does* print a UserWarning: the `neighborhood`/`steps_per_temp`

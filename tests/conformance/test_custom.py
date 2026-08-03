@@ -171,9 +171,7 @@ class TestDescribeRoundTrip:
 
 class TestExtractOnlyAfterValidate:
     def test_prop_on_invalid_value_is_unknown_not_a_crash(self):
-        space = ds.space(ds.param("t").custom(TaggedValue())).require(
-            ds.param("t").prop("n") >= 0
-        )
+        space = ds.space(ds.param("t").custom(TaggedValue())).require(ds.param("t").prop("n") >= 0)
         # A malformed submitted value (extract() would KeyError/crash on
         # arbitrary garbage): validate() must report it as a ParamError,
         # never let a crash escape through constraint evaluation.
@@ -197,16 +195,12 @@ class TestPropAsBoolExpr:
     uniformly, since they run on every `Prop` node regardless of position)."""
 
     def test_require_accepts_a_bare_bool_prop(self):
-        space = ds.space(ds.param("t").custom(TaggedValue())).require(
-            ds.param("t").prop("ok")
-        )
+        space = ds.space(ds.param("t").custom(TaggedValue())).require(ds.param("t").prop("ok"))
         assert space.is_feasible({"t": {"n": 1, "ok": True}})
         assert not space.is_feasible({"t": {"n": 1, "ok": False}})
 
     def test_bare_and_explicit_comparison_agree(self):
-        bare = ds.space(ds.param("t").custom(TaggedValue())).require(
-            ds.param("t").prop("ok")
-        )
+        bare = ds.space(ds.param("t").custom(TaggedValue())).require(ds.param("t").prop("ok"))
         explicit = ds.space(ds.param("t").custom(TaggedValue())).require(
             ds.param("t").prop("ok") == True  # noqa: E712
         )
@@ -215,25 +209,21 @@ class TestPropAsBoolExpr:
             assert bare.is_feasible(cfg) == explicit.is_feasible(cfg)
 
     def test_composes_with_and_or_not(self):
-        space = ds.space(
-            ds.param("t").custom(TaggedValue()), ds.param("gate").bool()
-        ).require(ds.param("t").prop("ok") & ds.param("gate"))
+        space = ds.space(ds.param("t").custom(TaggedValue()), ds.param("gate").bool()).require(
+            ds.param("t").prop("ok") & ds.param("gate")
+        )
         assert space.is_feasible({"t": {"n": 1, "ok": True}, "gate": True})
         assert not space.is_feasible({"t": {"n": 1, "ok": True}, "gate": False})
 
     def test_margin_is_none_matching_a_bare_bool_param(self):
         # A bare boolean leaf (Prop or plain param) is not Compare/BoolOp/
         # Not-shaped, so it has no signed margin -- same for both.
-        space = ds.space(ds.param("t").custom(TaggedValue())).require(
-            ds.param("t").prop("ok")
-        )
+        space = ds.space(ds.param("t").custom(TaggedValue())).require(ds.param("t").prop("ok"))
         (ce,) = space.evaluate_constraints({"t": {"n": 1, "ok": True}})
         assert ce.margin is None
 
     def test_extract_only_after_validate_holds_in_bool_position_too(self):
-        space = ds.space(ds.param("t").custom(TaggedValue())).require(
-            ds.param("t").prop("ok")
-        )
+        space = ds.space(ds.param("t").custom(TaggedValue())).require(ds.param("t").prop("ok"))
         result = space.validate({"t": "not-a-tagged-value"})
         assert not result.valid
         ce = result.constraint_evals[0]
@@ -255,9 +245,7 @@ class TestRow16:
             space.require(ds.param("t").prop("nope") >= 0)
 
     def test_shorthand_has_no_properties(self):
-        space = ds.space(
-            ds.param("t").custom(sampler=lambda rng: 0.5, validator=lambda v: True)
-        )
+        space = ds.space(ds.param("t").custom(sampler=lambda rng: 0.5, validator=lambda v: True))
         with pytest.raises(ResolutionError, match="not a declared property"):
             space.require(ds.param("t").prop("anything") >= 0)
 
@@ -376,9 +364,7 @@ class TestHasNongenerativeParams:
         assert space.has_nongenerative_params is False
 
     def test_shorthand_is_always_generative(self):
-        space = ds.space(
-            ds.param("p").custom(sampler=lambda rng: 0.5, validator=lambda v: True)
-        )
+        space = ds.space(ds.param("p").custom(sampler=lambda rng: 0.5, validator=lambda v: True))
         assert space.has_nongenerative_params is False
 
     def test_sample_less_full_form_is_nongenerative(self):
@@ -450,10 +436,7 @@ class TestFreezeOnCustom:
         # equivalent matches that.
         space = ds.space(ds.param("p").custom(Coin()))
         frozen = space.freeze(p=1)
-        hand_built = (
-            ds.space(ds.param("p").custom(Coin()).default(1))
-            .require(ds.param("p") == 1)
-        )
+        hand_built = ds.space(ds.param("p").custom(Coin()).default(1)).require(ds.param("p") == 1)
         assert frozen.fingerprint("full") == hand_built.fingerprint("full")
 
     def test_frozen_space_samples_only_fixed_value(self):
@@ -469,9 +452,7 @@ class TestFreezeOnCustom:
         assert not frozen.validate({"p": 0.7}).valid
 
     def test_shorthand_freeze_raises(self):
-        space = ds.space(
-            ds.param("p").custom(sampler=lambda rng: 0.5, validator=lambda v: True)
-        )
+        space = ds.space(ds.param("p").custom(sampler=lambda rng: 0.5, validator=lambda v: True))
         with pytest.raises(ResolutionError):
             space.freeze(p=0.5)
 
@@ -506,18 +487,16 @@ class TestFreezeOnCustom:
 
 class TestSliceOnCustom:
     def test_slicing_a_custom_param_raises(self):
-        space = ds.space(
-            ds.param("p").custom(Probability()), ds.param("x").real(0.0, 1.0)
-        )
+        space = ds.space(ds.param("p").custom(Probability()), ds.param("x").real(0.0, 1.0))
         with pytest.raises(ResolutionError):
             space.slice(p=0.5)
 
     def test_slicing_other_params_unaffected_by_a_prop_expression_elsewhere(self):
         # A .prop() expression on an UNRELATED (non-sliced) custom param must
         # not break ordinary substitution elsewhere in the same space.
-        space = ds.space(
-            ds.param("t").custom(TaggedValue()), ds.param("x").integer(0, 10)
-        ).require(ds.param("t").prop("n") >= 0)
+        space = ds.space(ds.param("t").custom(TaggedValue()), ds.param("x").integer(0, 10)).require(
+            ds.param("t").prop("n") >= 0
+        )
         sliced = space.slice(x=5)
         assert "x" not in sliced.params
         assert "t" in sliced.params
