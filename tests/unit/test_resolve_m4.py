@@ -168,6 +168,57 @@ class TestD24NestedStructChoiceLiftBoundary:
     def test_double_nested_scalar_element_is_fine(self):
         ds.space(ds.param("mask").bool().repeat(3).repeat(2))
 
+    # The boundary is about the *shape* — a struct/choice element under two
+    # lift levels — not about the syntax that reaches it. Declaring the
+    # inner lift inside the outer lift's element `Space` composes to the
+    # same `"row[].spans[].lo"` template as the chained spelling, so it is
+    # the same unsupported shape and must be rejected the same way. It
+    # previously fell through the guard and produced silently invalid
+    # configs: empty element dicts for a struct, and — worse — an empty
+    # payload that `validate()` accepted for a choice.
+
+    def test_struct_lift_inside_a_struct_lift_element_raises(self):
+        inner = ds.space(ds.param("spans").space(ds.space(ds.param("v").integer(0, 5))).repeat(2))
+        with pytest.raises(ResolutionError, match="D-24"):
+            ds.space(ds.param("row").space(inner).repeat(2))
+
+    def test_choice_lift_inside_a_struct_lift_element_raises(self):
+        inner = ds.space(
+            ds.param("pipe").choice("a", b=ds.space(ds.param("w").real(0.0, 1.0))).repeat(2),
+        )
+        with pytest.raises(ResolutionError, match="D-24"):
+            ds.space(ds.param("row").space(inner).repeat(2))
+
+    def test_struct_lift_inside_a_choice_lift_variant_raises(self):
+        payload = ds.space(ds.param("spans").space(ds.space(ds.param("v").integer(0, 5))).repeat(2))
+        with pytest.raises(ResolutionError, match="D-24"):
+            ds.space(ds.param("row").choice("x", y=payload).repeat(2))
+
+    def test_the_error_names_the_offending_param(self):
+        inner = ds.space(ds.param("spans").space(ds.space(ds.param("v").integer(0, 5))).repeat(2))
+        with pytest.raises(ResolutionError, match=r"row\[\]\.spans"):
+            ds.space(ds.param("row").space(inner).repeat(2))
+
+    def test_scalar_lift_inside_a_struct_lift_element_is_fine(self):
+        """The supported neighbour: only *struct/choice* elements are
+        bounded — a scalar lift nests arbitrarily."""
+        inner = ds.space(ds.param("xs").real(0.0, 1.0).repeat(2))
+        space = ds.space(ds.param("row").space(inner).repeat(2))
+        config = space.sample_one(seed=0)
+        assert [len(row["xs"]) for row in config["row"]] == [2, 2]
+        assert space.validate(config).valid
+
+    def test_struct_lift_in_a_non_lifted_container_is_fine(self):
+        """Equally, the boundary is two *lift* levels — a struct lift inside
+        a plain struct or a choice variant is one, and stays supported."""
+        inner = ds.space(ds.param("s").space(ds.space(ds.param("v").integer(0, 5))).repeat(2))
+        for space in (
+            ds.space(ds.param("g").space(inner)),
+            ds.space(ds.param("m").choice("off", on=inner)),
+        ):
+            config = space.sample_one(seed=0)
+            assert space.validate(config).valid
+
 
 class TestVectorAggregateMethods:
     def _space(self):

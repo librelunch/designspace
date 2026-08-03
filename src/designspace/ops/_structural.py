@@ -225,6 +225,112 @@ def substitute_bool(expr: BoolExpr, literals: Mapping[str, Expr]) -> BoolExpr:
     return cast_bool(substitute_expr(expr, literals))
 
 
+# -- static resolution: fold what substitution has determined (D-92) --------
+#
+# Substituting a fixed value at its reference sites is only half of
+# `.slice()`/`.freeze()`. Once every param a piece of *derived* structure
+# reads is determined, that structure is no longer derived, and leaving it
+# in expression form makes the resulting space misreport itself: a count
+# that is provably 3 still answers `has_variable_length == True`, still
+# fails `coordinate_paths()`'s row-33 check, and still emits `List` rather
+# than `Array`, because every one of those surfaces tests
+# `isinstance(count, int)` rather than "constant-valued expression".
+
+
+def _has_opaque_leaf(expr: Expr) -> bool:
+    """Whether `expr` contains a node the fold must not evaluate through.
+
+    `Value` wraps a user `fn` whose calling convention (API.md: called with
+    exactly the operand values, at evaluation) never promised a call at
+    structural-op time; `Prop` reaches into a custom type's `extract`.
+    `IsActive` reads activity, which no reference-free expression can
+    supply. Folding is best-effort, so refusing here merely leaves the
+    expression alone — always sound.
+    """
+    if isinstance(expr, Value | Prop | IsActive):
+        return True
+    return any(_has_opaque_leaf(child) for child in expr.children if isinstance(child, Expr))
+
+
+def _foldable(expr: Expr) -> bool:
+    """A reference-free, opaque-free expression can be evaluated to a
+    constant against an empty config — reusing the ordinary evaluator, so
+    a folded value can never disagree with what evaluation would have
+    produced at runtime."""
+    return not expr.params and not _has_opaque_leaf(expr)
+
+
+def fold_count(count: int | ArithExpr, space: Space) -> int | ArithExpr:
+    """A count expression whose references are all determined becomes a
+    **static `int`** (D-92). Anything else is returned unchanged: a
+    partially-determined count, or one reaching an opaque leaf, stays an
+    expression and the lift stays dynamic.
+    """
+    if isinstance(count, int) or not _foldable(count):
+        return count
+    from designspace.eval import Unknown, evaluate_arith
+
+    value = evaluate_arith(count, {}, {}, space)
+    if isinstance(value, Unknown) or not isinstance(value, int) or isinstance(value, bool):
+        return count
+    return value
+
+
+def fold_condition(condition: BoolExpr | None, space: Space) -> BoolExpr | None:
+    """A condition that folds to literal `True` becomes **no condition** —
+    an always-active param *is* an unconditional one, so this is
+    information-preserving.
+
+    A `False` fold is deliberately left alone. Dropping the param would
+    remove a declared name from the path namespace, which `flatten`,
+    `.params`, and the fingerprint preimage all observe; keeping a
+    permanently-false condition is the conservative reading, matching how
+    `cardinality()` stays sound-but-conservative elsewhere.
+    """
+    if condition is None or not _foldable(condition):
+        return condition
+    from designspace.eval import Unknown, evaluate_bool
+
+    value = evaluate_bool(condition, {}, {}, space)
+    if isinstance(value, Unknown):
+        return condition
+    return None if value else condition
+
+
+def fold_domain(domain: Any, space: Space) -> Any:
+    """`fold_count` applied down a (possibly chained) `ListDomain`, whose
+    `count` is the one piece of derived structure a domain carries."""
+    if not isinstance(domain, ListDomain):
+        return domain
+    return replace(
+        domain,
+        element_domain=fold_domain(domain.element_domain, space),
+        count=fold_count(domain.count, space),
+    )
+
+
+def substitute_domain(domain: Any, literals: Mapping[str, Expr]) -> Any:
+    """Substitute fixed values into a `ListDomain`'s `count`, recursing
+    through `element_domain`. The domain-carried sibling of `.slice()`'s
+    condition/constraint substitution — the same store
+    `resolve/_relocate.py::rewrite_domain` renames (D-91).
+
+    `element_constraints` need no substitution: a prebuilt element
+    `Space`'s constraints resolve eagerly against its own params, so they
+    can only reference `"[]"`-templated paths, which `.slice()` refuses to
+    remove (`_validate_fixed_value`).
+    """
+    if not isinstance(domain, ListDomain):
+        return domain
+    count = domain.count
+    new_count = count if isinstance(count, int) else cast_arith(substitute_expr(count, literals))
+    return replace(
+        domain,
+        element_domain=substitute_domain(domain.element_domain, literals),
+        count=new_count,
+    )
+
+
 def _definition_path_of(concrete_path: str) -> str:
     """A `flatten()`-produced concrete instance path (`"edges[3].weight"`)
     back to its definition-path template (`"edges[].weight"`) — the shape
@@ -349,17 +455,24 @@ def _close_over_structure(space: Space, keep: set[str]) -> set[str]:
       an unreachable orphan. Added as bare pass-through nodes: an ancestor
       pulled in this way does **not** also drag in its own *other*,
       unselected descendants.
-    - **Descendants**: a struct/choice container *in the original `keep`
-      set* brings every already-relocated payload/field under its own
-      prefix (API.md, `.select()`: "selecting a choice brings its
-      variants"), recursing through any further-nested container pulled in
-      this way — a struct/choice container without its descendants is not
-      a coherent space.
+    - **Descendants**: a container *in the original `keep` set* brings
+      every already-relocated payload/field under its own prefix (API.md,
+      `.select()`: "selecting a choice brings its variants"), recursing
+      through any further-nested container pulled in this way — a
+      container without its descendants is not a coherent space.
+
+      "Container" spans `list` as well as `space`/`choice`: a **lifted**
+      struct or choice relocates its fields under a `"[]"`-bracketed
+      prefix (`"layers[].width"`), which is a descendant of `"layers"` by
+      the path grammar exactly as `"solver.cdcl.restart"` is a descendant
+      of `"solver"`. Matching only `f"{p}."` and only `space`/`choice`
+      would leave a selected lift holding a `ListDomain` whose element
+      fields are no longer params of the space.
     """
     closed = set(keep)
     for p in keep:
         for other in space.params:
-            if other != p and (p.startswith(f"{other}.") or p.startswith(f"{other}[")):
+            if other != p and _is_descendant_path(p, other):
                 closed.add(other)
 
     frontier = list(keep)
@@ -367,17 +480,23 @@ def _close_over_structure(space: Space, keep: set[str]) -> set[str]:
     while frontier:
         p = frontier.pop()
         pd = space.params.get(p)
-        if pd is None or pd.type_kind not in ("space", "choice"):
+        if pd is None or pd.type_kind not in ("space", "choice", "list"):
             continue
-        prefix = f"{p}."
         for q in space.params:
-            if not q.startswith(prefix):
+            if not _is_descendant_path(q, p):
                 continue
             closed.add(q)
             if q not in expanded:
                 expanded.add(q)
                 frontier.append(q)
     return closed
+
+
+def _is_descendant_path(path: str, ancestor: str) -> bool:
+    """Whether `path` names something nested under `ancestor` in the path
+    grammar — `"grp.x"` and `"layers[].width"` under `"grp"`/`"layers"`,
+    but never `"grp_other"` under `"grp"`."""
+    return path.startswith(f"{ancestor}.") or path.startswith(f"{ancestor}[")
 
 
 def _apply_keep_set(space: Space, keep: set[str], *, strict: bool, call: str) -> Space:
@@ -974,6 +1093,81 @@ def _pin_program(pd: ParamDef, value: Any) -> tuple[ParamDef, Constraint | None]
     return replace(pd, default=value), constraint
 
 
+def _domain_is_singleton(domain: Any) -> bool:
+    """Whether a domain admits exactly one value — the gate on `.freeze()`'s
+    fold (see `_statically_resolve_frozen`). True only for the kinds freeze
+    narrows: real/integer to `lo == hi`, categorical/ordinal to one value.
+    Every constraint-pinned kind answers False, which is the point.
+    """
+    if isinstance(domain, RealDomain | IntegerDomain):
+        return bool(domain.lo == domain.hi)
+    if isinstance(domain, CategoricalDomain | OrdinalDomain):
+        return len(domain.values) == 1
+    return False
+
+
+def _statically_resolve_frozen(
+    space: Space, merged_params: dict[str, ParamDef], to_fix: dict[str, Any]
+) -> tuple[dict[str, ParamDef], tuple[Condition, ...]]:
+    """`.freeze()`'s half of D-92: substitute the frozen values into the
+    derived structure that reads them, then fold.
+
+    Unlike `.slice()`, freeze *keeps* the param, which is exactly why its
+    fold is the narrower of the two. A literal may be substituted only
+    where the frozen param's **domain** admits a single value — real/
+    integer narrowed to `lo == hi`, categorical/ordinal to one value. The
+    kinds freeze pins by a hard `require` instead (bool, choice, subset,
+    permutation, custom, program — API.md's per-kind mechanism) keep a
+    domain still admitting their other values, so a config may legally
+    *hold* one and merely be infeasible; folding a condition against the
+    pinned value would then wrongly report a param active there.
+    `.slice()` faces no such case, having removed the param outright.
+
+    (The valid-config *set* is the same either way, since every config the
+    distinction touches already fails the pin. What it would change is the
+    fingerprint — and a choice freeze is required to stay fingerprint-equal
+    to its hand-written pin-and-prune expansion, `TestFreezeChoice`'s
+    permanent law.)
+
+    Only **leaf** entries of `to_fix` contribute a literal: a struct or
+    list path fans out through `_expand_freeze_target` into per-field/
+    per-instance fixes and has no scalar value of its own to substitute.
+    That is conservative — a count reading a frozen struct's field folds
+    when the field is named directly (`freeze(**{"grp.n": 3})`) and not
+    when the struct is (`freeze(grp={"n": 3})`) — and conservative is
+    always sound, since an unfolded count merely stays dynamic.
+    """
+    literals: dict[str, Expr] = {}
+    for path, value in to_fix.items():
+        pd = space.params.get(path)
+        if pd is None or pd.type_kind in ("space", "list"):
+            continue
+        if not _domain_is_singleton(merged_params[path].domain):
+            continue
+        literals[path] = _literal_for(pd, value)
+    if not literals:
+        return merged_params, tuple(space.conditions)
+
+    folded: dict[str, ParamDef] = {}
+    for path, pd in merged_params.items():
+        new_condition = (
+            fold_condition(substitute_bool(pd.condition, literals), space)
+            if pd.condition is not None
+            else None
+        )
+        folded[path] = replace(
+            pd,
+            condition=new_condition,
+            domain=fold_domain(substitute_domain(pd.domain, literals), space),
+        )
+    conditions = tuple(
+        c
+        for c in space.conditions
+        if folded.get(c.target) is None or folded[c.target].condition is not None
+    )
+    return folded, conditions
+
+
 def freeze(space: Space, to_fix: dict[str, Any]) -> Space:
     """`.freeze(values=None, **kw)` (API.md, "Space — Structural
     Operations"): fix values, keep params in output, conditions resolve
@@ -999,13 +1193,14 @@ def freeze(space: Space, to_fix: dict[str, Any]) -> Space:
 
     merged_params: dict[str, ParamDef] = {**space.params, **param_updates}
     merged_constraints = tuple(space.constraints) + tuple(extra_constraints)
+    merged_params, merged_conditions = _statically_resolve_frozen(space, merged_params, to_fix)
 
     if not removed_paths:
         from designspace.meta import space_from_ir
 
         result = space_from_ir(
             merged_params,
-            space.conditions,
+            merged_conditions,
             merged_constraints,
             anchors=dict(space.anchors),
             meta=dict(space.meta_map),
@@ -1014,7 +1209,7 @@ def freeze(space: Space, to_fix: dict[str, Any]) -> Space:
 
     pre_prune = Space(
         params=MappingProxyType(merged_params),
-        conditions=space.conditions,
+        conditions=merged_conditions,
         constraints=merged_constraints,
         anchors=space.anchors,
         meta_map=space.meta_map,
@@ -1055,13 +1250,23 @@ def slice_space(space: Space, to_remove: dict[str, Any]) -> Space:
         if path in to_remove:
             continue
         new_condition = (
-            substitute_bool(pd.condition, literals) if pd.condition is not None else None
+            fold_condition(substitute_bool(pd.condition, literals), space)
+            if pd.condition is not None
+            else None
         )
-        new_params[path] = replace(pd, condition=new_condition)
+        new_params[path] = replace(
+            pd,
+            condition=new_condition,
+            domain=fold_domain(substitute_domain(pd.domain, literals), space),
+        )
 
     new_conditions: list[Condition] = []
     for c in space.conditions:
         if c.target in to_remove:
+            continue
+        # Keep the `Condition` store in step with the `ParamDef` it
+        # targets: a condition folded away there must not survive here.
+        if new_params.get(c.target) is not None and new_params[c.target].condition is None:
             continue
         new_expr = substitute_bool(c.expr, literals)
         new_conditions.append(Condition(target=c.target, expr=new_expr, params=new_expr.params))

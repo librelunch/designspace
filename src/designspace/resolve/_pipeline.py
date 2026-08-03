@@ -77,6 +77,7 @@ from designspace.ir import (
     Condition,
     Constraint,
     CustomDomain,
+    Domain,
     IntegerDomain,
     ListDomain,
     OrdinalDomain,
@@ -95,7 +96,12 @@ from designspace.program import FloatLiteral, IntLiteral, Primitive
 from designspace.program._validate import program_value_error
 from designspace.resolve._bounds import bound_deps, check_bound_refs, compute_bound_envelopes
 from designspace.resolve._desugar import desugar_bool
-from designspace.resolve._expr_checks import check_expr_types, check_refs_declared, prop_type
+from designspace.resolve._expr_checks import (
+    _is_declared,
+    check_expr_types,
+    check_refs_declared,
+    prop_type,
+)
 from designspace.resolve._relocate import and_, relocate_child
 
 _NON_CHART_KINDS = (
@@ -130,10 +136,44 @@ def resolve_space(exprs: tuple[ParamExpr, ...]) -> Space:
     # chain into a resolved, chart-carrying `ListDomain` (DECISIONS.md D-18).
     charts = _build_charts(defs)  # step 6, chart side
     space = _emit(defs, charts)  # step 8
+    _check_nested_container_lifts(space)  # D-24's boundary, compositional route
     if bound_constraints:
         space = replace(space, constraints=space.constraints + tuple(bound_constraints))
     _validate_list_defaults_deep(space)  # row 21, continued — needs space.params
     return space
+
+
+def _check_nested_container_lifts(space: Space) -> None:
+    """DECISIONS.md D-24's boundary, reached *compositionally* rather than
+    by chaining: a struct/choice element under more than one `.repeat()`
+    level is unsupported, and declaring the inner lift inside the outer
+    lift's element `Space` composes to exactly that shape.
+
+    `_validate_lift`'s own D-24 guard sees one param's chained
+    `_ElementSnapshot` depth and so catches only `.repeat().repeat()`. The
+    compositional route produces two *separate* lift params whose merged
+    definition path carries the nesting instead (`"row[].spans"`), which is
+    visible only here, after relocation. Left unguarded it fell through
+    into machinery that never instantiates the inner elements: a struct
+    lift sampled empty element dicts, and a lifted choice sampled an empty
+    payload that `validate()` then *accepted*.
+
+    The rule is the merged shape, not the syntax: a param whose own
+    definition path already sits inside a lift element (`"[]"` in the path)
+    and which is itself a struct- or choice-elemented lift. A **scalar**
+    lift nested the same way is explicitly fine (D-24: "scalar/subset/
+    permutation elements support arbitrary nesting"), as is a struct lift
+    inside a plain struct or a choice variant — one lift level, not two.
+    """
+    for path, pd in space.params.items():
+        if "[]" not in path or not isinstance(pd.domain, ListDomain):
+            continue
+        if _innermost_domain_element_kind(pd.domain) in ("space", "choice"):
+            raise ResolutionError(
+                f"param {path!r}: a struct/choice element nested under more than one "
+                ".repeat() level is not yet supported (M4 scope boundary, DECISIONS.md "
+                "D-24) — scalar/subset/permutation elements support arbitrary nesting"
+            )
 
 
 def check_fully_resolved(space: Space) -> None:
@@ -175,14 +215,64 @@ def check_fully_resolved(space: Space) -> None:
         context = f"{c.kind}() constraint"
         check_refs_declared(c.expr, defs_by_path, context=context)
         check_expr_types(c.expr, defs_by_path, context=context)
+    _check_domain_carried_refs(space, defs_by_path)
     _check_merged_cycles(space)
+
+
+def _check_domain_carried_refs(space: Space, defs_by_path: dict[str, ParamDef]) -> None:
+    """Rows 6/12/14 over the two reference stores that live *inside* a
+    `ListDomain` rather than on the `ParamDef`: the lift's `count`
+    expression (D-21) and its per-element constraint templates (D-20).
+
+    Both were previously audited only per-scope, over the child `Space`'s
+    own paths. That left two silent failures once relocation reprefixed
+    those paths: a dangling count reads as Kleene-Unknown-from-inactivity
+    and materializes `[]`, and a dangling element constraint goes
+    inapplicable under Kleene rule 4 — a hard `.forbid()` that stops
+    deciding feasibility while `validate()` still reports `valid`. Neither
+    is a finding a user could reach any other way, which is why the audit
+    belongs here rather than in a caller.
+
+    It is also what makes a count's up-reference deferral safe (D-91): the
+    per-scope check tolerates a reference binding nowhere locally, and
+    this pass is where it must finally bind.
+    """
+    for path, pd in space.params.items():
+        domain = pd.domain
+        while isinstance(domain, ListDomain):
+            _check_count_type(path, domain.count, defs_by_path)
+            for c in domain.element_constraints:
+                context = f"param {path!r} element {c.kind}() constraint"
+                check_refs_declared(c.expr, defs_by_path, context=context)
+                check_expr_types(c.expr, defs_by_path, context=context)
+            domain = domain.element_domain
+
+
+def _merged_count_deps(pd: ParamDef) -> frozenset[str]:
+    """Repeat-count references across a (possibly chained) lift, read from
+    the resolved `ListDomain` chain — the finalization-side counterpart of
+    `_count_deps`' builder-side `.lift` walk."""
+    deps: frozenset[str] = frozenset()
+    domain = pd.domain
+    while isinstance(domain, ListDomain):
+        if isinstance(domain.count, ArithExpr):
+            deps = deps | domain.count.params
+        domain = domain.element_domain
+    return deps
 
 
 def _check_merged_cycles(space: Space) -> None:
     deps: dict[str, frozenset[str]] = {c.target: c.params for c in space.conditions}
+    # A count imposes assignment order exactly as a condition does (D-21),
+    # so a cross-scope cycle formed through an up-referencing count — only
+    # ever visible here, over the merged graph — is row 7 (D-91).
+    for path, pd in space.params.items():
+        count_deps = _merged_count_deps(pd)
+        if count_deps:
+            deps[path] = deps.get(path, frozenset()) | count_deps
     for target, target_deps in deps.items():
         if target in target_deps:
-            raise ResolutionError(f"param {target!r}: condition references itself")
+            raise ResolutionError(f"param {target!r}: condition/repeat-count references itself")
 
     visiting: set[str] = set()
     done: set[str] = set()
@@ -985,7 +1075,11 @@ def _validate_lift(d: ParamExpr, defs_by_path: dict[str, ParamExpr]) -> None:
     while True:
         depth += 1
         assert snap.count is not None
-        _check_count_type(d.path, snap.count, defs_by_path)
+        # A count up-referencing an enclosing scope is tolerated here and
+        # re-checked at finalization, exactly like a condition (D-91):
+        # unlike an expression bound, nothing in *this* scope's resolution
+        # consumes a count — lists are structure, not charts.
+        _check_count_type(d.path, snap.count, defs_by_path, tolerate_undeclared=True)
         _validate_list_default_shape(d.path, snap)
         any_list_default = any_list_default or snap.list_default is not None
         inner = snap.element
@@ -1023,7 +1117,19 @@ def _validate_lift(d: ParamExpr, defs_by_path: dict[str, ParamExpr]) -> None:
         )
 
 
-def _innermost_lift_element_kind(pd: ParamExpr) -> str | None:
+def _innermost_domain_element_kind(domain: Domain) -> str | None:
+    """`_innermost_lift_element_kind`'s resolved-IR counterpart: the same
+    descent one representation later, over the `ListDomain` chain the
+    merged space holds instead of the builder's `.lift` snapshots. Used by
+    the finalization re-check (D-91)."""
+    if not isinstance(domain, ListDomain):
+        return None
+    while isinstance(domain.element_domain, ListDomain):
+        domain = domain.element_domain
+    return domain.element_kind
+
+
+def _innermost_lift_element_kind(pd: ParamExpr | ParamDef) -> str | None:
     """The leaf `type_kind` a `Sum`/`Min`/`Max` over `pd` flattens to,
     read from the builder-time `_ElementSnapshot` chain (`.lift`) rather
     than `.domain` — `_check_count_type_node` runs before
@@ -1033,7 +1139,14 @@ def _innermost_lift_element_kind(pd: ParamExpr) -> str | None:
     order. Mirrors `_validate_lift`'s own descent through chained/nested
     repeat levels. `None` if `pd` is not `.repeat()`-closed at all (a
     plain scalar `.sum()`'d by mistake — row 12 covers it as "not
-    integer-typed" either way)."""
+    integer-typed" either way).
+
+    Accepts a resolved `ParamDef` too, for the finalization re-check
+    (D-91), where the merged space holds `ListDomain`s rather than the
+    builder's `.lift` snapshots — the same descent, one representation
+    later."""
+    if isinstance(pd, ParamDef):
+        return _innermost_domain_element_kind(pd.domain)
     if pd.lift is None:
         return None
     inner = pd.lift.element
@@ -1044,7 +1157,13 @@ def _innermost_lift_element_kind(pd: ParamExpr) -> str | None:
     return inner.element_class.type_kind
 
 
-def _check_count_type_node(node: Expr, defs_by_path: dict[str, ParamExpr], context: str) -> None:
+def _check_count_type_node(
+    node: Expr,
+    defs_by_path: Mapping[str, Any],
+    context: str,
+    *,
+    tolerate_undeclared: bool = False,
+) -> None:
     """The M10.5/D-72 integer-valued calculus for repeat() counts (row
     12): int literals, integer params, `Count`/`Size`/`Length`/
     `PositionOf`/`CountOf` (always int by construction), a declared-int
@@ -1056,7 +1175,17 @@ def _check_count_type_node(node: Expr, defs_by_path: dict[str, ParamExpr], conte
     integer exponent, and `IfInactive` when both branches are int-valued.
     Division and anything else outside this closed set is row 12 —
     mirrors the bounds engine's own minimal computable op set (API.md,
-    "Expression bounds are sugar")."""
+    "Expression bounds are sugar").
+
+    `tolerate_undeclared` skips a node whose references do not all bind
+    locally — an enclosing-scope up-reference, whose type is unknowable
+    until every outer scope has contributed its params (D-91, extending
+    D-26's condition deferral to counts). `check_fully_resolved` re-runs
+    this strictly over the merged space, so the row-12 check is deferred,
+    never dropped. Mirrors `check_expr_types`' own node-level skip."""
+    tolerate = tolerate_undeclared
+    if tolerate and any(not _is_declared(p, defs_by_path) for p in node.params):
+        return
     if isinstance(node, Literal):
         if not isinstance(node.value, int) or isinstance(node.value, bool):
             raise ResolutionError(
@@ -1122,23 +1251,31 @@ def _check_count_type_node(node: Expr, defs_by_path: dict[str, ParamExpr], conte
                 f"{context}: ** requires a non-negative literal integer exponent to "
                 "stay integer-typed (row 12)"
             )
-        _check_count_type_node(node.left, defs_by_path, context)
-        _check_count_type_node(node.right, defs_by_path, context)
+        _check_count_type_node(node.left, defs_by_path, context, tolerate_undeclared=tolerate)
+        _check_count_type_node(node.right, defs_by_path, context, tolerate_undeclared=tolerate)
         return
     if isinstance(node, IfInactive):
-        _check_count_type_node(node.operand, defs_by_path, context)
-        _check_count_type_node(node.fallback, defs_by_path, context)
+        _check_count_type_node(node.operand, defs_by_path, context, tolerate_undeclared=tolerate)
+        _check_count_type_node(node.fallback, defs_by_path, context, tolerate_undeclared=tolerate)
         return
     raise ResolutionError(f"{context}: must be integer-typed (row 12)")
 
 
 def _check_count_type(
-    path: str, count: int | ArithExpr, defs_by_path: dict[str, ParamExpr]
+    path: str,
+    count: int | ArithExpr,
+    defs_by_path: Mapping[str, Any],
+    *,
+    tolerate_undeclared: bool = False,
 ) -> None:
     if isinstance(count, ArithExpr):
         context = f"param {path!r} repeat() count"
-        check_refs_declared(count, defs_by_path, context=context)
-        _check_count_type_node(count, defs_by_path, context)
+        check_refs_declared(
+            count, defs_by_path, context=context, tolerate_undeclared=tolerate_undeclared
+        )
+        _check_count_type_node(
+            count, defs_by_path, context, tolerate_undeclared=tolerate_undeclared
+        )
         return
     if not isinstance(count, int) or isinstance(count, bool):
         raise ResolutionError(

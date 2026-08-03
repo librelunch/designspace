@@ -32,5 +32,16 @@ Current milestone: **M13 (open)**
 
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
 
+**Out-of-band fixes** (no milestone row — bugfixes against already-shipped milestones, landed with
+their own conformance laws):
+
+| Date | Fix | Against | Tests | DECISIONS |
+|---|---|---|---|---|
+| 2026-08-03 | Relocation now rewrites a lift's domain-carried references (`ListDomain.count`, `element_constraints`); finalization audits both; a count's enclosing-scope reference is deferred like a condition; `.select()` brings a lifted struct/choice's element templates | M3/M4 (relocation), M10.5 (finalization audit), M8 (`.select()`) | 1469 | D-91 |
+| 2026-08-03 | `.slice()`/`.freeze()` statically resolve what a fixed value determines: counts fold to a static `int` (`.slice()` on a count param now works at all, and is the route to a fixed layout), always-true conditions fold to `None`; `.freeze()`'s fold gated on a single-value domain | M8 (structural ops) | 1487 | D-92 |
+| 2026-08-03 | Immutability/copy-on-write swept over the exported surface: every exported dataclass frozen, read-only mapping views, and every chainable op asserted to leave its receiver byte-identical (the structural content of the thread-safety claim, previously asserted for expression nodes only) | M0–M12 (`Errors, Concurrency`) | 1818 | _none_ |
+| 2026-08-03 | **Hardening pass 2.** Kind×surface matrix (22 kinds × 8 stated laws) made permanent; transport now handles the `ChartApply` node a representation emits, so a representation target can itself be represented and `then` composes past one derived level (it previously raised at a `# pragma: no cover` line); the round-trip law gains its tolerance and `rep.check()` now covers authored phenotypes (anchors, `apply_defaults({})`) | M11 (representation) | 1739 | D-94 |
+| 2026-08-03 | **Hardening pass.** Reference-closure invariant over all four reference stores, swept across every corpus fixture and the 8×7 nesting grid; a lifted choice's discriminator template now relocates (it was never a `params` key, so nested lifted choices had never worked); D-24's boundary guarded on the compositional route too; new `nested_survey` corpus fixture covering a param-driven count in a relocated scope | M3/M4 (relocation), M4 (D-24 guard) | 1581 | D-93 |
+
 The "DECISIONS entries" column above is a **historical** record: once an entry's answer is folded
 into `API.md`, the entry itself is removed from the ledger and recovered from git history.

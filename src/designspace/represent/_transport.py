@@ -36,6 +36,7 @@ from designspace.expr import (
     BoolExpr,
     BoolLiteral,
     BoolOp,
+    ChartApply,
     Compare,
     Contains,
     Count,
@@ -237,6 +238,25 @@ def _rebuild_children(
         return IsSorted(go(node.operand), node.descending)
     if isinstance(node, Distinct):
         return Distinct(go(node.operand), node.fields)
+    if isinstance(node, ChartApply):
+        # The node a representation itself emits (API.md, "Expressions":
+        # the second opaque-free leaf). It appears here whenever the source
+        # is *already* a representation target — `rep.target` is an ordinary
+        # `Space`, so representing it again is supported by construction,
+        # and it is what makes `then` usable past one derived level. Only
+        # the operand transports: the carried chart declaration describes
+        # the *source* param's own chart and is not the thing being
+        # re-encoded, exactly as `_relocate.py::rewrite_expr` and
+        # `ops/_structural.py::substitute_expr` treat it.
+        return ChartApply(
+            go(node.operand),
+            node.chart,
+            node.type_kind,
+            node.domain,
+            node.prior,
+            node.quantized,
+            node.periodic,
+        )
     if isinstance(node, ParamExpr | Literal | BoolLiteral):
         return node  # reached only when unmatched (handled by rewrite_node above)
     raise TypeError(f"represent(): cannot transport expr kind {node.kind!r}")  # pragma: no cover

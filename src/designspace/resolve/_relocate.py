@@ -158,12 +158,79 @@ def rewrite_bool(expr: BoolExpr, rename: Mapping[str, str]) -> BoolExpr:
     return cast(BoolExpr, rewrite_expr(expr, rename))
 
 
+def rewrite_domain(domain: Any, rename: Mapping[str, str]) -> Any:
+    """Rename the param references a `ListDomain` carries *inside* the
+    domain rather than on the `ParamDef` — its `count` expression and its
+    `element_constraints` templates (DECISIONS.md D-18/D-20 put both there,
+    which is exactly why the `ParamDef`-level rewrite above misses them).
+
+    Every other `Domain` holds declared values only, never expressions, so
+    it is returned unchanged. Recurses through `element_domain` so a
+    chained/variadic `.repeat().repeat()` renames at every level.
+    """
+    if not isinstance(domain, ListDomain):
+        return domain
+    count = domain.count
+    new_count = count if isinstance(count, int) else cast(ArithExpr, rewrite_expr(count, rename))
+    new_element_constraints = tuple(
+        replace(c, expr=(e := rewrite_bool(c.expr, rename)), params=e.params)
+        for c in domain.element_constraints
+    )
+    return replace(
+        domain,
+        element_domain=rewrite_domain(domain.element_domain, rename),
+        count=new_count,
+        element_constraints=new_element_constraints,
+    )
+
+
+def relocate_paramdef(pd: ParamDef, new_path: str, rename: Mapping[str, str]) -> ParamDef:
+    """`replace(pd, path=…)` plus the domain-carried rewrite above — the
+    one place that knows a `ParamDef`'s references are not all reachable
+    from `pd.condition`."""
+    return replace(pd, path=new_path, domain=rewrite_domain(pd.domain, rename))
+
+
 def and_(a: BoolExpr | None, b: BoolExpr | None) -> BoolExpr | None:
     if a is None:
         return b
     if b is None:
         return a
     return a & b
+
+
+def _lift_depth(domain: Any) -> int:
+    depth = 0
+    while isinstance(domain, ListDomain):
+        depth += 1
+        domain = domain.element_domain
+    return depth
+
+
+def _rename_map(child: Any, new_prefix: str) -> dict[str, str]:
+    """`{old_path: new_path}` for the reprefix, over every path the child's
+    expressions may *reference* — which is a superset of `child.params`.
+
+    A **lifted choice's discriminator template** (`"pipe[]"` for a
+    `.choice(...).repeat(2)`) is the case that superset exists for: it is
+    referenced by the discriminator-equality condition folded into each
+    variant payload at relocation, yet it is never a `params` key of its
+    own — the lift is `"pipe"` and the payloads are `"pipe[].b.w"`.
+    Deriving the map from `params` alone therefore leaves that reference
+    bare, and it then binds to nothing in the merged space.
+    `instantiate_element` documents and handles the identical gap for its
+    own `"[]" -> "[k]"` expansion.
+
+    Bracket templates are emitted for every lift level, so a nested lift's
+    `"g[][]"` renames too. An entry that nothing references is harmless:
+    `rewrite_expr` substitutes on exact path match.
+    """
+    rename = {old_path: f"{new_prefix}{old_path}" for old_path in child.params}
+    for old_path, pd in child.params.items():
+        for level in range(1, _lift_depth(pd.domain) + 1):
+            template = old_path + "[]" * level
+            rename[template] = f"{new_prefix}{template}"
+    return rename
 
 
 def relocate_child(
@@ -180,14 +247,16 @@ def relocate_child(
     Kleene-inapplicable on its own (rule 4) once that param's activity is
     gated — no separate wrapping is needed.
     """
-    rename = {old_path: f"{new_prefix}{old_path}" for old_path in child.params}
+    rename = _rename_map(child, new_prefix)
     params: dict[str, ParamDef] = {}
     conditions: list[Condition] = []
     for old_path, pd in child.params.items():
         new_path = rename[old_path]
         own_condition = rewrite_bool(pd.condition, rename) if pd.condition is not None else None
         final_condition = and_(own_condition, injected_condition)
-        params[new_path] = replace(pd, path=new_path, condition=final_condition)
+        params[new_path] = replace(
+            relocate_paramdef(pd, new_path, rename), condition=final_condition
+        )
         if final_condition is not None:
             conditions.append(
                 Condition(target=new_path, expr=final_condition, params=final_condition.params)
@@ -233,7 +302,7 @@ def instantiate_element(
         new_path = rename[old_path]
         pd = space.params[old_path]
         new_condition = rewrite_bool(pd.condition, rename) if pd.condition is not None else None
-        params[new_path] = replace(pd, path=new_path, condition=new_condition)
+        params[new_path] = replace(relocate_paramdef(pd, new_path, rename), condition=new_condition)
         if new_condition is not None:
             conditions.append(
                 Condition(target=new_path, expr=new_condition, params=new_condition.params)

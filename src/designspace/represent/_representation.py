@@ -199,8 +199,59 @@ class Representation:
                         )
                         record("round_trip", f"decode(encode(x)) != x at {first_diff!r}")
 
+        self._check_declared_round_trip(record)
+
         failures = tuple(
             RepresentationCheckFailure(law=law, detail=detail, count=count)
             for (law, detail), count in sorted(counts.items())
         )
         return RepresentationCheck(n=n, ok=not failures, failures=failures)
+
+    def _check_declared_round_trip(self, record: Callable[[str, str], None]) -> None:
+        """The round-trip law over **authored** phenotypes — the source's
+        anchors and its defaults-filled config (D-94).
+
+        The sampled half of `check()` can only round-trip `x = decode(g)`,
+        and every such `x` sits on the chart's image: `encode` recovers the
+        very unit coordinate it was decoded from, so the comparison is
+        exact and the tolerance is never exercised. An **authored** value —
+        `lr=1e-3` under a `Log()` chart — does not sit there, and composing
+        `to_unit`/`from_unit` through `log`/`exp` returns it only to within
+        floating-point accuracy.
+
+        That is the case `encode` exists for (API.md: "warm-starting ...
+        anchors and historical observations are phenotypes, and seeding a
+        solver with them is `rep.encode(config)`"), so leaving it
+        unexercised meant a supplied encoding could be lossy on exactly the
+        inputs a consumer feeds it and still report `ok`. Reported under its
+        own law name so a failure says *which* half broke.
+        """
+        if not self.invertible:
+            return
+        assert self.encode is not None  # derived from invertible in __post_init__
+        declared: list[tuple[str, Config]] = [
+            (f"anchor {name!r}", config) for name, config in self.source.anchors.items()
+        ]
+        filled = self.source.apply_defaults({})
+        if filled:
+            declared.append(("apply_defaults({})", filled))
+
+        for label, phenotype in declared:
+            try:
+                round_tripped = self.decode(self.encode(phenotype))
+            except Exception as exc:  # a raise is itself a law violation, not an error here
+                record("round_trip_declared", f"{label}: encode()/decode() raised: {exc}")
+                continue
+            if not _approx_equal(round_tripped, phenotype):
+                first_diff = next(
+                    (
+                        k
+                        for k in sorted(set(phenotype) | set(round_tripped))
+                        if not _approx_equal(phenotype.get(k), round_tripped.get(k))
+                    ),
+                    "<unknown>",
+                )
+                record(
+                    "round_trip_declared",
+                    f"{label}: decode(encode(x)) != x at {first_diff!r}",
+                )

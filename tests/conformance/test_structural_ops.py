@@ -576,6 +576,38 @@ class TestSelect:
         sel = space.select("solver")
         assert set(sel.params) == {"solver", "solver.cdcl.restart"}
 
+    def test_prefix_subtree_brings_a_lifted_structs_element_templates(self):
+        # A lifted struct's fields are relocated under a `"[]"`-bracketed
+        # prefix, so they are descendants of the lift exactly as a
+        # variant's params are descendants of its choice — "prefix
+        # subtree" has to bring them, or the selected lift keeps a
+        # ListDomain whose element fields no longer exist.
+        space = ds.space(
+            ds.param("layers")
+            .space(
+                ds.param("width").integer(16, 1024),
+                ds.param("act").categorical("relu", "gelu"),
+            )
+            .repeat(3),
+            ds.param("timeout_s").integer(1, 100),
+        )
+        sel = space.select("layers")
+        assert set(sel.params) == {"layers", "layers[].width", "layers[].act"}
+        for cfg in sel.sample_dicts(10, seed=0):
+            assert sel.validate(cfg).valid
+
+    def test_prefix_subtree_brings_a_lifted_choices_variants(self):
+        space = ds.space(
+            ds.param("pipeline")
+            .choice("shuffle", pmx=ds.space(ds.param("swap_p").real(0.0, 1.0)))
+            .repeat(2),
+            ds.param("timeout_s").integer(1, 100),
+        )
+        sel = space.select("pipeline")
+        assert set(sel.params) == {"pipeline", "pipeline[].pmx.swap_p"}
+        for cfg in sel.sample_dicts(10, seed=0):
+            assert sel.validate(cfg).valid
+
     def test_best_effort_drops_with_warning(self):
         space = ds.space(ds.param("x").integer(0, 10), ds.param("y").integer(0, 10)).forbid(
             ds.param("x") > ds.param("y")

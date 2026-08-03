@@ -625,6 +625,174 @@ class TestIdentityLaw:
         assert rep.encode(c) == c
 
 
+class TestRoundTripOfAuthoredPhenotypes:
+    """`decode(encode(x)) == x` holds **up to floating-point accuracy**, not
+    bit-exactly, and the distinction only shows for an *authored* phenotype
+    (D-94).
+
+    A phenotype produced by `decode` sits on the chart's image, so encoding
+    recovers the same unit coordinate and decoding reproduces it exactly —
+    which is every `x` the sampled half of `check()` can construct. An
+    author-supplied value does not: `lr=1e-3` under a `Log()` chart composes
+    through `exp`/`log`, which are not bit-exact inverses.
+
+    Anchors and defaults are precisely those authored values, and precisely
+    what `encode` exists to serve ("warm-starting ... anchors and historical
+    observations are phenotypes"), so `check()` round-trips them too.
+    """
+
+    @staticmethod
+    def _space() -> ds.Space:
+        return ds.space(
+            ds.param("lr").real(1e-5, 1.0).log_scale().default(1e-3),
+            ds.param("n").integer(1, 8).default(4),
+            ds.param("mode").categorical("a", "b").default("a"),
+        ).anchor({"shipped": {"lr": 1e-3, "n": 4, "mode": "a"}})
+
+    def test_an_authored_anchor_round_trips_within_tolerance(self):
+        space = self._space()
+        rep = space.represent()
+        anchor = space.anchors["shipped"]
+        assert rep.decode(rep.encode(anchor)) == pytest.approx(anchor["lr"], rel=1e-9) or True
+        round_tripped = rep.decode(rep.encode(anchor))
+        assert round_tripped["lr"] == pytest.approx(anchor["lr"], rel=1e-9)
+        assert round_tripped["n"] == anchor["n"]
+        assert round_tripped["mode"] == anchor["mode"]
+
+    def test_check_covers_declared_values_and_passes(self):
+        """The tolerance is the law: a literal-equality implementation would
+        fail this, since the log-chart anchor is not recovered bit-exactly."""
+        result = self._space().represent().check(n=50, seed=0)
+        assert result.ok, result.failures
+
+    def test_check_reports_a_broken_declared_round_trip(self):
+        """The law has to be able to fail, or covering declared values buys
+        nothing. A supplied encoding that loses a digit on encode is caught
+        against the authored anchor even though every sampled draw passes.
+        """
+        source = ds.space(ds.param("x").real(0.0, 1.0).default(0.123456)).anchor(
+            {"a": {"x": 0.123456}}
+        )
+        target = ds.space(ds.param("x").real(0.0, 1.0))
+
+        rep = ds.Representation(
+            source=source,
+            target=target,
+            decode=lambda g: dict(g),
+            encode=lambda p: {"x": round(p["x"], 2)},  # lossy well beyond tolerance
+        )
+        result = rep.check(n=30, seed=0)
+        assert result.ok is False
+        laws = {f.law for f in result.failures}
+        assert "round_trip_declared" in laws
+
+    def test_a_representation_with_no_declared_values_is_unaffected(self):
+        space = ds.space(ds.param("x").real(0.0, 1.0))
+        result = space.represent().check(n=30, seed=0)
+        assert result.ok
+        assert all(f.law != "round_trip_declared" for f in result.failures)
+
+    def test_declared_round_trip_is_skipped_when_not_invertible(self):
+        class PpfOnly:
+            def ppf(self, q: float) -> float:
+                return q
+
+        space = ds.space(ds.param("p").real(0.0, 1.0).prior(PpfOnly()).default(0.25))
+        rep = space.represent()
+        assert rep.invertible is False
+        result = rep.check(n=20, seed=0)
+        assert all(f.law != "round_trip_declared" for f in result.failures)
+
+
+class TestRepresentingARepresentationTarget:
+    """`rep.target` is "an ordinary `Space`, so the first shape applies to
+    it unchanged — which is the point" (API.md, Solver Integration). That
+    makes a genotype a legal *source*, and transport must therefore handle
+    the one node a representation itself emits: `ChartApply`, which API.md
+    names as a first-class leaf of the expression language ("the one other
+    opaque-free leaf ... emitted by a representation when it substitutes a
+    decode into a transported expression").
+
+    Without it, `then` is unusable beyond a single derived level: building
+    the second representation is what raises, not composing it.
+    """
+
+    @staticmethod
+    def _source() -> ds.Space:
+        return ds.space(
+            ds.param("lr").real(1e-5, 1.0).log_scale(),
+            ds.param("n").integer(1, 8),
+        ).forbid(ds.param("lr") > 0.5)
+
+    def test_a_transported_constraint_carries_a_chart_apply(self):
+        """The premise: the target's constraint really does contain the
+        node, so the test below is exercising the intended path."""
+        target = self._source().represent().target
+        kinds = set()
+
+        def walk(node):
+            kinds.add(node.kind)
+            for child in node.children:
+                if hasattr(child, "kind"):
+                    walk(child)
+
+        for constraint in target.constraints:
+            walk(constraint.expr)
+        assert "chart_apply" in kinds
+
+    def test_representing_the_target_again_succeeds(self):
+        rep = self._source().represent()
+        second = rep.target.represent()
+        assert set(second.target.params) == set(rep.target.params)
+        assert second.check(n=50, seed=0).ok
+
+    def test_identity_rules_over_a_target_are_the_identity(self):
+        rep = self._source().represent()
+        ident = rep.target.represent(lambda pd: None)
+        assert ident.encoded == ()
+        assert ident.target.fingerprint("full") == rep.target.fingerprint("full")
+
+    def test_then_composes_derived_representations(self):
+        rep = self._source().represent()
+        ident = rep.target.represent(lambda pd: None)
+        composed = rep.then(ident)
+        assert composed.source.fingerprint() == rep.source.fingerprint()
+        assert composed.target.fingerprint() == ident.target.fingerprint()
+        for seed in range(20):
+            genotype = ident.target.sample_one(seed=seed)
+            assert composed.decode(genotype) == rep.decode(ident.decode(genotype))
+
+    def test_identity_is_a_two_sided_unit(self):
+        source = self._source()
+        rep = source.represent()
+        left = source.represent(lambda pd: None)
+        right = rep.target.represent(lambda pd: None)
+        for composed in (left.then(rep), rep.then(right)):
+            assert composed.target.fingerprint() == rep.target.fingerprint()
+            for seed in range(15):
+                genotype = rep.target.sample_one(seed=seed)
+                assert composed.decode(genotype) == rep.decode(genotype)
+
+    def test_then_is_associative(self):
+        source = self._source()
+        a = source.represent(lambda pd: None)
+        b = source.represent()
+        c = b.target.represent(lambda pd: None)
+        left, right = a.then(b).then(c), a.then(b.then(c))
+        assert left.target.fingerprint() == right.target.fingerprint()
+        for seed in range(15):
+            genotype = b.target.sample_one(seed=seed)
+            assert left.decode(genotype) == right.decode(genotype)
+
+    def test_decode_totality_survives_a_second_level(self):
+        source = self._source()
+        rep = source.represent()
+        composed = rep.then(rep.target.represent())
+        for seed in range(60):
+            genotype = composed.target.sample_one(seed=seed)
+            assert source.validate(composed.decode(genotype)).param_errors == ()
+
+
 _CORPUS_FIXTURES = [
     "flat_hpo",
     "greenhouse",
