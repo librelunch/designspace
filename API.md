@@ -1305,7 +1305,7 @@ The spec's executable laws double as the acceptance suite:
 
 ## Staging
 
-Specified but shippable as **optional extras** — not part of the core surface, and not required for the initial release: `ds.from_callable` / `Annotated` domain literals (`ds.real(...)`, `ds.integer(...)`, …) as an optional module, `to_dataclass() -> type` / `to_python_source() -> str` / `to_pydantic_model()` as extras. `to_json_schema` stays core (dependency-free; cheap under nested choice).
+Specified but deferred past the initial release, on two different bases. `ds.from_callable` / `Annotated` domain literals (`ds.real(...)`, `ds.integer(...)`, …) as an optional module, and `to_dataclass() -> type` / `to_python_source() -> str` / `to_pydantic_model()`, ship as **optional extras** — not part of the core surface, requiring their own installs. `to_json_schema` is dependency-free (cheap under nested choice) and stays part of the core surface once it ships — it is not an extra — but its build is scheduled alongside the extras above rather than gating the initial release (`PLAN.md`'s M13/M15). Its output contract — JSON Schema draft, per-kind domain mapping, whether conditions/constraints surface, opaque-param handling — is not yet specified in "Identity and Serialization" above; that is resolved when M15 opens, not before.
 
 ---
 

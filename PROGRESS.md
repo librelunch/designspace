@@ -1,8 +1,6 @@
 # Progress
 
-Current milestone: **M12.5 (open)**. Next: M13 (`to_json_schema`), M14 (documentation), M15 (v0.1
-release), M16 (optional extras, v0.2) — split out of the former single M13 on the 2026-08-03
-documentation pass; see `PLAN.md`.
+Current milestone: **M13 (open)**
 
 | Milestone | Completed | Tests | DECISIONS entries |
 |---|---|---|---|
@@ -30,14 +28,9 @@ documentation pass; see `PLAN.md`.
 | M10.10 — `ConstraintReport.violation_rate` | 2026-07-31 | 1265 | _none_ |
 | M11 — Representation layer (`space.represent()`, `Representation`, `Encoding`, the induced chart representation) | 2026-07-31 | 1362 | D-79, D-80, D-81, D-82 |
 | M12 — Program types (`.symbolic()`, `.code()`) | 2026-08-01 | 1451 | D-83, D-84, D-85, D-86, D-87, D-88, D-89, D-90 |
+| M12.5 — Repo and CI hygiene (`py.typed`, Python floor 3.12, `ruff format` gate, CI matrix, typo sweep) | 2026-08-03 | 1451 | _none_ |
 
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
 
 The "DECISIONS entries" column above is a **historical** record: once an entry's answer is folded
-into `API.md`, the entry itself is removed from the ledger and recovered from git history. D-1
-through D-90 have been through that fold, so every ID above resolves via `git log -- DECISIONS.md`
-rather than the current file (D-71 through D-90 were pruned on the 2026-08-03 documentation pass,
-alongside the M13 split recorded above). D-52–D-70 are the exception to the one-milestone-per-row
-mapping — they came from a spec pass on 2026-07-30, before M10.5 opened, and fed M10.5 through M12.
-D-91 is open (`to_json_schema`'s output contract) and lives in the current `DECISIONS.md`, pending
-resolution at M13's open.
+into `API.md`, the entry itself is removed from the ledger and recovered from git history.
