@@ -931,12 +931,24 @@ doctests running, confirming the single `+SKIP` on `Space.sample` is placed corr
 Split out of M13 (user-directed, 2026-08-04) so the docstring pass could land on its own.
 Consumes M13's docstrings; adds no runtime surface.
 
+**Toolchain resolved (user-directed, 2026-08-04): stay on Sphinx; the docstring gates stay on
+griffe.** The open question at the bottom of this entry was settled with a measurement rather than
+an argument. Griffe and Sphinx do not compete for the same job and cannot conflict: griffe parses
+source statically and never imports the package, autodoc imports the package and never reads
+source; they share no config, no plugin bus, no state. Verified by installing the whole site stack
+into the project environment and re-running M13's gates — `tests/test_docs.py` **519 passed,
+unchanged**. Griffe stays a test-time gate over `__all__`; Sphinx is the build-time renderer.
+Neither substitutes for the other. mkdocs was not blocked either (`mkdocstrings-python` 2.0.5
+requires `griffelib>=2.0`, satisfied by the installed griffe 2.1.0), so Sphinx was chosen on the
+merits above rather than by version accident.
+
 **Build:** a rendered docs site under `docs/` with **Sphinx** and **`pydata-sphinx-theme`**,
 shipped as a `designspace[docs]` extra (dev/docs-only — **never core**; core stays
 `numpy`/`rfc8785`). Extensions: `autodoc` + `autosummary` for an API reference generated from
 M13's docstrings; `napoleon` (M13 chose NumPy style); `myst-parser` so guide pages are authored
 in Markdown, consistent with this repo's `.md` sources; `sphinx-copybutton`; `intersphinx`
-(python/numpy/polars). Doctest enforcement stays folded into the **existing `pytest` gate** —
+(python/numpy/polars). Versions the probe build ran against: Sphinx 9.1.0, `pydata-sphinx-theme`
+0.20.0, `myst-parser` 5.1.0. Doctest enforcement stays folded into the **existing `pytest` gate** —
 M13 already wired `--doctest-modules`; this milestone adds `--doctest-glob='*.md'` for guide
 pages authored as plain `>>>` blocks, one runner, one gate. (Only if the guide pages adopt Sphinx
 `.. testcode::`/`.. doctest::` directives for richer setup/skip control does a directive-aware
@@ -963,15 +975,73 @@ maintainer artifact, not a user-docs page (its 25 fenced python blocks are signa
 not transcripts, and will not run as doctests). Hosting (Read the Docs vs. GitHub Pages) is
 deferred; the buildable, doctest-clean site is the deliverable.
 
-**Open at this milestone's open:** whether to stay on Sphinx or move to mkdocs + mkdocstrings.
-M13 adds `griffe` — mkdocstrings' own engine — as a dev dependency, which changes the calculus
-this entry's Sphinx choice was originally made under: mkdocstrings would handle `__all__`-based
-publicity natively and take Markdown without a MyST bridge. Sphinx remains the default (it is
-already specified, and `pydata-sphinx-theme` matches the scientific-Python neighborhood the
-library targets); raise the question, do not assume it.
+**Measured at this milestone's open** (throwaway probe site over all 90 exports, discarded
+afterwards — no `docs/` tree was committed):
 
-**Gate:** `cd docs && make html` clean with no warnings; every `>>>` block in the guide pages
-executes under the existing `pytest` gate; the API reference resolves every name in `__all__`.
+1. **Default warning level: 0 warnings, out of the box.** Napoleon accepts every NumPy section
+   griffe accepts, so M13's docstrings need no reformatting and a "clean `make html`" gate would
+   have started green and stayed uninformative. That is the reason for the stronger gate below.
+2. **`nitpicky = True`: 768 warnings — every one a cross-reference, none a docstring-format
+   complaint.** 720 of them are a single config line: the stock autosummary class template lists
+   members in a summary table without documenting them, so every member reference dangles. A
+   template emitting `.. autoclass::` with `:members:`/`:inherited-members:`/`:show-inheritance:`
+   clears all 720.
+3. **The residual 48 → 0**, by the ignore lists below plus one real docstring fix. The
+   zero-warning configuration is proven, not projected.
+
+**The one real defect, and why nitpicky earns its keep.** `src/designspace/expr/_ast.py:636` —
+`Prop.children`'s docstring is `"""The operands: just the custom-typed parameter being read."""`.
+Napoleon applies a `Type: description` heuristic to *property* docstrings, so Sphinx renders "The
+operands" as the property's **type**. Griffe's numpy parser has no such heuristic, so M13's gate
+passes it clean: this is precisely the class of defect an independent second reader catches and
+the existing gate structurally cannot. A scan of the whole public surface found **exactly one**
+property/attribute of that shape — the other 18 colon-bearing summaries sit on classes and
+methods, where the heuristic does not apply — so the fix is one character (em dash for the colon),
+confirmed to clear the warning. Do not generalize it into a docstring sweep.
+
+**Ignore lists, each entry commented with its reason** (nitpicky is only honest if its exceptions
+are named):
+
+- **Private types reachable from public annotations** — `_ElementSnapshot` (16 refs),
+  `_NumericParamExpr` (2). M13 already recorded `_ElementSnapshot` as the one deliberately-private
+  reachable type; regex `designspace\..*\._.*`.
+- **`MappingProxyType`** (10) — the read-only mapping views' annotation renders unqualified and
+  cannot resolve to `types.MappingProxyType`.
+- **`polars.DataFrame` / `pl.DataFrame`** — *not* fixable by the `intersphinx` entry this entry
+  specifies, and this was measured rather than assumed: polars' published inventory carries 143
+  `polars.DataFrame.*` **method** entries and **no `polars.DataFrame` class entry**, so the target
+  does not exist upstream to link to.
+- **The `{"raise", "mark", "drop"}` type fields** in `Space.to_json` / `Space.fingerprint` — this
+  is the **canonical NumPy "one of" spelling** and the docstrings are correct; napoleon splits it
+  per token and tries to resolve each fragment as a class. Ignored by regex rather than degrading
+  correct docstrings to a bare `str`.
+- **Five type aliases used in public signatures but absent from `__all__`** — `Seed`, `Config`,
+  `OnUnserializable`, `FingerprintScope`, `FingerprintUnserializable`. See below.
+
+**Open, deferred to implementation — the unexported aliases.** M13's export-closure walk covered
+classes reachable through annotations; it did not cover *aliases*, and these five are that gap.
+They render as unclickable bare text (`seed: Seed = None`), which tells a reader nothing about
+what a `Seed` accepts. Three routes: **(a)** export them — a public-API change, so it needs user
+sign-off and is **not** taken unilaterally; **(b)** `nitpick_ignore` — docs-only and reversible,
+what this plan adopts; **(c)** `autodoc_type_aliases` expansion — **tried and rejected**: it does
+substitute the alias text, but emits four `TypeAliasForwardRef` references of its own on union
+targets, trading five named warnings for four anonymous ones. Ship (b); raise (a) with the user if
+the rendered signatures read badly on the built site.
+
+**Doctest wiring, and the hole not to repeat.** Measured: **no `.md` file in the repo contains a
+single `>>>` line** — `API.md` included, whose 25 fenced python blocks are signature listings — so
+`--doctest-glob='*.md'` collects zero tests today and cannot accidentally execute the spec even
+under a bare `pytest .`. The corresponding trap is the opposite one: `testpaths` must gain
+**`docs/`**, or the guide-page doctests collect to zero and the gate reports green while testing
+nothing — the same shape as the `norecursedirs`/`build` hole M13 found and closed. Assert a
+non-zero collected count for the guide pages rather than trusting a green run.
+
+**Gate:** `sphinx-build` with **`nitpicky = True` and `-W`** clean over every name in `__all__`,
+every ignore-list entry carrying a comment naming its reason; every `>>>` block in the guide pages
+executing under the existing `pytest` gate, with a non-zero guide-page collection count asserted;
+the four commit gates green. Each new gate demonstrated to *bite* before close-out (introduce a
+dangling reference → named nitpick failure; break a guide-page example → doctest failure). No
+runtime, public-API, wire-format, or fingerprint change — every known-answer vector byte-identical.
 **Exit:** internal — no public tag.
 
 ### M14 — v0.1 release
