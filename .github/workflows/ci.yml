@@ -21,10 +21,12 @@ jobs:
 
   docs:
     # The site build is gated inside `pytest` (tests/test_docs_site.py) so the
-    # four commit-gate commands stay four. It skips itself where the `docs`
-    # extra is absent, which is every other job here — so this one exists to
-    # make it actually run.
+    # four commit-gate commands stay four. It is opt-in via
+    # DESIGNSPACE_DOCS_BUILD — it costs ~17s and no other job here wants it —
+    # so this job exists to set that and make it actually run.
     runs-on: ubuntu-latest
+    env:
+      DESIGNSPACE_DOCS_BUILD: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5

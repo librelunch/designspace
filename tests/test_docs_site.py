@@ -5,8 +5,17 @@ Three laws, in increasing cost:
 1. the API reference lists every name in `__all__` — pure text, always runs;
 2. every guide page carries at least one `>>>` block — the guard against the
    silent-zero hole, see below;
-3. the site builds clean under `-W` with `nitpicky = True` — needs the `docs`
-   extra, so it skips where that is not installed and runs in its own CI job.
+3. the site builds clean under `-W` with `nitpicky = True` — ~17s, so it runs
+   only when `DESIGNSPACE_DOCS_BUILD` is set, and its CI job sets it.
+
+Law 3 is opt-in by **environment variable, not by whether Sphinx imports**.
+Keying it on the import would mean anyone who has ever run `uv run --extra docs`
+silently pays ~17s on every later `pytest -q`, because that leaves Sphinx in the
+project environment — a gate that turns itself on as a side effect of an
+unrelated command is a gate people learn to work around. With an explicit
+switch, the cost is asked for. When it is set but the `docs` extra is missing
+the law **fails** rather than skipping: someone who asked for the build wants to
+hear that it could not run.
 
 Law 2 exists because a doctest gate that collects nothing reports green. M13
 lost all 83 doctests under `src/designspace/build/` that way — pytest's default
@@ -17,6 +26,8 @@ carry the tests that setting is there to run.
 
 from __future__ import annotations
 
+import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -27,6 +38,7 @@ import designspace as ds
 
 _DOCS = Path(__file__).resolve().parent.parent / "docs"
 _GUIDES = sorted((_DOCS / "guides").glob("*.md"))
+_BUILD_ENV_VAR = "DESIGNSPACE_DOCS_BUILD"
 
 
 def test_reference_lists_every_export() -> None:
@@ -77,9 +89,22 @@ def test_site_builds_clean(tmp_path: Path) -> None:
     landed — it could not have caught anything. Nitpicky caught a docstring
     napoleon renders with the wrong type, which the griffe gates in
     `test_docs.py` structurally cannot see: they never resolve a reference.
+
+    Set `DESIGNSPACE_DOCS_BUILD=1` to run it (`uv sync --extra docs` first);
+    CI's `docs` job does both.
     """
-    pytest.importorskip("sphinx", reason="needs the `docs` extra")
-    pytest.importorskip("pydata_sphinx_theme", reason="needs the `docs` extra")
+    if not os.environ.get(_BUILD_ENV_VAR):
+        pytest.skip(f"set {_BUILD_ENV_VAR}=1 to build the site (~17s; needs the `docs` extra)")
+
+    missing = [
+        module
+        for module in ("sphinx", "pydata_sphinx_theme", "myst_parser", "sphinx_copybutton")
+        if importlib.util.find_spec(module) is None
+    ]
+    assert not missing, (
+        f"{_BUILD_ENV_VAR} is set but the `docs` extra is not installed "
+        f"(missing: {', '.join(missing)}). Run `uv sync --extra docs`."
+    )
 
     result = subprocess.run(
         [sys.executable, "-m", "sphinx", "-b", "html", "-W", "-q", str(_DOCS), str(tmp_path)],

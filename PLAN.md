@@ -1067,9 +1067,14 @@ rather than implying the gates are exhaustive.
 
 *What the site gate cost and where it lives.* `tests/test_docs_site.py`, so CLAUDE.md's four
 commands stay four. Three laws: the API reference lists every name in `__all__`; every guide page
-carries at least one `>>>`; the site builds clean. The build takes ~17s cold, so it is guarded by
-`importorskip` on the `docs` extra — absent in the default `uv sync`, present in a new `docs` CI
-job that also runs `sphinx-build` directly. The second law is the deliberate answer to M13's
+carries at least one `>>>`; the site builds clean. The build takes ~17s cold, so it is opt-in via
+**`DESIGNSPACE_DOCS_BUILD`**, which a new `docs` CI job sets (and which also runs `sphinx-build`
+directly). Keying it on the environment rather than on whether Sphinx imports is deliberate:
+`uv run --extra docs` leaves Sphinx in the project environment, so an import-keyed guard would
+switch the 17s on permanently as a side effect of having once built the docs, and a gate that
+turns itself on unbidden is one people learn to route around. Set-but-extra-missing **fails**
+rather than skipping — someone who asked for the build should hear that it could not run. The
+second law is the deliberate answer to M13's
 `norecursedirs` hole: a doctest gate that collects nothing reports green, so the pages are asserted
 to *carry* tests rather than trusted to.
 
