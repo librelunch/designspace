@@ -22,8 +22,8 @@ def _check_bool_exprs(fn_name: str, exprs: tuple[BoolExpr, ...]) -> None:
 def all_(*exprs: BoolExpr) -> BoolExpr:
     """Combine conditions with `and`.
 
-    Python's own `and` cannot be used on expressions — it would coerce
-    them to a bool and lose the tree — so this is the n-ary form. It also
+    Python's own `and` cannot be used on expressions, since it would coerce
+    them to a bool and lose the tree, so this is the n-ary form. It also
     behaves sensibly at zero arguments, which matters when the conditions
     are generated from a list that may be empty.
 
@@ -147,8 +147,8 @@ def count(*exprs: BoolExpr) -> ArithExpr:
 def value(fn: Callable[..., Any], *operands: Expr, returns: type) -> Value:
     """Compute a derived quantity with your own function.
 
-    An escape hatch for a constraint the expression language cannot say —
-    a physical formula, a lookup, a simulation — without inventing a sham
+    An escape hatch for a constraint the expression language cannot say:
+    a physical formula, a lookup, a simulation, without inventing a sham
     custom type just to hang a `.prop()` on.
 
     The trade is transparency. Prefer a plain expression when you can write
@@ -158,8 +158,8 @@ def value(fn: Callable[..., Any], *operands: Expr, returns: type) -> Value:
     still yields a usable margin; a `returns=bool` one is fully opaque and
     has no margin at all.
 
-    `fn` is called with the operands' **values**, in order — never the
-    configuration — so everything it reads must be passed as an operand.
+    `fn` is called with the operands' **values**, in order, never the
+    configuration, so everything it reads must be passed as an operand.
 
     Parameters
     ----------

@@ -120,7 +120,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     """A parameter, either being declared or being referred to.
 
     `ds.param("x")` returns one of these, and every method on it returns a
-    new one — nothing is ever mutated, so a partly-built parameter can be
+    new one. Nothing is ever mutated, so a partly-built parameter can be
     shared and branched freely.
 
     The same object plays two roles depending on where it is used. Passed
@@ -164,7 +164,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     Notes
     -----
     Every attribute but `path` is the builder's accumulated state, not a
-    stable surface — it is what resolution consumes to produce the IR.
+    stable surface: it is what resolution consumes to produce the IR.
     Read `Space.params[path]`, a `ParamDef`, for introspection instead.
 
     Examples
@@ -233,7 +233,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
 
     @property
     def children(self) -> tuple[Expr, ...]:
-        """The node's operands — always empty, a reference being a leaf.
+        """The node's operands, always empty, a reference being a leaf.
 
         Examples
         --------
@@ -438,7 +438,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
         A custom type's values are opaque to the library, so this is the
         window into them: the type's `properties()` supplies the named
         quantities, and constraints can then be written over those. The
-        result is dual-typed — usable as a number or as a condition,
+        result is dual-typed, usable as a number or as a condition,
         depending on what the property returns.
 
         Parameters
@@ -473,7 +473,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     # -- domain-level modifiers (last-write-wins) ----------------------------
 
     def prior(self, dist: Any = None, *, weights: Sequence[float] | None = None) -> Self:
-        """Set the parameter's prior — the measure it is sampled from.
+        """Set the parameter's prior, the measure it is sampled from.
 
         A prior is not a hint: it is the coordinate system the parameter
         lives in. It determines both how the reference sampler draws and
@@ -484,7 +484,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
         Parameters
         ----------
         dist : Any
-            A prior for a numeric parameter — `ds.Log()`, `ds.Logit()`,
+            A prior for a numeric parameter: `ds.Log()`, `ds.Logit()`,
             `ds.Power(p)`, or any object implementing the external-prior
             protocol (a `ppf`, optionally a `cdf`). Mutually exclusive with
             `weights`.
@@ -579,8 +579,8 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
         """Make the parameter active only when `condition` holds.
 
         This is how a design space branches. An inactive parameter is
-        **absent** from the configuration dict entirely — not `None`, not a
-        placeholder — so a config always says exactly what applies to it.
+        **absent** from the configuration dict entirely, not `None` and not a
+        placeholder, so a config always says exactly what applies to it.
 
         Calling `.when()` more than once accumulates: the conditions are
         combined with `and`, in call order.
@@ -600,8 +600,8 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
         ------
         TypeError
             If `condition` is not a boolean expression. In particular
-            Python's `and`/`or`/`in` cannot be used — they would coerce the
-            expression to a bool — so use `&`, `|`, `~`, and `.is_in()`.
+            Python's `and`/`or`/`in` cannot be used, since they would coerce the
+            expression to a bool. Use `&`, `|`, `~`, and `.is_in()` instead.
 
         Examples
         --------
@@ -622,7 +622,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     def tag(self, *tags: str) -> Self:
         """Attach labels to the parameter.
 
-        Tags are how you address groups of parameters later — `.filter()`
+        Tags are how you address groups of parameters later, with `.filter()`
         selects by them. They carry no meaning to the library.
 
         Parameters
@@ -650,7 +650,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
         """Attach arbitrary metadata to the parameter.
 
         Metadata is carried through serialization and the fingerprint but
-        never interpreted — units, help text, a UI hint, provenance.
+        never interpreted: units, help text, a UI hint, provenance.
 
         Parameters
         ----------

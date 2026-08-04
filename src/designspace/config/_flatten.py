@@ -196,8 +196,8 @@ def _flatten_list_element(
 def flatten(config: dict[str, Any], space: Space) -> dict[str, Any]:
     """Turn a nested configuration into one keyed by path.
 
-    Configurations nest — a struct is a dict, a choice with a payload is a
-    single-key dict — while `Space.params` is flat. This bridges the two,
+    Configurations nest: a struct is a dict, a choice with a payload is a
+    single-key dict, while `Space.params` is flat. This bridges the two,
     producing keys in the path grammar, which are also the DataFrame column
     names. `ds.unflatten()` reverses it.
 

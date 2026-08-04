@@ -77,9 +77,9 @@ class Space:
     """A resolved design space: the set of configurations you can draw from.
 
     Build one with `ds.space()`. By the time you hold a `Space`, every
-    declaration has been checked — names, references, dependency cycles,
-    expression types, domains — so the errors you would otherwise meet
-    during sampling have already been raised.
+    declaration has been checked: names, references, dependency cycles,
+    expression types, domains. The errors you would otherwise meet during
+    sampling have already been raised.
 
     A `Space` is immutable and safe to share across threads. Every operation
     that appears to modify it (`.forbid()`, `.freeze()`, `.select()`,
@@ -108,7 +108,7 @@ class Space:
         The activity conditions attached by `.when()` and injected by
         struct/choice nesting. Each names the parameter it governs.
     constraints : tuple[Constraint, ...]
-        Every constraint on the space, of any kind — `forbid`, `require`,
+        Every constraint on the space, of any kind: `forbid`, `require`,
         `encourage`, `discourage`, and the `bound` constraints that
         expression bounds desugar into. Read `Constraint.kind` rather than
         re-deriving polarity.
@@ -209,8 +209,8 @@ class Space:
         """Whether any `.repeat()` has a count that is not a fixed integer.
 
         A dynamic count means configurations differ in shape from draw to
-        draw, so there is no fixed coordinate vector — `.coordinate_paths()`
-        will refuse such a space.
+        draw, so there is no fixed coordinate vector, and
+        `.coordinate_paths()` will refuse such a space.
 
         Examples
         --------
@@ -235,7 +235,7 @@ class Space:
         A cheap check on the declarations alone: it is `False` exactly when
         an unquantized real appears somewhere. It does not consider whether
         a constraint happens to cut a continuous domain down to finitely
-        many points — counting is `.cardinality()`'s job.
+        many points. Counting is `.cardinality()`'s job.
 
         Examples
         --------
@@ -251,12 +251,12 @@ class Space:
         """Whether any parameter cannot be sampled from.
 
         A non-generative parameter can be declared, validated, serialized,
-        and reasoned about, but the library cannot invent a value for it —
+        and reasoned about, but the library cannot invent a value for it,
         so `.sample()` on such a space raises `SamplingError` unless the
         parameter is switched off, frozen, or has a default. Three kinds
         qualify: a `.custom()` type whose `ParamType` provides no `sample`,
         a `.symbolic()` without a `sampler=`, and any `.code()` (which has
-        no `sampler=` form at all — generating source is out of scope).
+        no `sampler=` form at all, since generating source is out of scope).
 
         Check this before sampling a space you did not build yourself.
 
@@ -285,8 +285,8 @@ class Space:
         int | None
             The exact number of configurations, or `None` when the space is
             not finitely enumerable. `None` is returned for a continuous
-            (unquantized real) domain, an unbounded `.custom()` type, and —
-            conservatively — for a space where a parameter carries its own
+            (unquantized real) domain, an unbounded `.custom()` type, and,
+            conservatively, for a space where a parameter carries its own
             `.when()` condition, since counting under arbitrary conditions
             would need constraint solving. `None` therefore means "cannot
             say", not "infinite".
@@ -405,7 +405,7 @@ class Space:
         """The activity conditions involving `path`.
 
         Returns conditions that govern the parameter as well as conditions
-        on *other* parameters that read it — so it answers both "when is
+        on *other* parameters that read it, so it answers both "when is
         this active?" and "what does this switch on?".
 
         Parameters
@@ -454,7 +454,7 @@ class Space:
         """The fixed leaf layout, for packing a config into a positional vector.
 
         A solver that works in vectors needs to know which flat keys are
-        actual coordinates and which are bookkeeping — for a nested
+        actual coordinates and which are bookkeeping. For a nested
         `.repeat()`, `x` and `x[0]` are lengths while `x[0][0]` is a
         coordinate. Deriving that by hand fails silently; this derives it.
         The order matches `ds.flatten()` and the DataFrame column order.
@@ -467,8 +467,8 @@ class Space:
         Raises
         ------
         ResolutionError
-            If the space has no fixed layout — a dynamic `.repeat()` count
-            or a conditional parameter means different configs have
+            If the space has no fixed layout, because a dynamic `.repeat()`
+            count or a conditional parameter means different configs have
             different shapes. The message names the offending parameter.
             Use `.slice()` or `.freeze()` on the count to fix the layout.
 
@@ -484,8 +484,8 @@ class Space:
     def slice(self, values: dict[str, Any] | None = None, **kw: Any) -> Space:
         """Fix values and **remove** those parameters from the space.
 
-        The value is substituted everywhere the parameter was referenced —
-        conditions, constraint expressions, `.repeat()` counts — and any
+        The value is substituted everywhere the parameter was referenced,
+        in conditions, constraint expressions and `.repeat()` counts, and any
         structure that becomes determined is then resolved statically: a
         count folds to a plain `int`, a condition that is now always true
         disappears. That static fold is what makes `.slice()` the way to
@@ -534,7 +534,7 @@ class Space:
         """Fix values but **keep** those parameters in the space.
 
         The parameter stays visible in `.params`, so configs still carry it
-        and the path namespace is unchanged — useful when a consumer's
+        and the path namespace is unchanged, which helps when a consumer's
         schema must not shift. How the value is pinned depends on the kind:
         a real, integer, categorical, or ordinal has its domain narrowed to
         the single value; a bool, choice, subset, permutation, custom, or
@@ -579,7 +579,7 @@ class Space:
     def active_subspace(self, config: dict[str, Any]) -> Space:
         """The subspace of parameters active for this configuration.
 
-        Answers "given these choices, what is still in play?" — the
+        Answers "given these choices, what is still in play?". The
         parameters switched off by the config's own values are dropped.
 
         Parameters
@@ -689,7 +689,7 @@ class Space:
         """Add parameters, keeping everything already declared.
 
         Conditions, constraints, anchors, and metadata all carry over, and
-        the new declarations are resolved against the combined space — so a
+        the new declarations are resolved against the combined space, so a
         new constraint may reference an existing parameter. `.extend()` with
         no arguments is the identity.
 
@@ -767,7 +767,7 @@ class Space:
     ) -> Space:
         """Demand that `conditions` hold.
 
-        A hard constraint naming a **good** state — the mirror of
+        A hard constraint naming a **good** state, the mirror of
         `.forbid()`, and often the more natural way to write the same rule.
         Configurations violating it are infeasible.
 
@@ -814,7 +814,7 @@ class Space:
         """Prefer configurations where `conditions` hold, without requiring it.
 
         A soft constraint naming a **good** state. It never changes what is
-        feasible — violating configurations remain valid — it only records
+        feasible, since violating configurations remain valid. It records
         the preference, which `.evaluate_constraints()` reports and which a
         consumer may act on. Pass `reject_soft=True` to a sampler to draw
         only from configurations satisfying the soft constraints too.
@@ -859,7 +859,7 @@ class Space:
     ) -> Space:
         """Prefer configurations where `conditions` do *not* hold.
 
-        A soft constraint naming a **bad** state — the complement of
+        A soft constraint naming a **bad** state, the complement of
         `.encourage()`, and identical to `encourage(~e)` down to the
         fingerprint. Like `.encourage()`, it never affects feasibility.
 
@@ -895,7 +895,7 @@ class Space:
     def anchor(self, configs: dict[str, dict[str, Any]]) -> Space:
         """Attach named reference configurations to the space.
 
-        An anchor is a whole config worth carrying with the space — an
+        An anchor is a whole config worth carrying with the space: an
         incumbent, a published baseline, the vendor default. Anchors are
         validated on attachment and re-validated by structural operations,
         so they cannot drift out of the space they describe. Roles such as
@@ -934,7 +934,7 @@ class Space:
         """Attach space-level metadata.
 
         Metadata is carried through serialization and the fingerprint but
-        never interpreted — it is where a consumer records provenance, a
+        never interpreted. It is where a consumer records provenance, a
         version, an owning team, or anything else the library should not
         have an opinion about.
 
@@ -966,7 +966,7 @@ class Space:
         The bulk-edit primitive of the metaprogramming surface: `fn` sees
         each `ParamDef` and returns a replacement, and the results are
         re-resolved, so whatever it produces is validated like any other
-        declaration. Useful for sweeping transformations — coarsening every
+        declaration. Useful for sweeping transformations: coarsening every
         real to a grid, retagging, relabelling.
 
         Parameters
@@ -1011,9 +1011,9 @@ class Space:
     def without_constraints(self, tags: tuple[str, ...] = ()) -> Space:
         """Drop the constraints carrying any of `tags`.
 
-        Removes constraints of every kind — `forbid`, `require`,
+        Removes constraints of every kind (`forbid`, `require`,
         `encourage`, `discourage`, and the `bound` constraints that
-        expression bounds desugar into — whose own tags intersect `tags`.
+        expression bounds desugar into) whose own tags intersect `tags`.
         Calling it with no tags removes nothing, since nothing intersects
         the empty set; tag the constraints you intend to be able to lift.
 
@@ -1090,8 +1090,8 @@ class Space:
 
         The check a driver loop wants: validate an answer as it arrives,
         without waiting for the config to be complete. Pass `context` when
-        the parameter's legality depends on other values — an expression
-        bound, or a condition that decides whether it is active at all.
+        the parameter's legality depends on other values, such as an
+        expression bound or a condition deciding whether it is active.
 
         Parameters
         ----------
@@ -1181,8 +1181,8 @@ class Space:
         """Evaluate every constraint against a configuration.
 
         Unlike `.is_feasible()`, this reports on all constraints, soft
-        included, and gives the **margin** — how far the configuration is
-        from the boundary — which is what a repair heuristic or a penalty
+        included, and gives the **margin**, how far the configuration is
+        from the boundary, which is what a repair heuristic or a penalty
         method needs. Read `.violated` rather than `.satisfied` unless you
         want to reason about polarity yourself: a `forbid` names a bad
         state, so satisfying it is the unhealthy outcome.
@@ -1232,8 +1232,8 @@ class Space:
         Raises
         ------
         SamplingError
-            If rejection exhausts the retry budget — the message names the
-            constraints doing the rejecting — or if the space has a
+            If rejection exhausts the retry budget, in which case the
+            message names the constraints doing the rejecting, or if it has a
             non-generative parameter with no default.
 
         Examples
@@ -1380,7 +1380,7 @@ class Space:
         operation is idempotent and monotone, so applying it twice changes
         nothing and it only ever adds keys.
 
-        It is deliberately blind to constraints — it completes a config, it
+        It is deliberately blind to constraints. It completes a config, it
         does not repair one, and it never silently clamps a value into
         range.
 
@@ -1413,8 +1413,8 @@ class Space:
     def has_complete_defaults(self) -> bool:
         """Whether `apply_defaults({})` yields a complete configuration.
 
-        True when every parameter that would be active has a default —
-        i.e. the space describes a usable configuration on its own. This is
+        True when every parameter that would be active has a default, so
+        the space describes a usable configuration on its own. This is
         the precondition for deriving an anchor from defaults rather than
         writing one out twice.
 
@@ -1434,8 +1434,8 @@ class Space:
         """Evaluate the space against an incomplete configuration.
 
         The core of building configs interactively. Every parameter gets a
-        status — `set`, `active_unset`, `inactive`, or `unknown` when its
-        activity cannot be decided yet — and constraints are split into
+        status (`set`, `active_unset`, `inactive`, or `unknown` when its
+        activity cannot be decided yet), and constraints are split into
         those already evaluable and those still pending on unset values.
 
         Parameters
@@ -1468,7 +1468,7 @@ class Space:
         """What values are still available for one parameter.
 
         Narrows the declared domain by whatever the partial config already
-        determines — so once `lo` is chosen, the domain left for `hi` under
+        determines, so once `lo` is chosen, the domain left for `hi` under
         `require(lo < hi)` reflects it. Narrowing is **sound but not
         complete**: it reduces a constraint with exactly one unset operand,
         and leaves anything harder alone rather than guessing.
@@ -1489,8 +1489,8 @@ class Space:
         Raises
         ------
         TypeError
-            If `path` is empty or names no parameter — misuse, not a
-            resolution failure.
+            If `path` is empty or names no parameter. This is misuse
+            rather than a resolution failure.
 
         Examples
         --------
@@ -1542,7 +1542,7 @@ class Space:
     def is_complete(self, config: dict[str, Any]) -> bool:
         """Whether every active parameter has a value.
 
-        Completeness is about presence, not legality — a complete config
+        Completeness is about presence, not legality. A complete config
         may still be invalid or infeasible. Note that switching a branch
         off can *complete* a config by removing the need for its
         parameters.
@@ -1659,8 +1659,8 @@ class Space:
     def to_json(self, on_unserializable: OnUnserializable = "raise") -> dict[str, Any]:
         """Serialize the space to a JSON-compatible dict.
 
-        The document carries the full definition — parameters, domains,
-        priors, conditions, constraints, anchors, metadata — and a format
+        The document carries the full definition (parameters, domains,
+        priors, conditions, constraints, anchors, metadata) and a format
         version. `.from_json()` reverses it.
 
         Some things cannot cross the wire: a Python callable such as a
@@ -1670,7 +1670,7 @@ class Space:
         Parameters
         ----------
         on_unserializable : {"raise", "mark", "drop"}
-            `"raise"` fails loudly (the default — silence here loses
+            `"raise"` fails loudly (the default, since silence here loses
             meaning). `"mark"` replaces the value with a sentinel so the
             shape survives. `"drop"` omits it and records the omission in a
             manifest.
@@ -1743,7 +1743,7 @@ class Space:
     def represent(self, *rules: EncodingRule) -> Representation:
         """Build a `Representation`: a morphism onto another space.
 
-        A solver usually cannot work with your space directly — it wants
+        A solver usually cannot work with your space directly. It wants
         unit-interval coordinates, or a flat vector. A `Representation`
         gives it a *target* space that is an ordinary `Space` (so the same
         introspection applies) together with `decode`/`encode` to move
@@ -1752,7 +1752,7 @@ class Space:
         With no rules you get the **induced** representation: every
         chart-bearing parameter is re-expressed on `[0, 1]`, which is free
         and mechanical because a chart is exactly that map. Supply an
-        `EncodingRule` to override particular parameters — a custom type
+        `EncodingRule` to override particular parameters, such as a custom type
         bridged to coordinates, say. The library ships no chosen encodings
         beyond the induced one; anything opinionated is yours to supply.
 
@@ -1795,8 +1795,8 @@ class Space:
 
         Two spaces with equal fingerprints have identical sets of valid
         configurations, so this is what to key a cache, an experiment
-        record, or a results database on. Sugar and its expansion agree —
-        `require(e)` and `forbid(~e)` fingerprint the same — while
+        record, or a results database on. Sugar and its expansion agree, so
+        `require(e)` and `forbid(~e)` fingerprint the same, while
         declaration order does not: permuting two parameters gives a
         different digest, because it is a different space.
 

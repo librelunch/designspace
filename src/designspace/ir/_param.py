@@ -53,7 +53,7 @@ class ParamDef:
         Metadata attached by `.meta()`. Never interpreted.
     chart : Chart | None
         The map from `[0, 1]` onto the domain, for a generative scalar.
-        `None` for a non-generative parameter and for a lift — a lifted
+        `None` for a non-generative parameter and for a lift, since a lifted
         parameter's chart is on `ListDomain.element_chart`.
     quantized : QuantizedSpec | None
         The grid, if the parameter is quantized.
@@ -86,7 +86,7 @@ class Condition:
     """When one parameter is active, as resolved IR.
 
     Produced by `.when()`, and injected automatically by struct and choice
-    nesting — a variant's payload parameters each get a condition on the
+    nesting: a variant's payload parameters each get a condition on the
     discriminator. A parameter with no condition is unconditionally active.
 
     Attributes
@@ -117,16 +117,16 @@ class Constraint:
     Attributes
     ----------
     expr : BoolExpr
-        The stored predicate. Note that this is the predicate *as written*
-        — for a `forbid` it names the bad state — so satisfying it is not
-        the same as being feasible. `feasible_when_satisfied` resolves it.
+        The stored predicate. Note that this is the predicate *as written*:
+        for a `forbid` it names the bad state, so satisfying it is not the
+        same as being feasible. `feasible_when_satisfied` resolves it.
     hard : bool
         Whether violating it makes a configuration infeasible. `False` for
         `encourage` and `discourage`, which annotate without restricting.
     origin : str
         Provenance: `"user"`, `"bound"`, `"require"`, or `"discourage"`.
         An implementation detail of how the constraint was spelled, and
-        deliberately excluded from the fingerprint — prefer `kind`.
+        deliberately excluded from the fingerprint, so prefer `kind`.
     tags : frozenset[str]
         Labels, used by `Space.without_constraints()`.
     meta : MappingProxyType[str, Any]
@@ -170,7 +170,7 @@ class Constraint:
     def feasible_when_satisfied(self) -> bool:
         """Whether the stored ``expr`` is the **desired** predicate (satisfied
         is the good outcome) rather than a **forbidden** one (satisfied is the
-        bad outcome). ``False`` only for ``forbid``/``discourage`` — the two
+        bad outcome). ``False`` only for ``forbid``/``discourage``, the two
         verbs that name a bad state. This is the single source of truth for
         "is this constraint supposed to hold?"; ``ConstraintEval.violated``
         reads it, so forbid/require/encourage/discourage all report

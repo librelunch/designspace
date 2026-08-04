@@ -84,7 +84,7 @@ if TYPE_CHECKING:
 class FreshParamExpr(ParamExpr):
     """What `ds.param(name)` returns: a parameter with no type chosen yet.
 
-    The nine type methods here are the fork in the road — calling one says
+    The nine type methods here are the fork in the road. Calling one says
     what kind of value the parameter holds and narrows the builder to the
     matching view, which offers only the modifiers valid for that type.
     Calling a second one is an error, caught statically by the type checker
@@ -114,7 +114,7 @@ class FreshParamExpr(ParamExpr):
             Upper bound, inclusive.
         periodic : bool
             Treat the domain as a circle, so `lo` and `hi` are the same
-            point — for angles and phases.
+            point. Use it for angles and phases.
 
         Returns
         -------
@@ -167,7 +167,7 @@ class FreshParamExpr(ParamExpr):
     def categorical(self, *values: Any) -> CategoricalParamExpr:
         """Declare an unordered choice among `values`.
 
-        Use this when the values have no meaningful order — solver names,
+        Use this when the values have no meaningful order: solver names,
         kernel types, strategies. If they *are* ordered, use `.ordinal()`,
         which lets comparisons work. If a value needs parameters of its
         own, use `.choice()`.
@@ -196,7 +196,7 @@ class FreshParamExpr(ParamExpr):
     def ordinal(self, *values: Any) -> OrdinalParamExpr:
         """Declare an ordered choice among `values`.
 
-        Order is **declaration position**, not the values' natural order —
+        Order is **declaration position**, not the values' natural order,
         so `"low", "medium", "high"` compare as you would want them to.
         That is what distinguishes this from `.categorical()`: comparison
         operators work.
@@ -308,7 +308,7 @@ class FreshParamExpr(ParamExpr):
         This is how a design space branches structurally: pick a variant,
         and that variant's parameters become active while the others'
         vanish from the config. Use it over `.categorical()` when the
-        alternatives are not interchangeable — when each brings its own
+        alternatives are not interchangeable, when each brings its own
         knobs.
 
         Three spellings, mixable in one call: a bare string for a variant
@@ -380,7 +380,7 @@ class FreshParamExpr(ParamExpr):
         """Declare a parameter whose values are of your own type.
 
         The extension point for structure the built-in types cannot
-        express — a graph, a topology, a schedule with a global invariant.
+        express: a graph, a topology, a schedule with a global invariant.
         Reach for it when an invariant is genuinely global (connectivity,
         pairwise spacing) or when expressing the structure with primitives
         would leave rejection sampling doing all the work.
@@ -388,7 +388,7 @@ class FreshParamExpr(ParamExpr):
         Two forms, and exactly one may be used. Passing `param_type` gives
         the full protocol: the type can serialize, describe itself, expose
         properties to `.prop()`, and optionally sample. Passing `sampler`
-        and `validator` is a callback shorthand for quick work — it cannot
+        and `validator` is a callback shorthand for quick work, and it cannot
         be serialized or fingerprinted.
 
         Parameters
@@ -470,7 +470,7 @@ class FreshParamExpr(ParamExpr):
     ) -> SymbolicParamExpr:
         """Declare a parameter holding a symbolic expression tree.
 
-        For design spaces whose subject is a *formula* — an acquisition
+        For design spaces whose subject is a *formula*: an acquisition
         function, a cooling schedule, a heuristic. The library declares and
         validates the tree's shape but neither generates nor evaluates it:
         tree search is a solver's job, and evaluation is your interpreter's.
@@ -544,7 +544,7 @@ class FreshParamExpr(ParamExpr):
     ) -> CodeParamExpr:
         """Declare a parameter holding freeform source code.
 
-        For a design space with a slot an external process fills — a
+        For a design space with a slot an external process fills: a
         human, a code-generating model, a library of hand-written
         implementations. The library carries and validates the source; it
         never writes or runs it, so this parameter is **always**
@@ -597,7 +597,7 @@ class FreshParamExpr(ParamExpr):
     def space(self, *exprs: Any) -> StructParamExpr:
         """Declare a struct: a named group of parameters, always active together.
 
-        Use this for pure grouping — when several parameters belong to one
+        Use this for pure grouping, when several parameters belong to one
         another and you want them namespaced. Unlike `.choice()`, a struct
         picks nothing: every field is always present.
 
@@ -660,7 +660,7 @@ class TypedParamExpr(ParamExpr):
 
     The common base of every narrowed view, and what `ds.param_from_def()`
     returns. It adds `.repeat()`, the one modifier that applies to every
-    element type — including a list, which is how lifts nest.
+    element type, including a list, which is how lifts nest.
 
     Examples
     --------
@@ -769,8 +769,8 @@ class _NumericParamExpr(TypedParamExpr):
     def log_scale(self) -> Self:
         """Sample the parameter logarithmically rather than uniformly.
 
-        The right choice whenever a parameter spans orders of magnitude —
-        a learning rate, a tolerance, a timeout — so that each decade gets
+        The right choice whenever a parameter spans orders of magnitude
+        (a learning rate, a tolerance, a timeout), so that each decade gets
         equal attention instead of the largest one dominating. Shorthand
         for `.prior(ds.Log())`.
 
@@ -927,19 +927,19 @@ class StructParamExpr(TypedParamExpr):
 
 
 class CustomParamExpr(TypedParamExpr):
-    """`.custom()`'s return type — a thin leaf view. A custom value is
-    opaque by design (API.md, "Solver Integration" — the open/closed-world
+    """`.custom()`'s return type, a thin leaf view. A custom value is
+    opaque by design (API.md, "Solver Integration", the open/closed-world
     split): no domain-specific chainers exist here beyond the universal
     modifiers (`.default()`, `.when()`, `.tag()`, `.meta()`) and `.repeat()`
     (inherited from `TypedParamExpr`). Domain-specific, fluent config lives
     on the author's own `ParamType` object, passed to `.custom()`
-    (DECISIONS.md D-45) — not on this view."""
+    (DECISIONS.md D-45), not on this view."""
 
     type_kind: ClassVar[str] = "custom"
 
 
 class SymbolicParamExpr(TypedParamExpr):
-    """`.symbolic()`'s return type — a thin leaf view, mirroring
+    """`.symbolic()`'s return type, a thin leaf view, mirroring
     `CustomParamExpr` (API.md, "Parameter Types" > "Program"). Non-
     generative unless `sampler=` was given."""
 
@@ -947,7 +947,7 @@ class SymbolicParamExpr(TypedParamExpr):
 
 
 class CodeParamExpr(TypedParamExpr):
-    """`.code()`'s return type — a thin leaf view; always non-generative
+    """`.code()`'s return type, a thin leaf view; always non-generative
     (no `sampler=` form exists for `.code()`)."""
 
     type_kind: ClassVar[str] = "code"

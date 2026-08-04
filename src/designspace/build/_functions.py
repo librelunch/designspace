@@ -24,7 +24,7 @@ def param(name: str) -> FreshParamExpr:
     returns a new object, so a builder can be safely shared and branched.
 
     The same call is also how you *refer* to an already-declared parameter
-    inside an expression — `ds.param("x") < ds.param("y")` builds a
+    inside an expression, so `ds.param("x") < ds.param("y")` builds a
     comparison, it does not redeclare anything. Which reading applies is
     positional: a builder passed to `ds.space()` declares, one used in a
     constraint refers.
@@ -50,7 +50,7 @@ def param(name: str) -> FreshParamExpr:
     >>> s.n_params
     2
 
-    The second reading — referring, not declaring:
+    The second reading, referring rather than declaring:
 
     >>> s = ds.space(
     ...     ds.param("lo").integer(0, 10),
@@ -71,7 +71,7 @@ def space(*exprs: ParamExpr) -> Space:
     names are validated, references are bound, the dependency graph is
     built and cycle-checked, expression types are checked, and charts are
     constructed. Anything wrong with the declarations raises a
-    `ResolutionError` here rather than later during sampling — and the
+    `ResolutionError` here rather than later during sampling, and the
     message names the offending path.
 
     Parameters
@@ -84,7 +84,7 @@ def space(*exprs: ParamExpr) -> Space:
     Returns
     -------
     Space
-        The resolved space. Immutable — `.forbid()`, `.freeze()`, and the
+        The resolved space. Immutable: `.forbid()`, `.freeze()`, and the
         other operations return a new `Space` rather than mutating this one.
 
     Raises

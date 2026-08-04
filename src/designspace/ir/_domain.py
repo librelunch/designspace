@@ -178,7 +178,7 @@ class StructDomain:
 class CustomDomain:
     """A consumer-supplied type, declared by `.custom()`.
 
-    The value is opaque to the library — no bounds, no chart, no
+    The value is opaque to the library: no bounds, no chart, no
     domain-level modifiers. Exactly one of `param_type` or the
     `sampler`/`validator` pair is set.
 
@@ -213,7 +213,7 @@ class SymbolicDomain:
         The `Signature`: argument names and types, and the return type.
         Argument names become the tree's usable variables.
     primitives : Any
-        The declared vocabulary — operator names, `Primitive` entries with
+        The declared vocabulary: operator names, `Primitive` entries with
         arities, and literal ranges.
     max_depth : int
         Maximum tree depth.
@@ -234,7 +234,7 @@ class SymbolicDomain:
 class CodeDomain:
     """Freeform source code, declared by `.code()`.
 
-    Values have the shape `{"source": <str>}`. Always non-generative —
+    Values have the shape `{"source": <str>}`. Always non-generative:
     there is no `sampler` form, because writing code is out of scope.
 
     Attributes
@@ -267,7 +267,7 @@ class ListDomain:
     is itself a `ListDomain`.
 
     Every fact about the element lives here rather than on the enclosing
-    `ParamDef`, which stays chartless — so code looking for a lifted
+    `ParamDef`, which stays chartless, so code looking for a lifted
     parameter's chart must read `element_chart`, not `ParamDef.chart`. A
     struct or choice element is the exception: its descendant parameters
     are separate `Space.params` entries under a bracketed path such as

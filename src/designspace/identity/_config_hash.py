@@ -26,7 +26,7 @@ def config_hash(config: dict[str, Any], space: Space) -> str:
 
     The hash is **exact**. A configuration that has been through a
     representation's `encode`/`decode` may differ in the last bits of a
-    float and therefore hash differently — key your observations on the
+    float and therefore hash differently, so key your observations on the
     configuration you hold, not on a round-tripped copy.
 
     The configuration is not validated first.

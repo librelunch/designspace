@@ -28,38 +28,38 @@ class Encoding(Protocol):
 
     Required:
 
-    - `target(self, param: ParamDef) -> ParamDef` — the genotype `ParamDef`
+    - `target(self, param: ParamDef) -> ParamDef`, the genotype `ParamDef`
       at `param`'s own path (row 31: a different path is a resolution
       error).
-    - `decode(self, param: ParamDef, value: Any) -> Any` — genotype value
+    - `decode(self, param: ParamDef, value: Any) -> Any`, genotype value
       to phenotype value; must be **total** over `target`'s domain (API.md,
-      "Obligations") — repair inside `decode` when the phenotype domain
+      "Obligations"). Repair inside `decode` when the phenotype domain
       carries an invariant the genotype cannot express, or choose a
       genotype that cannot represent an invalid value.
 
     Optional capabilities (checked via `hasattr`, not part of this
     `Protocol`'s static shape):
 
-    - `encode(self, param: ParamDef, value: Any) -> Any` — phenotype to
+    - `encode(self, param: ParamDef, value: Any) -> Any`, phenotype to
       genotype; present iff this one param direction is invertible.
-    - `decode_expr(self, param: ParamDef) -> Expr | None` — decode as an
+    - `decode_expr(self, param: ParamDef) -> Expr | None`, decode as an
       expression, for structural (leaf-substitution) transport; `None`
       opts this param out of structural transport for conditions/
       constraints that reference it (opaque transport, or `rewrite`,
       covers it instead).
-    - `prop_expr(self, param: ParamDef, name: str) -> Expr | None` — a
+    - `prop_expr(self, param: ParamDef, name: str) -> Expr | None`, a
       phenotype property (`.prop(name)`) as a genotype expression; the
       repair that lets a `.prop()`-read param be encoded at all (row 32;
-      DECISIONS.md D-63) — absent, or returning `None` for a live
+      DECISIONS.md D-63). Absent, or returning `None` for a live
       property, row 32 still fires.
-    - `rewrite(self, param: ParamDef, node: Expr) -> Expr | None` — per-node
+    - `rewrite(self, param: ParamDef, node: Expr) -> Expr | None`, per-node
       structural rewrite where leaf substitution cannot reach (a one-vs-
       rest categorical bridge turning `algo == "adam"` into a pairwise
       comparison between two of its own coordinates); tried before leaf
       substitution at each node touching this param.
-    - `measure_preserving(self) -> bool` — declared, never assumed (D-56):
+    - `measure_preserving(self) -> bool`, declared and never assumed (D-56):
       absent means "not asserted", not "false" is not implied either way
-      by silence — `_build.py` treats absence as `False` for the
+      by silence. `_build.py` treats absence as `False` for the
       `Representation.measure_preserving` conjunction.
 
     Examples
@@ -103,8 +103,8 @@ class Encoding(Protocol):
     def target(self, param: ParamDef) -> ParamDef:
         """The genotype parameter replacing `param`.
 
-        Must keep `param`'s own path — a different path is a resolution
-        error — but may change everything else: kind, domain, prior.
+        Must keep `param`'s own path, since a different path is a resolution
+        error, but may change everything else: kind, domain, prior.
 
         Parameters
         ----------
@@ -124,7 +124,7 @@ class Encoding(Protocol):
         Must be **total** over the target's domain: every value a solver
         can produce has to decode to something valid. Where the phenotype
         carries an invariant the genotype cannot express, either repair it
-        here or choose a genotype that cannot represent a violation —
+        here or choose a genotype that cannot represent a violation.
         those are the two honest options, and failing on some inputs is
         not one of them.
 
@@ -147,8 +147,8 @@ EncodingRule = Callable[["ParamDef"], "Encoding | None"]
 """A rule assigning encodings to parameters.
 
 Called with each `ParamDef` in turn; return an `Encoding` to re-express
-that parameter, or `None` to decline and let the next rule — ultimately the
-induced chart encoding — handle it. Rules are tried in the order given to
+that parameter, or `None` to decline and let the next rule (ultimately the
+induced chart encoding) handle it. Rules are tried in the order given to
 `Space.represent()`.
 """
 
@@ -171,7 +171,7 @@ def has_rewrite(encoding: Any) -> bool:
 
 
 def is_measure_preserving(encoding: Any) -> bool:
-    """`False` when the capability is absent — "declared, never assumed"
+    """`False` when the capability is absent. "Declared, never assumed"
     (API.md, "Obligations"; DECISIONS.md D-56) means silence reads as *not
     asserted*, which `Representation.measure_preserving`'s conjunction
     treats identically to an explicit `False`."""

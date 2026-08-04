@@ -22,7 +22,7 @@ class Chart(Protocol):
     a prior *is* declaring a chart, so there is no separate "transform"
     concept: drawing a value means drawing a uniform `u` and applying
     `from_unit`, and a solver proposing in unit coordinates gets
-    type-appropriate behaviour for free — a log-scaled parameter is
+    type-appropriate behaviour for free: a log-scaled parameter is
     perturbed multiplicatively, a quantized one snaps to its grid.
 
     Charts are static: they are built once, at resolution, and never
@@ -30,7 +30,7 @@ class Chart(Protocol):
     chart from the bounds' envelope, not from the values of a particular
     draw.
 
-    A chart lives on `ParamDef.chart` — except for a lifted parameter,
+    A chart lives on `ParamDef.chart`, except for a lifted parameter,
     whose chart is on `ListDomain.element_chart`.
 
     Examples
@@ -63,7 +63,7 @@ class Chart(Protocol):
         """Map a value in the domain back to its unit coordinate.
 
         The inverse of `from_unit`, where one exists. For a chart that
-        quantizes — an integer or a grid — many values share a coordinate
+        quantizes (an integer or a grid), many values share a coordinate
         interval, so `from_unit(to_unit(v)) == v` holds while the reverse
         round trip does not.
 

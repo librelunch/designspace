@@ -68,7 +68,7 @@ def param_from_def(pd: ParamDef) -> TypedParamExpr:
     TypeError
         If the parameter is a struct or choice, or a `.repeat()` of one.
         Such a parameter's contents live in other `ParamDef` entries and
-        cannot be recovered from this one alone — pass the whole IR to
+        cannot be recovered from this one alone; pass the whole IR to
         `ds.space_from_ir()` instead.
 
     Examples
@@ -147,7 +147,7 @@ def space_from_ir(
     `Space.params` read it out, this puts it back. Whatever you supply is
     re-resolved and re-validated exactly like a hand-written declaration,
     so a programmatically assembled space is checked as thoroughly as any
-    other — this is also what `Space.map_params()` uses internally.
+    other. This is also what `Space.map_params()` uses internally.
 
     It is the route to spaces the fluent API cannot express directly, and
     the supported way to write a structural `Representation`.
@@ -173,7 +173,7 @@ def space_from_ir(
     Raises
     ------
     ResolutionError
-        If the supplied IR does not form a valid space — a duplicate path,
+        If the supplied IR does not form a valid space: a duplicate path,
         a dangling reference, an anchor that does not validate.
 
     Examples

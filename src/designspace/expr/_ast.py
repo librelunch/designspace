@@ -39,8 +39,8 @@ class Expr:
 
     Expressions are trees, not values. Writing `ds.param("x") < 3` builds a
     comparison node; nothing is evaluated until a configuration is supplied.
-    That is what lets the library analyse constraints — derive the
-    dependency graph, compute margins, narrow domains — rather than merely
+    That is what lets the library analyse constraints (derive the
+    dependency graph, compute margins, narrow domains) rather than merely
     run them.
 
     Every node reports `.kind`, `.children`, and `.params`, so a consumer
@@ -99,7 +99,7 @@ class Expr:
     def is_active(self) -> BoolExpr:
         """Whether the referenced parameter is active, as a condition.
 
-        Lets a constraint ask about presence rather than value — "if the
+        Lets a constraint ask about presence rather than value: "if the
         cache is switched on at all, then ...". Distinct from reading the
         value, which would be unknown for an inactive parameter.
 
@@ -153,8 +153,8 @@ class BoolExpr(Expr):
     def implies(self, other: BoolExpr) -> BoolExpr:
         """Material implication: if this holds, `other` must too.
 
-        The natural shape for a conditional rule — "if we are on GPU, the
-        batch must be at least 32" — and much clearer than the equivalent
+        The natural shape for a conditional rule such as "if we are on GPU, the
+        batch must be at least 32", and much clearer than the equivalent
         `~a | b`, which it is exactly (down to the fingerprint).
 
         Parameters
@@ -294,7 +294,7 @@ class ArithExpr(Expr):
         """Substitute `fallback` when this expression has no value.
 
         An expression over an inactive parameter, or an aggregate over a
-        list that is switched off, evaluates to *unknown* — and a
+        list that is switched off, evaluates to *unknown*, and a
         constraint that cannot be decided is treated as inapplicable
         rather than violated. That is usually right, but sometimes the
         intended reading is "absent means zero". This says so.
@@ -302,7 +302,7 @@ class ArithExpr(Expr):
         It substitutes only for **inactivity**. An expression that is
         unknown because a value has not been chosen yet stays unknown, and
         an aggregate over an active but empty list keeps its own empty
-        value — the fallback would otherwise mask both.
+        value, which the fallback would otherwise mask.
 
         Parameters
         ----------
@@ -603,7 +603,7 @@ class Prop(ArithExpr, BoolExpr):
     param reference; `name` is checked against the type's `properties()`
     at resolution (row 16). Dual-typed like `ParamExpr` itself: a
     bool-declared prop is usable directly as a condition (`.require(x.prop
-    ("ok"))`, `&`/`|`/`~`), not just inside a `Compare` — matching the same
+    ("ok"))`, `&`/`|`/`~`), not just inside a `Compare`, matching the same
     "bare BoolExpr coerces via `bool(value)`" convention every param
     reference already gets (no `type_kind`/declared-type gate on bare
     boolean-position usage anywhere in the codebase; see row 16 for the
@@ -639,7 +639,7 @@ class Prop(ArithExpr, BoolExpr):
 
 @dataclass(frozen=True, eq=False)
 class Value(ArithExpr, BoolExpr):
-    """`ds.value(fn, *operands, returns=type)`: an opaque derived quantity —
+    """`ds.value(fn, *operands, returns=type)`: an opaque derived quantity:
     `.prop()` generalized from *one custom param, named property* to *any
     operands, arbitrary function* (API.md, "Expressions"). `fn` is called
     with exactly the operand values, positionally, and never the config

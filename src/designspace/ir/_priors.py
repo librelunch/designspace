@@ -17,7 +17,7 @@ class Prior(Protocol):
 
     The built-in families cover the common shapes; this is the escape
     hatch for anything else. Any object with a `ppf` satisfies it, which
-    includes a frozen `scipy.stats` distribution as-is — the library takes
+    includes a frozen `scipy.stats` distribution as-is, and the library takes
     no distribution-library dependency and needs none.
 
     Supply `cdf` as well whenever the distribution's support runs past the
@@ -77,8 +77,8 @@ class Prior(Protocol):
 class Log:
     """A logarithmic prior: equal weight per order of magnitude.
 
-    For parameters spanning decades — learning rates, tolerances,
-    timeouts — where uniform sampling would spend nearly all its draws in
+    For parameters spanning decades (learning rates, tolerances,
+    timeouts), where uniform sampling would spend nearly all its draws in
     the largest decade. `.log_scale()` is shorthand for this.
 
     Requires a strictly positive domain.

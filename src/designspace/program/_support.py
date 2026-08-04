@@ -146,7 +146,7 @@ class Primitive:
 
     Naming a primitive as a bare string is enough to admit it, but then
     nothing checks how many arguments it is given. Declaring it this way
-    adds that check. `fn` is metadata for your own interpreter — the
+    adds that check. `fn` is metadata for your own interpreter, and the
     library never calls it.
 
     Attributes

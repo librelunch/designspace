@@ -72,13 +72,13 @@ class Representation:
     """A `Space → Space` morphism carrying a value-level `decode`/`encode`
     pair (API.md, "The Representation Layer"). Two tiers construct one:
     **derived** (`Space.represent(*rules)`, `represent/_build.py`) and
-    **supplied** (this constructor, called directly) — a derived
+    **supplied** (this constructor, called directly). A derived
     representation *is* a supplied one; both compose through `then` and
     are checked through `check()`.
 
-    `source` is the phenotype, `target` the genotype — an ordinary `Space`,
+    `source` is the phenotype and `target` the genotype, an ordinary `Space`,
     so a solver asks it the same questions it would ask any space. Never
-    enters the IR, `to_json`, or the fingerprint preimage — `target`
+    enters the IR, `to_json`, or the fingerprint preimage; `target`
     serializes as an ordinary `Space` in its own right.
 
     Attributes
@@ -111,7 +111,7 @@ class Representation:
         it is not.
     measure_preserving : bool
         Whether every applied encoding declared that it preserves the
-        declared measure. Never assumed — an encoding that says nothing
+        declared measure. Never assumed: an encoding that says nothing
         counts as `False`.
     invertible : bool
         Whether `encode` is usable. Derived from whether one was supplied.
@@ -142,8 +142,8 @@ class Representation:
         """Compose `self` (source → target) with `other` (target → its own
         target), producing a single morphism from `self.source` all the
         way to `other.target`. Requires `other.source` to fingerprint-equal
-        `self.target` (a `TypeError` otherwise — misuse, not resolution).
-        `decode` composes right-to-left (`self.decode(other.decode(g))` —
+        `self.target` (a `TypeError` otherwise, which is misuse rather than resolution).
+        `decode` composes right-to-left (`self.decode(other.decode(g))`,
         `other` first, since it is closer to the composed target); `encode`
         the reverse (`other.encode(self.encode(x))`), and only when both
         sides are invertible.
@@ -229,13 +229,13 @@ class Representation:
         conformance laws a `Representation` owes regardless of tier: decode
         totality (`source.validate(decode(g)).param_errors == ()`),
         feasibility agreement (`target.is_feasible(g) ==
-        source.is_feasible(decode(g))`), and — when `invertible` — the
+        source.is_feasible(decode(g))`), and, when `invertible`, the
         one-directional round-trip `decode(encode(x)) == x` for `x =
         decode(g)`. Never raises on a law violation: the suite as a tool,
         since a supplied morphism has no other way to be shown sound
         (API.md, "The Representation Layer"). Structural laws (path/arity)
         are guaranteed by construction for the derived tier and asserted
-        directly in the conformance suite — a supplied morphism has no such
+        directly in the conformance suite, since a supplied morphism has no such
         law to check, so `check()` does not re-derive them here.
 
         Failures dedupe by `(law, detail)`, accumulating a `count` rather

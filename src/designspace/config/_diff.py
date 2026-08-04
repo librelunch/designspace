@@ -34,7 +34,7 @@ def config_diff(a: dict[str, Any], b: dict[str, Any], space: Space) -> list[Para
     under the old variant show as having gone away (`new=None`).
 
     Values are compared with plain `==`, and neither configuration is
-    validated — this is a reporting tool, usable on configurations that
+    validated. This is a reporting tool, usable on configurations that
     are partial or no longer valid.
 
     Parameters

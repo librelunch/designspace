@@ -43,18 +43,18 @@ class ParamType(Protocol):
     `validate`, `to_json`, `from_json`, `describe`.
 
     Optional capabilities (checked via `hasattr`, not declared in this
-    Protocol's static shape — see module docstring):
+    Protocol's static shape; see the module docstring):
 
-    - `sample(self, rng) -> Any` — generative iff present; absent, the
+    - `sample(self, rng) -> Any`, generative iff present; absent, the
       param is **non-generative** (API.md, "Sampling and Generativity":
       `sample()` raises `SamplingError` naming the param iff it must
-      materialize a value — `.default()`/`freeze`/`slice`/inactivity all
+      materialize a value, and `.default()`/`freeze`/`slice`/inactivity all
       satisfy it instead).
-    - `cardinality(self) -> int | None` — contributes a finite factor to
+    - `cardinality(self) -> int | None`, contributing a finite factor to
       `Space.cardinality()` iff present; absent, the whole space's
       cardinality is `None` whenever this param is included.
     - `properties(self) -> dict[str, type]` and `extract(self, value, prop)
-      -> Any` — present *together*, they enable `.prop()` in expressions
+      -> Any`, which present *together* enable `.prop()` in expressions
       (row 16 governs misuse: undeclared property, non-scalar property
       type, comparison type mismatch).
 
@@ -111,7 +111,7 @@ class ParamType(Protocol):
         It identifies the type in a serialized document and is the key a
         consumer's registry uses when rebuilding a space with
         `Space.from_json(..., custom_types=...)`. Solver adapters key off
-        it too. Choose something durable — it is part of the wire format.
+        it too. Choose something durable, since it is part of the wire format.
         """
         ...
 
@@ -138,7 +138,7 @@ class ParamType(Protocol):
 
         This is the bridge between the type's internal representation and
         the form that appears in configuration dicts, `.sample_one()`
-        results, hashes, and serialized documents — so it runs on every
+        results, hashes, and serialized documents, so it runs on every
         value leaving the type, not only when writing JSON.
 
         Parameters
@@ -174,7 +174,7 @@ class ParamType(Protocol):
     def describe(self) -> dict[str, Any]:
         """Describe the type itself, not any particular value.
 
-        What a consumer reads to learn the type's shape — bounds, item
+        What a consumer reads to learn the type's shape: bounds, item
         counts, whatever a solver adapter or a documentation generator
         would want. Serialized with the space, and must be JSON-safe.
 

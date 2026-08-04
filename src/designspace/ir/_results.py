@@ -42,14 +42,14 @@ class ConstraintEval:
     applicable : bool
         Whether the constraint could be decided at all. `False` when a
         parameter it reads is inactive, in which case it neither holds nor
-        fails — an inapplicable constraint is never violated.
+        fails, since an inapplicable constraint is never violated.
     satisfied : bool | None
         Whether the stored predicate held. `None` when the outcome is
         unknown, which is also when `applicable` is `False`.
     margin : float | None
         How far the configuration sits from the constraint boundary, signed
         so that a positive value means the stored predicate holds. `None`
-        for a predicate with no numeric distance — a Boolean composition,
+        for a predicate with no numeric distance, such as a Boolean composition
         or an opaque `ds.value(..., returns=bool)`.
     """
 
@@ -63,7 +63,7 @@ class ConstraintEval:
     def violated(self) -> bool:
         """Whether this evaluation counts against feasibility (for a hard
         forbid/require) or is flagged as a violation (for a soft
-        encourage/discourage) — **polarity-correct across all four kinds**.
+        encourage/discourage). It is **polarity-correct across all four kinds**.
         An inapplicable (Kleene-Unknown) eval is never violated (rule 4);
         otherwise the stored predicate is violated when ``satisfied`` differs
         from the constraint's desired polarity. This is the public,
@@ -77,7 +77,7 @@ class ConstraintEval:
 class ParamError:
     """One parameter's value rejected during validation.
 
-    About the value itself — wrong type, out of domain, present while
+    About the value itself: wrong type, out of domain, present while
     inactive, absent while active. A configuration whose parameters are all
     individually fine may still be infeasible; that shows up in
     `ValidationResult.constraint_evals`, not here.
@@ -203,7 +203,7 @@ class ValueRemaining:
     Attributes
     ----------
     values : tuple[Any, ...]
-        The values still allowed — for a choice, the variant names.
+        The values still allowed. For a choice, these are the variant names.
     """
 
     values: tuple[Any, ...]
@@ -256,7 +256,7 @@ RemainingDomain = (
 """What a parameter may still take, given a partial configuration.
 
 The return type of `Space.remaining_domain()`: one descriptor per kind of
-parameter. Narrowing is **sound but not complete** — a value it admits may
+parameter. Narrowing is **sound but not complete**: a value it admits may
 still turn out infeasible, but a value it excludes is genuinely impossible.
 """
 
@@ -315,7 +315,7 @@ class SubspaceInfo:
 class ConstraintReport:
     """One `SamplingReport.constraints` row (API.md, "Sampling diagnostics").
 
-    `constraint` is the declared `Constraint` — for a per-element template
+    `constraint` is the declared `Constraint`. For a per-element template
     (`ListDomain.element_constraints`), the template itself, never an
     instantiated per-instance copy. `applicable`/`satisfied` are fractions
     of all `n` draws (D-73): a per-element constraint folds its k
@@ -323,7 +323,7 @@ class ConstraintReport:
     draw before dividing by `n`, so every row shares one denominator and
     stays comparable to `acceptance_rate`. `satisfied` is conditioned on
     `applicable` (fraction of *applicable* draws satisfied), and is `0.0`
-    by convention — never `NaN` — when `applicable == 0.0`.
+    by convention, never `NaN`, when `applicable == 0.0`.
 
     Attributes
     ----------
@@ -335,7 +335,7 @@ class ConstraintReport:
         governing almost nothing.
     satisfied : float
         Fraction of *applicable* draws in which the stored predicate held.
-        Raw, so its healthy direction depends on the verb — read
+        Raw, so its healthy direction depends on the verb; read
         `violation_rate` instead.
     """
 
@@ -346,15 +346,15 @@ class ConstraintReport:
     @property
     def violation_rate(self) -> float:
         """The polarity-resolved fraction of applicable draws in the *bad*
-        state — the aggregate analog of `ConstraintEval.violated`. `satisfied`
+        state, the aggregate analog of `ConstraintEval.violated`. `satisfied`
         alone is raw: a forbid/discourage names a bad state (`satisfied` *is*
         the violation fraction), a require/encourage/bound a good one
-        (violation is the complement, `1 - satisfied`) — reading a mixed
+        (violation is the complement, `1 - satisfied`). Reading a mixed
         table of rows by `satisfied` alone means re-deriving this flip by
         hand per verb, exactly the confusion `ConstraintEval.violated`
         already exists to avoid for a single evaluation.
 
-        `0.0` when `applicable == 0.0`, for both polarities — mirroring
+        `0.0` when `applicable == 0.0`, for both polarities, mirroring
         `ConstraintEval.violated`'s "inapplicable is never violated" (Kleene
         rule 4) and `satisfied`'s own "`0.0` by convention, never `NaN`"
         default, rather than computed mechanically as `1 - satisfied`, which
@@ -371,7 +371,7 @@ class ConstraintReport:
 @dataclass(frozen=True)
 class SamplingReport:
     """`.sampling_report(n, seed, tighten_bounds)` (API.md, "Sampling
-    diagnostics"). Aggregation only, over the **unconditioned** measure —
+    diagnostics"). Aggregation only, over the **unconditioned** measure,
     drawn before rejection, so both Unknown-swallowing and funnel bias are
     visible. `activity` keys are exactly `set(space.params)`, including
     `"[]"`-templated definition paths from inside a lifted struct/choice,
@@ -401,7 +401,7 @@ class SamplingReport:
 class RepresentationCheckFailure:
     """One law `Representation.check()` found violated.
 
-    Deduplicated by law and detail across the sampled draws — a count of
+    Deduplicated by law and detail across the sampled draws, so this is a count of
     how many draws exhibited the problem, not one row per draw.
 
     Attributes
