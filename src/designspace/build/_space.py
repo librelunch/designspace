@@ -61,6 +61,15 @@ if TYPE_CHECKING:
     from designspace.represent._representation import Representation
 
 Seed = int | np.random.Generator | None
+"""What every sampling surface accepts as its source of randomness.
+
+An `int` seeds a fresh generator reproducibly; a `numpy.random.Generator`
+is used as given, which is what to pass when several draws must advance
+one stream; `None` draws from fresh entropy and is not reproducible.
+
+Defined here rather than in `sample/` because `sample/_sample.py` imports
+this module, so this is the upstream home both sides can share.
+"""
 
 
 @dataclass(frozen=True)
@@ -1796,10 +1805,12 @@ class Space:
 
         Parameters
         ----------
-        scope : {"full", "structure", "sampling"}
-            Which facts to include. `"full"` covers everything;
-            the narrower scopes let you ask whether two spaces agree on
-            structure alone, or on everything that affects sampling.
+        scope : {"full", "sampling"}
+            Which facts to include. `"full"` is document identity — it
+            covers everything, declared constraints, defaults, tags, meta
+            and anchors included. `"sampling"` narrows to what determines
+            the feasible set, the measure, and chart geometry, so two
+            spaces differing only in tags or defaults agree at this scope.
         on_unserializable : {"raise", "mark"}
             What to do with a Python callable in the space. `"raise"` is
             the default; `"mark"` substitutes a sentinel so a space with an

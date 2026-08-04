@@ -12,13 +12,13 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
-from designspace.build._space import Space
+from designspace.build._space import Seed, Space
 from designspace.eval import evaluate_constraint, instance_evals_indexed, is_violated
 from designspace.ir import Constraint, ConstraintEval, ConstraintReport, ListDomain, SamplingReport
 from designspace.paths import definition_form
 from designspace.resolve._bounds import bound_origin_targets
 from designspace.resolve._pipeline import check_fully_resolved
-from designspace.sample._sample import BoundTargets, Seed, _draw_config, _rng_from_seed
+from designspace.sample._sample import BoundTargets, _draw_config, _rng_from_seed
 
 ElementKey = tuple[str, int]  # (owning list's definition path, template index)
 

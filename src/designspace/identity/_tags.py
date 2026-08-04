@@ -78,6 +78,18 @@ _TAG_STR = "str"
 # `EncodeContext`/`OnUnserializable` from that module keeps working verbatim.
 
 OnUnserializable = TypingLiteral["raise", "mark", "drop"]
+"""What `to_json` does when the space holds something it cannot serialize.
+
+`"raise"` is the default and fails loudly, naming every offending site by
+definition path — silence here loses meaning. `"mark"` substitutes the
+`{"$opaque": true}` sentinel *in place*, so the site's presence still
+counts toward identity. `"drop"` writes the document without those sites
+plus a manifest of what was omitted; the space it reconstructs is a
+different space by design.
+
+`Space.fingerprint` accepts only the first two — see
+`FingerprintUnserializable`.
+"""
 
 _OPAQUE_MARKER = {"kind": "opaque", "$opaque": True}
 

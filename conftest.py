@@ -16,7 +16,13 @@ import pytest
 # fixture for the M4.6 view types (fed to mypy by tests/typing/
 # test_static_typing.py, never executed). Without this entry the whole
 # collection aborts.
-collect_ignore = ["tests/typing/_row2_and_wrong_type_modifier.py"]
+collect_ignore = [
+    "tests/typing/_row2_and_wrong_type_modifier.py",
+    # M13.5 put `docs/` on `testpaths` so the guide pages' `>>>` blocks run.
+    # That also puts `docs/conf.py` in `--doctest-modules`' path, where it is
+    # Sphinx configuration rather than library code and has nothing to test.
+    "docs/conf.py",
+]
 
 
 @pytest.fixture(autouse=True)

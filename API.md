@@ -971,6 +971,18 @@ ds.Log()  ds.Logit()  ds.Power(p)                # built-in prior families (see 
 ds.value(fn, *operands, returns)                 # opaque derived quantity (see Expressions)
 ```
 
+**Type aliases.** The names the public signatures are written in. They carry no behavior — each is exactly the spelling given here — but they are exported so a reader can follow a signature to a definition rather than guess at a bare `Seed`:
+
+```python
+ds.Config = dict[str, Any]                         # a configuration, keyed by instance path
+ds.Seed = int | np.random.Generator | None         # every sampling surface's randomness source
+ds.OnUnserializable = Literal["raise", "mark", "drop"]     # to_json
+ds.FingerprintScope = Literal["full", "sampling"]          # fingerprint (see fingerprint())
+ds.FingerprintUnserializable = Literal["raise", "mark"]    # fingerprint; no "drop"
+```
+
+`Config` values are in **phenotype** form, and inactive params are absent rather than null (see *Conditionality*). `Seed`: an `int` seeds reproducibly, a `Generator` is used as given (what to pass when several draws must advance one stream), `None` draws fresh entropy. `fingerprint` admits no `"drop"` — omitting a site would silently change what is being identified.
+
 **`Signature`.** `args`/`returns` accept a Python `type` (normalized to `type.__name__`) or a bare string; argument order is meaningful and preserved (it drives `.symbolic()`'s auto-derived variables, and it is fingerprint-relevant). Normalization keeps the fingerprint preimage canonical and this type free of any unserializable object.
 
 **`FloatLiteral`/`IntLiteral`.** Declared inside a `.symbolic()` param's `primitives` sequence alongside strings and `Primitive`s — the only place a `{"const": ...}` AST node's bounds come from (see "Parameter Types" > "Program"). `.chart` is a consumer-only convenience over the declared `[lo, hi]` (a `RealChart`/`IntegerChart` respectively, `IntLiteral` following the same floor rule as `.integer()`) — core never draws from it; a consumer's own tree generator does.

@@ -4,7 +4,7 @@
 
 from designspace.build._functions import param, space
 from designspace.build._paramexpr import ParamExpr
-from designspace.build._space import Space
+from designspace.build._space import Seed, Space
 from designspace.build._views import (
     BoolParamExpr,
     CategoricalParamExpr,
@@ -36,6 +36,7 @@ __all__ = [
     "ParamExpr",
     "PermutationParamExpr",
     "RealParamExpr",
+    "Seed",
     "Space",
     "StructParamExpr",
     "SubsetParamExpr",

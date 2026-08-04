@@ -17,6 +17,7 @@ from designspace.build import (
     ParamExpr,
     PermutationParamExpr,
     RealParamExpr,
+    Seed,
     Space,
     StructParamExpr,
     SubsetParamExpr,
@@ -29,7 +30,12 @@ from designspace.config import config_diff, destructure, flatten, payload, unfla
 from designspace.custom import ParamType
 from designspace.errors import DesignSpaceError, ResolutionError, SamplingError, SerializationError
 from designspace.expr import ArithExpr, BoolExpr, Expr, Prop, Value, all_, any_, count, value
-from designspace.identity import config_hash
+from designspace.identity import (
+    FingerprintScope,
+    FingerprintUnserializable,
+    OnUnserializable,
+    config_hash,
+)
 from designspace.ir import (
     BoolDomain,
     CategoricalDomain,
@@ -75,7 +81,7 @@ from designspace.ir import (
 )
 from designspace.meta import param_from_def, space_from_ir
 from designspace.program import FloatLiteral, IntLiteral, Primitive, Signature
-from designspace.represent import Encoding, EncodingRule, Representation
+from designspace.represent import Config, Encoding, EncodingRule, Representation
 
 __version__ = "0.0.0"
 
@@ -92,6 +98,7 @@ __all__ = [
     "CodeDomain",
     "CodeParamExpr",
     "Condition",
+    "Config",
     "Constraint",
     "ConstraintEval",
     "ConstraintReport",
@@ -102,6 +109,8 @@ __all__ = [
     "Encoding",
     "EncodingRule",
     "Expr",
+    "FingerprintScope",
+    "FingerprintUnserializable",
     "FloatLiteral",
     "FreshParamExpr",
     "IntLiteral",
@@ -112,6 +121,7 @@ __all__ = [
     "ListParamExpr",
     "Log",
     "Logit",
+    "OnUnserializable",
     "OrdinalDomain",
     "OrdinalParamExpr",
     "ParamDef",
@@ -139,6 +149,7 @@ __all__ = [
     "ResolutionError",
     "SamplingError",
     "SamplingReport",
+    "Seed",
     "SerializationError",
     "Signature",
     "Space",

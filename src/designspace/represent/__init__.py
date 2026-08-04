@@ -23,9 +23,10 @@ from designspace.represent._protocol import (
     has_rewrite,
     is_measure_preserving,
 )
-from designspace.represent._representation import Representation
+from designspace.represent._representation import Config, Representation
 
 __all__ = [
+    "Config",
     "Encoding",
     "EncodingRule",
     "Representation",

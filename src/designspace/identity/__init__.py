@@ -4,6 +4,17 @@ reuses the same IR codec (`identity/_ir_codec.py`) for `to_json`/`from_json`.
 """
 
 from designspace.identity._config_hash import config_hash
-from designspace.identity._fingerprint import fingerprint
+from designspace.identity._fingerprint import (
+    FingerprintScope,
+    FingerprintUnserializable,
+    fingerprint,
+)
+from designspace.identity._tags import OnUnserializable
 
-__all__ = ["config_hash", "fingerprint"]
+__all__ = [
+    "FingerprintScope",
+    "FingerprintUnserializable",
+    "OnUnserializable",
+    "config_hash",
+    "fingerprint",
+]

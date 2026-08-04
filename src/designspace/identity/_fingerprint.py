@@ -34,7 +34,23 @@ from designspace.resolve._pipeline import check_fully_resolved
 from designspace.serialize._version import FORMAT_VERSION
 
 FingerprintScope = Literal["full", "sampling"]
+"""Which facts a fingerprint covers.
+
+`"full"` is document identity: params, conditions, hard constraints,
+declared constraints, defaults, tags, meta, and anchors. `"sampling"`
+narrows to what fixes the feasible set, the sampling measure, and chart
+geometry — the scope to compare when transferring a warm start or a
+surrogate — so two spaces differing only in tags, meta, defaults, anchors,
+or declared constraints agree at `"sampling"` and differ at `"full"`.
+"""
+
 FingerprintUnserializable = Literal["raise", "mark"]
+"""What `Space.fingerprint` does with a callable it cannot serialize.
+
+The same meanings as `OnUnserializable`, minus `"drop"`: dropping a site
+would silently change what is being identified, which is the one thing a
+fingerprint may not do.
+"""
 
 _VALID_SCOPES = ("full", "sampling")
 _VALID_MODES = ("raise", "mark")

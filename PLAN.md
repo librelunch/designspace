@@ -1018,15 +1018,23 @@ are named):
 - **Five type aliases used in public signatures but absent from `__all__`** — `Seed`, `Config`,
   `OnUnserializable`, `FingerprintScope`, `FingerprintUnserializable`. See below.
 
-**Open, deferred to implementation — the unexported aliases.** M13's export-closure walk covered
-classes reachable through annotations; it did not cover *aliases*, and these five are that gap.
-They render as unclickable bare text (`seed: Seed = None`), which tells a reader nothing about
-what a `Seed` accepts. Three routes: **(a)** export them — a public-API change, so it needs user
-sign-off and is **not** taken unilaterally; **(b)** `nitpick_ignore` — docs-only and reversible,
-what this plan adopts; **(c)** `autodoc_type_aliases` expansion — **tried and rejected**: it does
-substitute the alias text, but emits four `TypeAliasForwardRef` references of its own on union
-targets, trading five named warnings for four anonymous ones. Ship (b); raise (a) with the user if
-the rendered signatures read badly on the built site.
+**Resolved — the unexported aliases are now exported (user-directed, 2026-08-04).** M13's
+export-closure walk covered classes reachable through annotations; it did not cover *aliases*, and
+these five were that gap. Three routes were costed: **(a)** export them — a public-API change,
+needing sign-off; **(b)** `nitpick_ignore`, docs-only and reversible; **(c)**
+`autodoc_type_aliases` expansion, **tried and rejected** (it substitutes the alias text but emits
+four `TypeAliasForwardRef` references of its own on union targets, trading five named warnings for
+four anonymous ones). The user chose **(a)**. `__all__` 91 → 96, `API.md`'s Support Types section
+gains a *Type aliases* block declaring all five, and each carries a PEP-258 attribute docstring
+that the M13 gates now cover. Exporting also removed five ignore-list entries outright: the names
+resolve for real rather than being silenced.
+
+Exporting `Seed` forced a latent duplication into the open: it was defined **twice**, identically,
+in `build/_space.py` and `sample/_sample.py`, with `represent/` importing one and `frame/` +
+`sample/_diagnostics.py` importing the other. Two `designspace.Seed` candidates cannot both be the
+export, so the definition is now single, in `build/_space.py` — the upstream module, since
+`sample/_sample.py` imports it and not the reverse — and the three consumers import from there.
+`mypy --strict`'s no-implicit-reexport rule is what surfaced the second and third consumers.
 
 **Doctest wiring, and the hole not to repeat.** Measured: **no `.md` file in the repo contains a
 single `>>>` line** — `API.md` included, whose 25 fenced python blocks are signature listings — so
@@ -1041,8 +1049,40 @@ every ignore-list entry carrying a comment naming its reason; every `>>>` block 
 executing under the existing `pytest` gate, with a non-zero guide-page collection count asserted;
 the four commit gates green. Each new gate demonstrated to *bite* before close-out (introduce a
 dangling reference → named nitpick failure; break a guide-page example → doctest failure). No
-runtime, public-API, wire-format, or fingerprint change — every known-answer vector byte-identical.
+runtime, wire-format, or fingerprint change — every known-answer vector byte-identical. The one
+public-API change is the five exported aliases above, user-directed and declared in `API.md`.
 **Exit:** internal — no public tag.
+
+**As-built (2026-08-04).** 2492 tests, 1 skipped (1451 at M12.5, 2464 at M13). The site builds
+clean under `-W` with `nitpicky = True`: 0 warnings over all 96 exports.
+
+*A second spec-contradicting docstring, found while wiring the aliases.* `Space.fingerprint`'s
+`Parameters` block documented **three** scopes — `{"full", "structure", "sampling"}` — and prose
+about "whether two spaces agree on structure alone". `API.md`'s scope table declares **two**
+columns, `FingerprintScope` is `Literal["full", "sampling"]`, and `_VALID_SCOPES` agrees. So the
+docstring alone was wrong: it documented a scope that has never existed. Corrected to the two real
+scopes. Neither M13's griffe gates nor Sphinx can catch this class of error — griffe checks that a
+documented *parameter* exists, not that its documented *values* do — which is worth stating plainly
+rather than implying the gates are exhaustive.
+
+*What the site gate cost and where it lives.* `tests/test_docs_site.py`, so CLAUDE.md's four
+commands stay four. Three laws: the API reference lists every name in `__all__`; every guide page
+carries at least one `>>>`; the site builds clean. The build takes ~17s cold, so it is guarded by
+`importorskip` on the `docs` extra — absent in the default `uv sync`, present in a new `docs` CI
+job that also runs `sphinx-build` directly. The second law is the deliberate answer to M13's
+`norecursedirs` hole: a doctest gate that collects nothing reports green, so the pages are asserted
+to *carry* tests rather than trusted to.
+
+*Two Sphinx-specific findings.* `autodoc` resolves `.. autodata:: Config` against `designspace`,
+where the alias is only imported, so it never finds the attribute docstring in the private module
+that defines it — and for `Config = dict[str, Any]` it falls back to `dict.__doc__`, whose indented
+signature lines are not valid RST (two ERRORs, two WARNINGs). PEP 695 `type` was probed and does
+not help: `TypeAliasType.__doc__` is the generic "Type alias." text, not the author's. The five
+aliases are therefore hand-documented in `reference.md` with `py:data` directives — which also
+gives them real cross-reference targets — while the full prose stays on the definition where
+griffe gates it. Separately, `myst_heading_anchors` does not make a cross-document
+`page.md#heading` link resolve even though docutils emits the matching `id`; that one link was
+rewritten to page level rather than pinned to a slug that the resolver disagrees about.
 
 ### M14 — v0.1 release
 **Spec:** no new runtime surface — release packaging only. `pyproject.toml` gains `version =

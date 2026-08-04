@@ -22,7 +22,7 @@ from typing import Any
 
 import numpy as np
 
-from designspace.build._space import Space
+from designspace.build._space import Seed, Space
 from designspace.charts import build_chart
 from designspace.config import unflatten
 from designspace.custom import is_generative
@@ -64,7 +64,6 @@ from designspace.resolve._relocate import element_paramdef, instantiate_element
 
 _MAX_RETRIES = 10_000
 
-Seed = int | np.random.Generator | None
 BoundTargets = dict[str, tuple[ArithExpr | None, ArithExpr | None]]
 
 
