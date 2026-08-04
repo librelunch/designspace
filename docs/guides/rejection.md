@@ -2,7 +2,7 @@
 
 The reference sampler draws from the declared measure and rejects whatever
 violates a hard constraint. That is correct, and for most spaces it is also
-fast. Then it isn't — and the failure is abrupt rather than gradual.
+fast. Then it isn't, and the failure is abrupt rather than gradual.
 
 **Dense combinatorial constraints collapse the acceptance rate.** Pairwise
 distinctness, conflict sets near a packing limit, anything where the legal
@@ -60,8 +60,7 @@ options:
 ### Reparameterize
 
 Ask whether the constraint is really a constraint, or a structure you spelled as
-one. "All distinct" over *n* slots with *n* values is not a constraint at all —
-it is a permutation:
+one. "All distinct" over *n* slots with *n* values is a permutation:
 
 ```pycon
 >>> space = ds.space(ds.param("order").permutation(list(range(8))))
@@ -73,14 +72,14 @@ it is a permutation:
 Every draw is valid by construction. Acceptance is 100%, the parameter keeps a
 proper chart and prior, and the fifteen forbids are gone.
 
-This is the case worth looking for first, and it is more common than it seems —
-simplexes, orderings, partitions and assignments all have primitive spellings
+This is the case worth looking for first, and it is more common than it seems.
+Simplexes, orderings, partitions and assignments all have primitive spellings
 that make the measure-zero constraint disappear.
 
 ### Enforce inside a custom sampler
 
-When the invariant is genuinely global and has no primitive spelling —
-connectivity, minimum pairwise spacing, a packing that must fit — move
+When the invariant is genuinely global and has no primitive spelling
+(connectivity, minimum pairwise spacing, a packing that must fit), move
 construction inside a `.custom()` type whose sampler cannot produce an invalid
 value. That is tier 3 in [structured values](structured-values.md), and
 rejection hostility is the main reason to reach for it.
@@ -89,6 +88,5 @@ rejection hostility is the main reason to reach for it.
 
 Do not soften a hard constraint to `.encourage()` to make sampling succeed.
 `.encourage()` does not affect feasibility, so the space will start producing
-configurations that violate the rule you actually meant — quickly, and without
-complaint. Softening changes what the space *means*; it is not a performance
-fix.
+configurations that violate the rule you meant, quickly and without complaint.
+Softening changes what the space *means*. It is not a performance fix.

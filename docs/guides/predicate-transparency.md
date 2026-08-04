@@ -1,8 +1,8 @@
 # Predicate transparency
 
 How you *write* a predicate decides how much of the library's machinery can act
-on it. The cost is invisible at the call site — all three forms below are one
-line, all three are enforced correctly — which is exactly why it is worth
+on it. All three forms below are one line, and all three are enforced
+correctly, so the cost is invisible at the call site. That is why it is worth
 naming.
 
 | tier | form | margins | `remaining_domain` narrowing | tighten-not-reject |
@@ -32,7 +32,7 @@ The predicate is an expression the library can read. Everything works.
 ```
 
 A margin says *how far* from the boundary a configuration sits, not merely
-whether it is legal — that is what a solver follows downhill. And because the
+whether it is legal. That is what a solver follows downhill. And because the
 structure is visible, the space can answer what is still available for one
 parameter given the others:
 
@@ -55,9 +55,9 @@ structurally. The comparison stays visible even though the computation does not.
 
 ```
 
-The margin survives — the library did not need to understand `lambda x: x * 2.0`
-to subtract `6.0` from `8.0`. What it cannot do is narrow a domain, because
-inverting the opaque part is exactly what it has no access to:
+The margin survives, because the library did not need to understand
+`lambda x: x * 2.0` to subtract `6.0` from `8.0`. What it cannot do is narrow a
+domain, since that would mean inverting the opaque part:
 
 ```pycon
 >>> space.remaining_domain("x", {})
@@ -78,13 +78,13 @@ answer.
 
 ```
 
-`margin` is `None` — there is no boundary to measure a distance to. The
-constraint still works; it is simply a wall rather than a slope.
+`margin` is `None`, because there is no boundary to measure a distance to. The
+constraint still works. It is a wall rather than a slope.
 
 ## Why prefer transparency
 
 Not for solver consumption. A solver facing a black-box objective is not handing
-your constraints to a MIP or CP solver anyway — that is not the argument.
+your constraints to a MIP or CP solver anyway.
 
 The argument is that margins, `evaluate_partial`, `remaining_domain`, and
 bound-origin tightening are all **designspace's own machinery**, and all of them
@@ -103,5 +103,5 @@ habit. Anything physical has a numeric value:
 ```
 
 The two accept identical configurations. The second keeps the margin that the
-first throws away — and it costs one line of rewriting, done once, at
+first throws away, and it costs one line of rewriting, done once, at
 declaration time.

@@ -1,7 +1,7 @@
 # Sampling diagnostics
 
 `space.sampling_report()` draws configurations from the **unconditioned**
-measure — before any rejection — and aggregates what happened. It reports. It
+measure, before any rejection, and aggregates what happened. It reports. It
 never repairs, reweights, or suggests a fix.
 
 Drawing unconditioned is the entire point, and it is the part worth
@@ -46,8 +46,8 @@ Less than half. Wherever `use_c` is false the constraint quietly stops
 enforcing, and nothing in `sample()`'s output would ever tell you. `applicable`
 is the only signal.
 
-The fix is usually `.if_inactive()` — deciding explicitly what an absent `c`
-should contribute — but nothing prompts you to reach for it, which is why this
+The fix is usually `.if_inactive()`, which says explicitly what an absent `c`
+should contribute. Nothing prompts you to reach for it, which is why this
 surface exists.
 
 ### Funnels
@@ -55,8 +55,8 @@ surface exists.
 A constraint that is inapplicable on part of the space biases the conditioned
 measure *toward* that part, since rejection accepts those draws unconditionally.
 
-This is not a bug — `require` conditions the declared measure, and that is what
-it is for. It is simply not visible from the resulting sample.
+This is what `require` is supposed to do: it conditions the declared measure.
+It is not visible from the resulting sample.
 
 ## Reading `satisfied` correctly
 
@@ -69,20 +69,20 @@ it is for. It is simply not visible from the resulting sample.
 ```
 
 A constraint applicable in 1% of draws and always satisfied there reports
-`1.0` — not `0.01`. Collapsing the two would erase exactly the distinction this
-surface exists to draw, so read the pair together: `applicable` says how often
-the question was asked, `satisfied` how often the answer was yes.
+`1.0`, not `0.01`. Collapsing the two would erase the distinction this surface
+exists to draw, so read the pair together. `applicable` says how often the
+question was asked, `satisfied` how often the answer was yes.
 
-When `applicable` is `0.0` — never Kleene-defined across any draw — `satisfied`
-reports `0.0` by convention rather than `NaN`, so a frozen report always equals
-itself. It carries no information in that case; `applicable` is the number to
-read.
+When `applicable` is `0.0`, meaning the constraint was never Kleene-defined
+across any draw, `satisfied` reports `0.0` by convention rather than `NaN`, so a
+frozen report always equals itself. It carries no information in that case, and
+`applicable` is the number to read.
 
 ## Tightening is opt-in
 
 The reference sampler has a best-effort optimization: fold an already-assigned
 bound-origin coupling into the draw instead of drawing and rejecting. For
-`sample()` this is unobservable — truncation and conditioning agree.
+`sample()` this is unobservable, since truncation and conditioning agree.
 
 For a *report* it is not unobservable at all, which is why it defaults to off:
 
@@ -92,16 +92,16 @@ For a *report* it is not unobservable at all, which is why it defaults to off:
 
 ```
 
-Drawn unconditioned, tightening would launder the report's own subject — on a
-bound-coupled space it collapses precisely the rows most likely to carry a
+Drawn unconditioned, tightening would launder the report's own subject. On a
+bound-coupled space it collapses the rows most likely to carry a
 pathology to `satisfied ≈ 1.0`.
 
 So the two flags answer different questions:
 
-- `tighten_bounds=False` (the default) — "how much of the declared measure do my
-  hard constraints cut away?" Bound-origin rows show their real satisfaction
-  fractions.
-- `tighten_bounds=True` — "how much does tightening save me?"
+- `tighten_bounds=False` (the default) answers "how much of the declared measure
+  do my hard constraints cut away?" Bound-origin rows show their real
+  satisfaction fractions.
+- `tighten_bounds=True` answers "how much does tightening save me?"
 
 The three sampling entry points (`sample`, `sample_one`, `sample_dicts`) take no
 such flag, deliberately: tightening cannot change the distribution they return,

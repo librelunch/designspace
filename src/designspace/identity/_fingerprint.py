@@ -39,9 +39,9 @@ FingerprintScope = Literal["full", "sampling"]
 `"full"` is document identity: params, conditions, hard constraints,
 declared constraints, defaults, tags, meta, and anchors. `"sampling"`
 narrows to what fixes the feasible set, the sampling measure, and chart
-geometry — the scope to compare when transferring a warm start or a
-surrogate — so two spaces differing only in tags, meta, defaults, anchors,
-or declared constraints agree at `"sampling"` and differ at `"full"`.
+geometry. It is the scope to compare when transferring a warm start or a
+surrogate, so two spaces differing only in tags, meta, defaults, anchors, or
+declared constraints agree at `"sampling"` and differ at `"full"`.
 """
 
 FingerprintUnserializable = Literal["raise", "mark"]

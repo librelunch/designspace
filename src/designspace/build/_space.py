@@ -1806,7 +1806,7 @@ class Space:
         Parameters
         ----------
         scope : {"full", "sampling"}
-            Which facts to include. `"full"` is document identity — it
+            Which facts to include. `"full"` is document identity. It
             covers everything, declared constraints, defaults, tags, meta
             and anchors included. `"sampling"` narrows to what determines
             the feasible set, the measure, and chart geometry, so two

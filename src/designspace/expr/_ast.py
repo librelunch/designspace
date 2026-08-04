@@ -633,7 +633,7 @@ class Prop(ArithExpr, BoolExpr):
 
     @property
     def children(self) -> tuple[Expr, ...]:
-        """The operands — just the custom-typed parameter being read."""
+        """The operands, just the custom-typed parameter being read."""
         return (self.operand,)
 
 

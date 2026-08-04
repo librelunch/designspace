@@ -40,8 +40,8 @@ An inactive parameter is **absent** from the config, not present-and-null:
 
 ```
 
-This is the cheapest mechanism, and it stops paying once the gated group grows —
-three or four `.when()` calls all repeating the same condition is the signal to
+This is the cheapest mechanism, and it stops paying once the gated group grows.
+Three or four `.when()` calls all repeating the same condition is the signal to
 reach for a choice.
 
 ## Alternatives: `.choice()`
@@ -84,7 +84,7 @@ the IR and every error message use:
 ```
 
 Only the selected variant's parameters are present. Reach for this when the
-alternatives are genuinely different things rather than one thing switched off —
+alternatives are genuinely different things rather than one thing switched off.
 `adam` and `sgd` do not share a `momentum`, and pretending they do with a
 nullable parameter loses that.
 
@@ -134,5 +134,5 @@ True
 cardinality rule ("at least one regularizer") be written over parameters that
 are separate by construction.
 
-If the members need *no* payload, use `.subset()` instead — it is one parameter
+If the members need *no* payload, use `.subset()` instead. It is one parameter
 rather than *n*, and it gets a subset-shaped prior and chart for free.

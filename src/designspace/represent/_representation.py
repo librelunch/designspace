@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 Config = dict[str, Any]
 """A configuration: one point of a space, keyed by instance path.
 
-Every config-shaped surface holds this — `sample_one()`'s return value,
+Every config-shaped surface holds this: `sample_one()`'s return value,
 what `validate()` and `config_hash()` accept, what `decode`/`encode` map
 between. Values are in **phenotype** form (the JSON-safe form), not a
 custom type's native form; inactive params are absent rather than null.

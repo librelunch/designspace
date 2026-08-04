@@ -3,9 +3,9 @@
 Two features that both associate values with a space, and are constantly
 confused because of it. They answer different questions:
 
-- a **default** is a per-parameter fill value — *what should this parameter be
+- a **default** is a per-parameter fill value: *what should this parameter be
   if nobody said?*
-- an **anchor** is a named whole configuration — *what was the configuration we
+- an **anchor** is a named whole configuration: *what was the configuration we
   shipped?*
 
 ## Defaults fill a partial config
@@ -47,7 +47,7 @@ designspace.errors.ResolutionError: param 'w': default 99 is outside its domain
 
 The check spans every kind: a choice default must name a declared variant, a
 subset or permutation default must be a legal one. (A struct parameter admits no
-default of its own — give defaults to its fields.)
+default of its own; give defaults to its fields.)
 
 ### `apply_defaults` is constraint-blind
 
@@ -67,9 +67,10 @@ False
 
 ```
 
-This is deliberate and it matches how user-written forbids have always behaved —
-they were never checked at fill time. If you need a feasible completion, fill
-and then `validate`; the library will not guess which parameter to move.
+This is deliberate, and it matches how user-written forbids have always
+behaved: they were never checked at fill time. If you need a feasible
+completion, fill and then `validate`. The library will not guess which parameter
+to move.
 
 ## Anchors name whole configs
 
@@ -87,10 +88,10 @@ configuration a paper reported.
 
 ```
 
-`.anchors` hands back a read-only view rather than the dict itself — every
-public accessor does, because a `Space` is immutable and handing out a mutable
-interior would be a way around that. Wrap it in `dict()` when you want a copy
-you can edit.
+`.anchors` hands back a read-only view rather than the dict itself, as every
+public accessor does. A `Space` is immutable, and handing out a mutable interior
+would be a way around that. Wrap it in `dict()` when you want a copy you can
+edit.
 
 ## Derive, do not duplicate
 
@@ -103,11 +104,11 @@ space.anchor(configs={"shipped": space.apply_defaults({})})
 ```
 
 Defaults do **not** auto-create an anchor. The library will not invent a named
-reference point you did not ask for — but deriving one is a single expression,
-and it cannot drift out of sync the way a hand-copied dict does.
+reference point you did not ask for. Deriving one is a single expression, and
+it cannot drift out of sync the way a hand-copied dict does.
 
 ## Roles are a convention, not API
 
-"Incumbent", "baseline", "champion" — the library has no notion of these. Anchor
+The library has no notion of "incumbent", "baseline", or "champion". Anchor
 roles are a `.meta()` convention. Keep them there rather than hoping a future
 version will bless one spelling.

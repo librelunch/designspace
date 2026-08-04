@@ -3,9 +3,9 @@
 Declarative algorithm design spaces with a polars-like expression API.
 
 A *design space* is the set of configurations an algorithm can take. You declare
-it once — parameters, their domains, when each one is active, what combinations
-are legal — and then sample from it, validate against it, hand it to a solver,
-or serialize it and compare it to one you built last month.
+it once: the parameters, their domains, when each one is active, and what
+combinations are legal. Then sample from it, validate against it, hand it to a
+solver, or serialize it and compare it to one you built last month.
 
 ```pycon
 >>> import designspace as ds
@@ -23,8 +23,8 @@ True
 ```
 
 `momentum` is in the config because `optimizer` came out `"sgd"`. Draw a
-configuration where it does not, and the parameter is absent rather than null —
-conditionality is structural, not a post-hoc mask.
+configuration where it does not, and the parameter is absent rather than null.
+Conditionality is structural, not a post-hoc mask.
 
 ```pycon
 >>> adam = space.sample_one(seed=3)
@@ -53,7 +53,7 @@ reference
 
 It declares spaces; it does not search them. There are no search operators, no
 distance functions, no tree generators, and no algebraic normalization of
-expressions. Nothing is ever silently clamped — a value outside a domain is an
+expressions. Nothing is ever silently clamped: a value outside a domain is an
 error, not a rounded-off input. Those are deliberate boundaries, and the
 [solver integration guide](guides/solver-integration.md) explains where the
 library hands off to the consumer that does search.
