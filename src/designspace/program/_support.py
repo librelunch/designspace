@@ -14,20 +14,38 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from designspace.charts import build_chart
 from designspace.ir import Chart, IntegerDomain, RealDomain
 
+if TYPE_CHECKING:
+    import designspace as ds  # noqa: F401  (doctest namespace; see conftest.py)
+
 
 @dataclass(frozen=True)
 class Signature:
-    """`ds.Signature(args, returns)` — a `.symbolic()`/`.code()` param's
-    argument names/types and return type. `args`/`returns` accept a Python
-    `type` (normalized to `type.__name__`) or a bare string, so the
-    fingerprint preimage is canonical and this type carries no
-    unserializable object (DECISIONS.md D-86). Argument order is
-    meaningful and preserved."""
+    """The interface a `.symbolic()` or `.code()` parameter must satisfy.
+
+    For a symbolic parameter the argument names also become the variables
+    usable in the tree. Argument order is meaningful and preserved.
+
+    Types may be given as Python types or as bare strings; a type is
+    normalized to its name, so the signature stays serializable.
+
+    Attributes
+    ----------
+    args : MappingProxyType[str, str]
+        Argument names to type names, in order.
+    returns : str
+        The return type's name.
+
+    Examples
+    --------
+    >>> sig = ds.Signature(args={"x": float, "y": float}, returns=float)
+    >>> dict(sig.args), sig.returns
+    ({'x': 'float', 'y': 'float'}, 'float')
+    """
 
     args: MappingProxyType[str, str]
     returns: str
@@ -42,17 +60,41 @@ class Signature:
 
 @dataclass(frozen=True)
 class FloatLiteral:
-    """`ds.FloatLiteral(lo, hi)` — an ephemeral real constant declarable
-    inside a `.symbolic()` param's `primitives`; a `{"const": v}` AST node
-    is valid only within some declared literal's bounds (DECISIONS.md
-    D-83). `.chart` is a consumer-only convenience — core never draws from
-    it (no evaluator ships)."""
+    """A range of real constants admissible in a `.symbolic()` tree.
+
+    Declare one among a symbolic parameter's `primitives` to allow
+    `{"const": v}` nodes; a constant is valid only if it falls within some
+    declared literal's bounds.
+
+    Attributes
+    ----------
+    lo : float
+        Lowest admissible constant.
+    hi : float
+        Highest admissible constant.
+
+    Examples
+    --------
+    >>> lit = ds.FloatLiteral(-1.0, 1.0)
+    >>> lit.lo, lit.hi
+    (-1.0, 1.0)
+    """
 
     lo: float
     hi: float
 
     @property
     def chart(self) -> Chart:
+        """A chart over the literal's range, for a consumer that generates trees.
+
+        Offered for convenience only: the library ships no evaluator and
+        never draws constants itself.
+
+        Examples
+        --------
+        >>> ds.FloatLiteral(-1.0, 1.0).chart.from_unit(0.5)
+        0.0
+        """
         chart = build_chart("<literal>", "real", RealDomain(self.lo, self.hi), None, None)
         assert chart is not None
         return chart
@@ -60,15 +102,39 @@ class FloatLiteral:
 
 @dataclass(frozen=True)
 class IntLiteral:
-    """`ds.IntLiteral(lo, hi)` — likewise, for an integer constant (the
-    floor rule: `.chart` is an `IntegerChart`, matching `.integer()`'s own
-    grid semantics)."""
+    """A range of integer constants admissible in a `.symbolic()` tree.
+
+    The integer counterpart of `FloatLiteral`.
+
+    Attributes
+    ----------
+    lo : int
+        Lowest admissible constant, inclusive.
+    hi : int
+        Highest admissible constant, inclusive.
+
+    Examples
+    --------
+    >>> lit = ds.IntLiteral(0, 4)
+    >>> lit.lo, lit.hi
+    (0, 4)
+    """
 
     lo: int
     hi: int
 
     @property
     def chart(self) -> Chart:
+        """A chart over the literal's range, for a consumer that generates trees.
+
+        Offered for convenience only: the library ships no evaluator and
+        never draws constants itself.
+
+        Examples
+        --------
+        >>> ds.IntLiteral(0, 4).chart.from_unit(0.5)
+        2
+        """
         chart = build_chart("<literal>", "integer", IntegerDomain(self.lo, self.hi), None, None)
         assert chart is not None
         return chart
@@ -76,13 +142,31 @@ class IntLiteral:
 
 @dataclass(frozen=True)
 class Primitive:
-    """`ds.Primitive(name, arity, fn=None)` — a user-declared `.symbolic()`
-    operator. `arity` is an int (exact) or a `(lo, hi)` pair (`hi=None`
-    unbounded); a bare string primitive carries no arity at all — core
-    checks nothing about it beyond vocabulary membership (DECISIONS.md
-    D-89/D-90). `fn`, if given, is never called by core (no evaluator
-    ships); it rides the same raise/mark/drop opacity as any other
-    closed-set callable in the non-serializable set."""
+    """An operator declared for a `.symbolic()` parameter, with its arity.
+
+    Naming a primitive as a bare string is enough to admit it, but then
+    nothing checks how many arguments it is given. Declaring it this way
+    adds that check. `fn` is metadata for your own interpreter — the
+    library never calls it.
+
+    Attributes
+    ----------
+    name : str
+        The operator name, as it appears in a tree's `"op"` field.
+    arity : int | tuple[int, int | None]
+        An exact count, or a `(lo, hi)` range with `hi=None` for
+        unbounded.
+    fn : Any
+        An implementation, for a consumer's own evaluator. Never called by
+        the library, and not serializable.
+
+    Examples
+    --------
+    >>> ds.Primitive("add", 2).arity_range
+    (2, 2)
+    >>> ds.Primitive("sum", (1, None)).arity_range
+    (1, None)
+    """
 
     name: str
     arity: int | tuple[int, int | None]
@@ -90,6 +174,13 @@ class Primitive:
 
     @property
     def arity_range(self) -> tuple[int, int | None]:
+        """The arity as a `(lo, hi)` pair, whichever form it was declared in.
+
+        Examples
+        --------
+        >>> ds.Primitive("neg", 1).arity_range
+        (1, 1)
+        """
         if isinstance(self.arity, tuple):
             return self.arity
         return (self.arity, self.arity)

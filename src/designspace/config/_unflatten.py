@@ -51,12 +51,15 @@ as before this fix.
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from designspace.build._space import Space
 from designspace.expr import ArithExpr
 from designspace.ir import ChoiceDomain, ListDomain
 from designspace.paths import element_prefix, instance_prefix
+
+if TYPE_CHECKING:
+    import designspace as ds  # noqa: F401  (doctest namespace; see conftest.py)
 
 
 def _is_fully_static(domain: ListDomain) -> bool:
@@ -210,4 +213,31 @@ def _unflatten_list_element(
 
 
 def unflatten(flat: dict[str, Any], space: Space) -> dict[str, Any]:
+    """Rebuild a nested configuration from one keyed by path.
+
+    The inverse of `ds.flatten()`, and the way back from a solver's flat
+    view to the shape `.validate()` and `.sample_one()` speak.
+
+    Parameters
+    ----------
+    flat : dict[str, Any]
+        A configuration keyed by path.
+    space : Space
+        The space it belongs to, which supplies the structure to rebuild.
+
+    Returns
+    -------
+    dict[str, Any]
+        The configuration in nested form.
+
+    Examples
+    --------
+    >>> s = ds.space(
+    ...     ds.param("opt").choice(sgd=ds.space(ds.param("momentum").real(0, 1))),
+    ...     ds.param("lr").real(0, 1),
+    ... )
+    >>> flat = {"opt": "sgd", "opt.sgd.momentum": 0.5, "lr": 0.1}
+    >>> ds.unflatten(flat, s)
+    {'opt': {'sgd': {'momentum': 0.5}}, 'lr': 0.1}
+    """
     return _unflatten_level(flat, space, template_prefix="", concrete_prefix="")

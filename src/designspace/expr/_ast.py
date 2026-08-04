@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn
+
+if TYPE_CHECKING:
+    import designspace as ds  # noqa: F401  (doctest namespace; see conftest.py)
 
 # The dual-typed scalar universe `.prop()` and `ds.value()` may declare/return
 # (API.md, "Expressions": row 16's scalar restriction "applies identically" to
@@ -32,24 +35,96 @@ _CONTAINS_GUARD = (
 
 
 class Expr:
-    """Shared base of BoolExpr and ArithExpr AST nodes."""
+    """An expression: the shared base of conditions and arithmetic.
+
+    Expressions are trees, not values. Writing `ds.param("x") < 3` builds a
+    comparison node; nothing is evaluated until a configuration is supplied.
+    That is what lets the library analyse constraints — derive the
+    dependency graph, compute margins, narrow domains — rather than merely
+    run them.
+
+    Every node reports `.kind`, `.children`, and `.params`, so a consumer
+    can walk a constraint without knowing the node types.
+
+    Two Python operators are deliberately refused. `and`/`or`/`not` and
+    `in` coerce their operands to bools, which would silently collapse an
+    expression into `True`; using them raises `TypeError` pointing at `&`,
+    `|`, `~`, and `.is_in()`.
+    """
 
     @property
     def kind(self) -> str:
+        """A short string naming the node type.
+
+        Examples
+        --------
+        >>> ds.param("x").kind
+        'ref'
+        >>> (ds.param("x") < 3).kind
+        'lt'
+        """
         raise NotImplementedError
 
     @property
     def children(self) -> tuple[Expr, ...]:
+        """The node's operands, in order.
+
+        Together with `.kind` this is enough to walk or rebuild any
+        expression tree. A leaf has none.
+
+        Examples
+        --------
+        >>> [c.kind for c in (ds.param("x") < 3).children]
+        ['ref', 'literal']
+        """
         raise NotImplementedError
 
     @property
     def params(self) -> frozenset[str]:
+        """Every parameter path this expression references.
+
+        What the dependency graph is built from, and how a constraint
+        knows which parameters it belongs to.
+
+        Examples
+        --------
+        >>> sorted((ds.param("x") + ds.param("y") < 3).params)
+        ['x', 'y']
+        """
         result: frozenset[str] = frozenset()
         for child in self.children:
             result = result | child.params
         return result
 
     def is_active(self) -> BoolExpr:
+        """Whether the referenced parameter is active, as a condition.
+
+        Lets a constraint ask about presence rather than value — "if the
+        cache is switched on at all, then ...". Distinct from reading the
+        value, which would be unknown for an inactive parameter.
+
+        Returns
+        -------
+        BoolExpr
+            A condition, true when the parameter is present.
+
+        Examples
+        --------
+        >>> s = ds.space(
+        ...     ds.param("use_cache").bool(),
+        ...     ds.param("cache_mb").integer(64, 512).when(ds.param("use_cache")),
+        ...     ds.param("workers").integer(1, 8),
+        ... )
+        >>> s = s.require(
+        ...     ds.param("cache_mb").is_active().implies(ds.param("workers") <= 4)
+        ... )
+        >>> s.is_feasible({"use_cache": True, "cache_mb": 128, "workers": 2})
+        True
+        >>> s.is_feasible({"use_cache": True, "cache_mb": 128, "workers": 8})
+        False
+        >>> s.is_feasible({"use_cache": False, "workers": 8})
+        True
+        """
         return IsActive(self)
 
     def __bool__(self) -> NoReturn:
@@ -76,6 +151,43 @@ class BoolExpr(Expr):
         return Not(self)
 
     def implies(self, other: BoolExpr) -> BoolExpr:
+        """Material implication: if this holds, `other` must too.
+
+        The natural shape for a conditional rule — "if we are on GPU, the
+        batch must be at least 32" — and much clearer than the equivalent
+        `~a | b`, which it is exactly (down to the fingerprint).
+
+        Parameters
+        ----------
+        other : BoolExpr
+            The consequent.
+
+        Returns
+        -------
+        BoolExpr
+            A condition, false only when this holds and `other` does not.
+
+        Raises
+        ------
+        TypeError
+            If `other` is not a boolean expression.
+
+        Examples
+        --------
+        >>> s = ds.space(
+        ...     ds.param("gpu").bool(),
+        ...     ds.param("batch").integer(1, 64),
+        ... ).require(ds.param("gpu").implies(ds.param("batch") >= 32))
+        >>> s.is_feasible({"gpu": True, "batch": 64})
+        True
+        >>> s.is_feasible({"gpu": True, "batch": 8})
+        False
+
+        The rule says nothing when the antecedent is false:
+
+        >>> s.is_feasible({"gpu": False, "batch": 8})
+        True
+        """
         if not isinstance(other, BoolExpr):
             raise TypeError("implies() requires a BoolExpr operand")
         return Implies(self, other)
@@ -151,9 +263,80 @@ class ArithExpr(Expr):
     __hash__ = object.__hash__
 
     def is_in(self, *values: Any) -> BoolExpr:
+        """Whether the value is one of `values`.
+
+        The replacement for Python's `in`, which cannot be used on an
+        expression: `in` coerces its result to a bool and would collapse
+        the tree.
+
+        Parameters
+        ----------
+        *values : Any
+            The values to test membership against.
+
+        Returns
+        -------
+        BoolExpr
+            A condition.
+
+        Examples
+        --------
+        >>> s = ds.space(ds.param("algo").categorical("a", "b", "c"))
+        >>> s = s.require(ds.param("algo").is_in("a", "b"))
+        >>> s.is_feasible({"algo": "a"})
+        True
+        >>> s.is_feasible({"algo": "c"})
+        False
+        """
         return IsIn(self, tuple(values))
 
     def if_inactive(self, fallback: object) -> ArithExpr:
+        """Substitute `fallback` when this expression has no value.
+
+        An expression over an inactive parameter, or an aggregate over a
+        list that is switched off, evaluates to *unknown* — and a
+        constraint that cannot be decided is treated as inapplicable
+        rather than violated. That is usually right, but sometimes the
+        intended reading is "absent means zero". This says so.
+
+        It substitutes only for **inactivity**. An expression that is
+        unknown because a value has not been chosen yet stays unknown, and
+        an aggregate over an active but empty list keeps its own empty
+        value — the fallback would otherwise mask both.
+
+        Parameters
+        ----------
+        fallback : object
+            The value to use when the expression is inactive.
+
+        Returns
+        -------
+        ArithExpr
+            An expression that is never unknown for want of activity.
+
+        Examples
+        --------
+        Without a fallback the budget cannot be decided, so it does not
+        constrain anything:
+
+        >>> s = ds.space(
+        ...     ds.param("use_cache").bool(),
+        ...     ds.param("cache_mb").integer(64, 512).when(ds.param("use_cache")),
+        ...     ds.param("heap_mb").integer(64, 512),
+        ... )
+        >>> total = ds.param("cache_mb") + ds.param("heap_mb")
+        >>> loose = s.require(total <= 512)
+        >>> loose.is_feasible({"use_cache": False, "heap_mb": 512})
+        True
+
+        With one, an absent cache counts as zero and the rule applies:
+
+        >>> guarded = s.require(ds.param("cache_mb").if_inactive(0) + ds.param("heap_mb") <= 400)
+        >>> guarded.is_feasible({"use_cache": False, "heap_mb": 512})
+        False
+        >>> guarded.is_feasible({"use_cache": False, "heap_mb": 256})
+        True
+        """
         return IfInactive(self, _coerce_arith(fallback))
 
 
@@ -424,17 +607,33 @@ class Prop(ArithExpr, BoolExpr):
     "bare BoolExpr coerces via `bool(value)`" convention every param
     reference already gets (no `type_kind`/declared-type gate on bare
     boolean-position usage anywhere in the codebase; see row 16 for the
-    *declared + scalar* checks that do still apply uniformly here)."""
+    *declared + scalar* checks that do still apply uniformly here).
+
+    Exported because it is `.prop()`'s return type and no other public
+    type captures it: being both an `ArithExpr` and a `BoolExpr` is what
+    lets a bool-declared property serve as a bare condition, which neither
+    base alone expresses.
+
+    Attributes
+    ----------
+    operand : ArithExpr
+        The custom-typed parameter reference being read.
+    name : str
+        The property name, checked against the type's `properties()` at
+        resolution.
+    """
 
     operand: ArithExpr
     name: str
 
     @property
     def kind(self) -> str:
+        """The node kind, always `"prop"`."""
         return "prop"
 
     @property
     def children(self) -> tuple[Expr, ...]:
+        """The operands: just the custom-typed parameter being read."""
         return (self.operand,)
 
 
@@ -449,7 +648,23 @@ class Value(ArithExpr, BoolExpr):
     `dependency_graph`/ordering/cycle detection are unaffected. Dual-typed
     like `Prop`: a `returns=bool` node is usable directly as a condition,
     matching the same "bare BoolExpr coerces via `bool(value)`" convention.
-    `returns` is one of `SCALAR_TYPES` (row 30)."""
+    `returns` is one of `SCALAR_TYPES` (row 30).
+
+    Exported because it is `ds.value()`'s return type and no other public
+    type captures it: being both an `ArithExpr` and a `BoolExpr` is what
+    lets a `returns=bool` node serve as a bare condition, which neither
+    base alone expresses.
+
+    Attributes
+    ----------
+    fn : Callable[..., Any]
+        The consumer's function, called with the operands' values.
+        Opaque to the library, and not serializable.
+    operands : tuple[Expr, ...]
+        The expressions supplying `fn`'s arguments, in order.
+    returns : type
+        The declared scalar return type: `int`, `float`, `bool`, or `str`.
+    """
 
     fn: Callable[..., Any]
     operands: tuple[Expr, ...]
@@ -457,10 +672,12 @@ class Value(ArithExpr, BoolExpr):
 
     @property
     def kind(self) -> str:
+        """The node kind, always `"value"`."""
         return "value"
 
     @property
     def children(self) -> tuple[Expr, ...]:
+        """The operands, in the order `fn` receives their values."""
         return self.operands
 
 

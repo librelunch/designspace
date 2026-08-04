@@ -21,10 +21,13 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from designspace.build._space import Seed, Space
 from designspace.ir import Constraint, RepresentationCheck, RepresentationCheckFailure
+
+if TYPE_CHECKING:
+    import designspace as ds  # noqa: F401  (doctest namespace; see conftest.py)
 
 Config = dict[str, Any]
 
@@ -70,6 +73,41 @@ class Representation:
     so a solver asks it the same questions it would ask any space. Never
     enters the IR, `to_json`, or the fingerprint preimage — `target`
     serializes as an ordinary `Space` in its own right.
+
+    Attributes
+    ----------
+    source : Space
+        The phenotype space, the one you declared.
+    target : Space
+        The genotype space, the one a solver works in. An ordinary
+        `Space`, so all the usual introspection applies to it.
+    decode : Callable[[Config], Config]
+        Genotype configuration to phenotype configuration. Total: every
+        configuration valid for `target` decodes to one valid for
+        `source`.
+    encoded : tuple[str, ...]
+        Paths that an encoding actually re-expressed.
+    excluded_by_prop : tuple[str, ...]
+        Paths left alone because a `.repeat()` count or a `.prop()` reads
+        them.
+    opaque_conditions : tuple[str, ...]
+        Conditions carried across as opaque callables rather than
+        rewritten structurally.
+    opaque_constraints : tuple[Constraint, ...]
+        Constraints carried across the same way.
+    dropped_defaults : tuple[str, ...]
+        Phenotype defaults that `encode` could not carry over.
+    dropped_anchors : tuple[str, ...]
+        Anchor names likewise dropped. An anchor drops as a whole.
+    encode : Callable[[Config], Config] | None
+        Phenotype to genotype, when the morphism is invertible. Raises if
+        it is not.
+    measure_preserving : bool
+        Whether every applied encoding declared that it preserves the
+        declared measure. Never assumed — an encoding that says nothing
+        counts as `False`.
+    invertible : bool
+        Whether `encode` is usable. Derived from whether one was supplied.
     """
 
     source: Space
@@ -101,7 +139,47 @@ class Representation:
         `decode` composes right-to-left (`self.decode(other.decode(g))` —
         `other` first, since it is closer to the composed target); `encode`
         the reverse (`other.encode(self.encode(x))`), and only when both
-        sides are invertible."""
+        sides are invertible.
+
+        Parameters
+        ----------
+        other : Representation
+            A morphism whose source is this one's target.
+
+        Returns
+        -------
+        Representation
+            The composite, from `self.source` to `other.target`.
+
+        Raises
+        ------
+        TypeError
+            If `other.source` does not fingerprint-equal `self.target`.
+
+        Examples
+        --------
+        The identity of composition is a representation onto the same
+        space, so composing with one changes nothing observable:
+
+        >>> s = ds.space(ds.param("depth").integer(1, 8))
+        >>> rep = s.represent()
+        >>> identity = ds.Representation(
+        ...     source=rep.target, target=rep.target, decode=lambda g: g
+        ... )
+        >>> composed = rep.then(identity)
+        >>> composed.source.fingerprint() == s.fingerprint()
+        True
+        >>> composed.decode({"depth": 0.5}) == rep.decode({"depth": 0.5})
+        True
+
+        Composing morphisms that do not meet is refused:
+
+        >>> other = ds.space(ds.param("width").integer(1, 8))
+        >>> rep.then(other.represent())
+        Traceback (most recent call last):
+            ...
+        TypeError: then(): other.source does not fingerprint-equal self.target ...
+        """
         if other.source.fingerprint("full") != self.target.fingerprint("full"):
             raise TypeError(
                 "then(): other.source does not fingerprint-equal self.target "
@@ -155,6 +233,28 @@ class Representation:
 
         Failures dedupe by `(law, detail)`, accumulating a `count` rather
         than one row per draw.
+
+        Parameters
+        ----------
+        n : int
+            How many genotype draws to check.
+        seed : int | numpy.random.Generator | None
+            Seed or generator, for a reproducible check.
+
+        Returns
+        -------
+        RepresentationCheck
+            With `.ok` and the deduplicated `.failures`.
+
+        Examples
+        --------
+        >>> s = ds.space(
+        ...     ds.param("lr").real(1e-4, 1e-1).log_scale(),
+        ...     ds.param("depth").integer(1, 8),
+        ... )
+        >>> report = s.represent().check(n=50, seed=0)
+        >>> report.ok, report.failures
+        (True, ())
         """
         draws = self.target.sample_dicts(n, seed=seed)
         counts: dict[tuple[str, str], int] = {}

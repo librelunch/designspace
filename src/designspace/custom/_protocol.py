@@ -32,7 +32,10 @@ phenotype coincide: `sampler(rng)`'s return value is used directly.
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    import designspace as ds  # noqa: F401  (doctest namespace; see conftest.py)
 
 
 class ParamType(Protocol):
@@ -54,15 +57,133 @@ class ParamType(Protocol):
       -> Any` — present *together*, they enable `.prop()` in expressions
       (row 16 governs misuse: undeclared property, non-scalar property
       type, comparison type mismatch).
+
+    Examples
+    --------
+    A complete implementation. The five required members are enough to
+    declare, validate, and serialize; `sample` makes it generative, and
+    `properties`/`extract` let constraints read into the value.
+
+    >>> class IntervalType:
+    ...     type_key = "interval"
+    ...
+    ...     def validate(self, value):
+    ...         return value["lo"] < value["hi"]
+    ...
+    ...     def to_json(self, value):
+    ...         return value
+    ...
+    ...     def from_json(self, data):
+    ...         return data
+    ...
+    ...     def describe(self):
+    ...         return {"fields": ["lo", "hi"]}
+    ...
+    ...     def sample(self, rng):
+    ...         lo = float(rng.random())
+    ...         return {"lo": lo, "hi": lo + float(rng.random())}
+    ...
+    ...     def properties(self):
+    ...         return {"width": float}
+    ...
+    ...     def extract(self, value, prop):
+    ...         return value["hi"] - value["lo"]
+    >>> s = ds.space(ds.param("band").custom(IntervalType()))
+    >>> s.validate({"band": {"lo": 0.1, "hi": 0.4}}).valid
+    True
+    >>> s.validate({"band": {"lo": 0.9, "hi": 0.4}}).valid
+    False
+
+    Because it declares `properties`/`extract`, constraints can read into
+    the value:
+
+    >>> narrow = s.require(ds.param("band").prop("width") <= 0.5)
+    >>> narrow.is_feasible({"band": {"lo": 0.1, "hi": 0.4}})
+    True
+    >>> narrow.is_feasible({"band": {"lo": 0.1, "hi": 0.9}})
+    False
     """
 
     @property
-    def type_key(self) -> str: ...
+    def type_key(self) -> str:
+        """A stable name for this type.
 
-    def validate(self, value: Any) -> bool: ...
-    def to_json(self, value: Any) -> Any: ...
-    def from_json(self, data: Any) -> Any: ...
-    def describe(self) -> dict[str, Any]: ...
+        It identifies the type in a serialized document and is the key a
+        consumer's registry uses when rebuilding a space with
+        `Space.from_json(..., custom_types=...)`. Solver adapters key off
+        it too. Choose something durable — it is part of the wire format.
+        """
+        ...
+
+    def validate(self, value: Any) -> bool:
+        """Whether `value` is a legal value of this type.
+
+        Receives the type's **native** form. Called by `Space.validate()`
+        and by the sampler after a draw.
+
+        Parameters
+        ----------
+        value : Any
+            A candidate value, in native form.
+
+        Returns
+        -------
+        bool
+            Whether it is acceptable.
+        """
+        ...
+
+    def to_json(self, value: Any) -> Any:
+        """Convert a native value to its JSON-safe form.
+
+        This is the bridge between the type's internal representation and
+        the form that appears in configuration dicts, `.sample_one()`
+        results, hashes, and serialized documents — so it runs on every
+        value leaving the type, not only when writing JSON.
+
+        Parameters
+        ----------
+        value : Any
+            A value in native form.
+
+        Returns
+        -------
+        Any
+            A JSON-safe equivalent.
+        """
+        ...
+
+    def from_json(self, data: Any) -> Any:
+        """Convert a JSON-safe value back to native form.
+
+        The inverse of `to_json`, called before `validate` or `extract`
+        runs on a value that came from a configuration.
+
+        Parameters
+        ----------
+        data : Any
+            A value in JSON-safe form.
+
+        Returns
+        -------
+        Any
+            The native equivalent.
+        """
+        ...
+
+    def describe(self) -> dict[str, Any]:
+        """Describe the type itself, not any particular value.
+
+        What a consumer reads to learn the type's shape — bounds, item
+        counts, whatever a solver adapter or a documentation generator
+        would want. Serialized with the space, and must be JSON-safe.
+
+        Returns
+        -------
+        dict[str, Any]
+            A JSON-safe description of the type.
+        """
+        ...
 
 
 def is_generative(param_type: Any) -> bool:

@@ -15,9 +15,12 @@ capability they don't support.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from designspace.ir import ParamDef
+
+if TYPE_CHECKING:
+    import designspace as ds  # noqa: F401  (doctest namespace; see conftest.py)
 
 
 class Encoding(Protocol):
@@ -58,13 +61,96 @@ class Encoding(Protocol):
       absent means "not asserted", not "false" is not implied either way
       by silence — `_build.py` treats absence as `False` for the
       `Representation.measure_preserving` conjunction.
+
+    Examples
+    --------
+    An encoding re-expressing an integer parameter as a real coordinate,
+    so a continuous solver can propose values for it. `decode` rounds,
+    which is what makes it total: every real in range decodes to a legal
+    integer.
+
+    >>> import dataclasses
+    >>> class RoundedInteger:
+    ...     def target(self, param):
+    ...         return dataclasses.replace(
+    ...             param,
+    ...             type_kind="real",
+    ...             domain=ds.RealDomain(float(param.domain.lo), float(param.domain.hi)),
+    ...             default=None,
+    ...             chart=None,
+    ...         )
+    ...
+    ...     def decode(self, param, value):
+    ...         return int(round(value))
+    ...
+    ...     def encode(self, param, value):
+    ...         return float(value)
+
+    A rule decides which parameters it applies to:
+
+    >>> def rule(param):
+    ...     return RoundedInteger() if param.type_kind == "integer" else None
+    >>> s = ds.space(ds.param("depth").integer(1, 8))
+    >>> rep = s.represent(rule)
+    >>> rep.target.params["depth"].type_kind
+    'real'
+    >>> rep.decode({"depth": 4.4})
+    {'depth': 4}
+    >>> rep.check(n=50, seed=0).ok
+    True
     """
 
-    def target(self, param: ParamDef) -> ParamDef: ...
-    def decode(self, param: ParamDef, value: Any) -> Any: ...
+    def target(self, param: ParamDef) -> ParamDef:
+        """The genotype parameter replacing `param`.
+
+        Must keep `param`'s own path — a different path is a resolution
+        error — but may change everything else: kind, domain, prior.
+
+        Parameters
+        ----------
+        param : ParamDef
+            The phenotype parameter being re-expressed.
+
+        Returns
+        -------
+        ParamDef
+            The genotype parameter, at the same path.
+        """
+        ...
+
+    def decode(self, param: ParamDef, value: Any) -> Any:
+        """Turn a genotype value back into a phenotype value.
+
+        Must be **total** over the target's domain: every value a solver
+        can produce has to decode to something valid. Where the phenotype
+        carries an invariant the genotype cannot express, either repair it
+        here or choose a genotype that cannot represent a violation —
+        those are the two honest options, and failing on some inputs is
+        not one of them.
+
+        Parameters
+        ----------
+        param : ParamDef
+            The phenotype parameter being decoded to.
+        value : Any
+            A value from the target parameter's domain.
+
+        Returns
+        -------
+        Any
+            A valid phenotype value.
+        """
+        ...
 
 
 EncodingRule = Callable[["ParamDef"], "Encoding | None"]
+"""A rule assigning encodings to parameters.
+
+Called with each `ParamDef` in turn; return an `Encoding` to re-express
+that parameter, or `None` to decline and let the next rule — ultimately the
+induced chart encoding — handle it. Rules are tried in the order given to
+`Space.represent()`.
+"""
 
 
 def can_encode(encoding: Any) -> bool:

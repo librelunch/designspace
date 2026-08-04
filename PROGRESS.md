@@ -1,6 +1,6 @@
 # Progress
 
-Current milestone: **M13 (open)**
+Current milestone: **M13.5 (open)**
 
 | Milestone | Completed | Tests | DECISIONS entries |
 |---|---|---|---|
@@ -29,6 +29,7 @@ Current milestone: **M13 (open)**
 | M11 — Representation layer (`space.represent()`, `Representation`, `Encoding`, the induced chart representation) | 2026-07-31 | 1362 | D-79, D-80, D-81, D-82 |
 | M12 — Program types (`.symbolic()`, `.code()`) | 2026-08-01 | 1451 | D-83, D-84, D-85, D-86, D-87, D-88, D-89, D-90 |
 | M12.5 — Repo and CI hygiene (`py.typed`, Python floor 3.12, `ruff format` gate, CI matrix, typo sweep) | 2026-08-03 | 1451 | _none_ |
+| M13 — Public API documentation (NumPy-style docstrings + doctests over the exported surface; griffe-driven coverage/section gates; `__all__` closed over every type reachable from the public surface, 79 → 91) | 2026-08-04 | 2464 | _none_ |
 
 One row per completed milestone: date, total test count at completion, IDs of any DECISIONS entries created during it. Update the "Current milestone" line when a milestone's exit criteria pass.
 

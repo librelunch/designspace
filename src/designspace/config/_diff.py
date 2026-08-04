@@ -16,14 +16,52 @@ comparison `config_hash`/`fingerprint` use — DECISIONS.md D-35.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from designspace.build._space import Space
 from designspace.config._flatten import flatten
 from designspace.ir import ParamDiff
 
+if TYPE_CHECKING:
+    import designspace as ds  # noqa: F401  (doctest namespace; see conftest.py)
+
 
 def config_diff(a: dict[str, Any], b: dict[str, Any], space: Space) -> list[ParamDiff]:
+    """What changed between two configurations.
+
+    Compares by path, so a variant switch decomposes properly: the
+    discriminator shows the change, and the parameters that only existed
+    under the old variant show as having gone away (`new=None`).
+
+    Values are compared with plain `==`, and neither configuration is
+    validated — this is a reporting tool, usable on configurations that
+    are partial or no longer valid.
+
+    Parameters
+    ----------
+    a : dict[str, Any]
+        The earlier configuration.
+    b : dict[str, Any]
+        The later configuration.
+    space : Space
+        The space both belong to.
+
+    Returns
+    -------
+    list[ParamDiff]
+        One entry per differing path, each with `.param`, `.old`, `.new`.
+
+    Examples
+    --------
+    >>> s = ds.space(
+    ...     ds.param("opt").choice("adagrad", sgd=ds.space(ds.param("momentum").real(0, 1))),
+    ...     ds.param("lr").real(0, 1),
+    ... )
+    >>> a = {"opt": {"sgd": {"momentum": 0.5}}, "lr": 0.1}
+    >>> b = {"opt": "adagrad", "lr": 0.2}
+    >>> [(d.param, d.old, d.new) for d in ds.config_diff(a, b, s)]
+    [('opt', 'sgd', 'adagrad'), ('opt.sgd.momentum', 0.5, None), ('lr', 0.1, 0.2)]
+    """
     flat_a = flatten(a, space)
     flat_b = flatten(b, space)
     diffs: list[ParamDiff] = []

@@ -25,6 +25,34 @@ from designspace.ir._param import Constraint
 
 @dataclass(frozen=True)
 class ConstraintEval:
+    """One constraint evaluated against one configuration.
+
+    Read `violated` rather than `satisfied` unless you mean to handle
+    polarity yourself: a `forbid` names a bad state, so satisfying it is
+    the unhealthy outcome.
+
+    Attributes
+    ----------
+    constraint : Constraint
+        The constraint evaluated. For a per-element constraint inside a
+        `.repeat()`, the template rather than a per-instance copy.
+    instance_path : str | None
+        Which element this evaluation is for, when the constraint lives
+        inside a lift; `None` otherwise.
+    applicable : bool
+        Whether the constraint could be decided at all. `False` when a
+        parameter it reads is inactive, in which case it neither holds nor
+        fails — an inapplicable constraint is never violated.
+    satisfied : bool | None
+        Whether the stored predicate held. `None` when the outcome is
+        unknown, which is also when `applicable` is `False`.
+    margin : float | None
+        How far the configuration sits from the constraint boundary, signed
+        so that a positive value means the stored predicate holds. `None`
+        for a predicate with no numeric distance — a Boolean composition,
+        or an opaque `ds.value(..., returns=bool)`.
+    """
+
     constraint: Constraint
     instance_path: str | None
     applicable: bool
@@ -47,6 +75,23 @@ class ConstraintEval:
 
 @dataclass(frozen=True)
 class ParamError:
+    """One parameter's value rejected during validation.
+
+    About the value itself — wrong type, out of domain, present while
+    inactive, absent while active. A configuration whose parameters are all
+    individually fine may still be infeasible; that shows up in
+    `ValidationResult.constraint_evals`, not here.
+
+    Attributes
+    ----------
+    param : str
+        The offending parameter's path.
+    reason : str
+        A short machine-readable tag, such as `"out_of_bounds"`.
+    value : Any | None
+        The rejected value, or `None` when the problem is its absence.
+    """
+
     param: str
     reason: str
     value: Any | None
@@ -54,6 +99,23 @@ class ParamError:
 
 @dataclass(frozen=True)
 class ValidationResult:
+    """What `Space.validate()` found.
+
+    Separates the two things that can be wrong with a configuration:
+    whether each value is legal for its own parameter, and whether the
+    constraints hold across them.
+
+    Attributes
+    ----------
+    valid : bool
+        Whether the configuration is both well-formed and feasible.
+    param_errors : tuple[ParamError, ...]
+        Per-parameter problems. Empty for a well-formed configuration,
+        even one that is infeasible.
+    constraint_evals : tuple[ConstraintEval, ...]
+        Every constraint evaluated, soft ones included.
+    """
+
     valid: bool
     param_errors: tuple[ParamError, ...]
     constraint_evals: tuple[ConstraintEval, ...]
@@ -61,11 +123,21 @@ class ValidationResult:
 
 @dataclass(frozen=True)
 class PartialEval:
-    """`.evaluate_partial(config)` (API.md, "Space — Partial Configs").
+    """What `Space.evaluate_partial()` found: the state of a partial configuration.
 
-    `param_status` is keyed by definition *and* instance path (a lift's
-    instances only appear once its count is determined — see
-    `partial/_partial.py`).
+    Attributes
+    ----------
+    param_status : MappingProxyType[str, str]
+        Per parameter, one of `"set"`, `"active_unset"`, `"inactive"`, or
+        `"unknown"` when activity cannot be decided yet. Keyed by
+        definition path and, once a lift's count is known, by instance path
+        as well.
+    evaluable_constraints : tuple[ConstraintEval, ...]
+        Constraints that could already be decided from what is set.
+    pending_constraints : tuple[Constraint, ...]
+        Constraints still waiting on unset values.
+    n_remaining : int
+        How many active parameters are still unset.
     """
 
     param_status: MappingProxyType[str, str]
@@ -81,6 +153,23 @@ class PartialEval:
 
 @dataclass(frozen=True)
 class RealRemaining:
+    """What a real parameter may still take, given a partial configuration.
+
+    Attributes
+    ----------
+    lo : float
+        Lower bound of the remaining interval.
+    hi : float
+        Upper bound of the remaining interval.
+    lo_inclusive : bool
+        Whether `lo` itself is still allowed. A strict `<` constraint
+        leaves it excluded.
+    hi_inclusive : bool
+        Whether `hi` itself is still allowed.
+    grid : QuantizedSpec | None
+        The grid, if the parameter is quantized.
+    """
+
     lo: float
     hi: float
     lo_inclusive: bool
@@ -90,6 +179,18 @@ class RealRemaining:
 
 @dataclass(frozen=True)
 class IntegerRemaining:
+    """What an integer parameter may still take, given a partial configuration.
+
+    Attributes
+    ----------
+    lo : int
+        Lowest value still allowed, inclusive.
+    hi : int
+        Highest value still allowed, inclusive.
+    grid : QuantizedSpec | None
+        The grid, if the parameter is quantized.
+    """
+
     lo: int
     hi: int
     grid: QuantizedSpec | None
@@ -97,14 +198,35 @@ class IntegerRemaining:
 
 @dataclass(frozen=True)
 class ValueRemaining:
-    """bool, categorical, ordinal, choice — `values` are still-legal values
-    (choice: still-legal variant names)."""
+    """What a bool, categorical, ordinal, or choice parameter may still take.
+
+    Attributes
+    ----------
+    values : tuple[Any, ...]
+        The values still allowed — for a choice, the variant names.
+    """
 
     values: tuple[Any, ...]
 
 
 @dataclass(frozen=True)
 class SubsetRemaining:
+    """What a subset parameter may still select, given a partial configuration.
+
+    Attributes
+    ----------
+    forced_in : tuple[Any, ...]
+        Items that must be selected.
+    forced_out : tuple[Any, ...]
+        Items that must not be selected.
+    free : tuple[Any, ...]
+        Items still undecided.
+    min_size : int
+        Smallest selection still allowed.
+    max_size : int
+        Largest selection still allowed.
+    """
+
     forced_in: tuple[Any, ...]
     forced_out: tuple[Any, ...]
     free: tuple[Any, ...]
@@ -114,8 +236,16 @@ class SubsetRemaining:
 
 @dataclass(frozen=True)
 class PermutationRemaining:
-    """No per-item reduction under the guarantee (API.md, "IR") — always
-    echoes the declared items."""
+    """What a permutation parameter may still order.
+
+    Always echoes the declared items: narrowing a permutation would need
+    reasoning beyond the one-unset-operand guarantee, so none is attempted.
+
+    Attributes
+    ----------
+    items : tuple[Any, ...]
+        The declared items.
+    """
 
     items: tuple[Any, ...]
 
@@ -123,11 +253,27 @@ class PermutationRemaining:
 RemainingDomain = (
     RealRemaining | IntegerRemaining | ValueRemaining | SubsetRemaining | PermutationRemaining
 )
+"""What a parameter may still take, given a partial configuration.
+
+The return type of `Space.remaining_domain()`: one descriptor per kind of
+parameter. Narrowing is **sound but not complete** — a value it admits may
+still turn out infeasible, but a value it excludes is genuinely impossible.
+"""
 
 
 @dataclass(frozen=True)
 class ParamDiff:
-    """`ds.config_diff(a, b, space)` entry (API.md, "Config Utilities")."""
+    """One difference between two configurations, from `ds.config_diff()`.
+
+    Attributes
+    ----------
+    param : str
+        The path that differs.
+    old : Any | None
+        Its value in the first configuration, or `None` if absent there.
+    new : Any | None
+        Its value in the second, or `None` if absent there.
+    """
 
     param: str
     old: Any | None
@@ -136,19 +282,26 @@ class ParamDiff:
 
 @dataclass(frozen=True)
 class SubspaceInfo:
-    """One entry of `Space.subspaces` (API.md, "Space — Introspection":
-    "struct and variant subspaces by prefix"; DECISIONS.md D-43 — the shape
-    is not otherwise specified). A struct param (`.space(...)`) or a
-    choice's payload-bearing variant, each relocates its descendants under
-    a definition-path prefix (`ops/_introspect.py::subspaces` builds one
-    entry per relocation site, keyed by that same `prefix`).
+    """One nested region of a space, from `Space.subspaces`.
 
-    `condition` is the *folded* activation condition gating every member —
-    for a struct, its own `.when()` (if any); for a variant, that ANDed
-    with the discriminator equality (`choice_path == variant`) — the same
-    expression `resolve/_relocate.py::relocate_child` folds into each
-    descendant's own condition, reconstructed here as a single value
-    describing the subspace as a whole rather than repeated per member.
+    A struct, or a choice variant that carries parameters. Either way its
+    members live under a shared path prefix and share one activation
+    condition.
+
+    Attributes
+    ----------
+    prefix : str
+        The path prefix its members share, such as `"opt.sgd."`.
+    kind : str
+        `"struct"` or `"variant"`.
+    member_paths : tuple[str, ...]
+        The parameters inside it.
+    condition : BoolExpr | None
+        When the whole subspace is active, as one expression. For a
+        variant this includes the discriminator equality; `None` means
+        unconditionally active.
+    variant_name : str | None
+        The variant's name, for `kind == "variant"`; otherwise `None`.
     """
 
     prefix: str
@@ -171,6 +324,19 @@ class ConstraintReport:
     stays comparable to `acceptance_rate`. `satisfied` is conditioned on
     `applicable` (fraction of *applicable* draws satisfied), and is `0.0`
     by convention — never `NaN` — when `applicable == 0.0`.
+
+    Attributes
+    ----------
+    constraint : Constraint
+        The declared constraint this row reports on.
+    applicable : float
+        Fraction of draws in which the constraint could be decided at all.
+        A low value is the "rarely relevant" pathology: the constraint is
+        governing almost nothing.
+    satisfied : float
+        Fraction of *applicable* draws in which the stored predicate held.
+        Raw, so its healthy direction depends on the verb — read
+        `violation_rate` instead.
     """
 
     constraint: Constraint
@@ -209,7 +375,21 @@ class SamplingReport:
     drawn before rejection, so both Unknown-swallowing and funnel bias are
     visible. `activity` keys are exactly `set(space.params)`, including
     `"[]"`-templated definition paths from inside a lifted struct/choice,
-    folded per draw the same way as `constraints` (D-73)."""
+    folded per draw the same way as `constraints` (D-73).
+
+    Attributes
+    ----------
+    n : int
+        How many draws the report is based on.
+    acceptance_rate : float
+        Fraction of draws that would survive rejection. A low value means
+        sampling is working hard and the accepted configurations are a
+        heavily distorted slice of the measure you declared.
+    constraints : tuple[ConstraintReport, ...]
+        One row per declared constraint.
+    activity : MappingProxyType[str, float]
+        Per parameter, the fraction of draws in which it was active.
+    """
 
     n: int
     acceptance_rate: float
@@ -219,12 +399,21 @@ class SamplingReport:
 
 @dataclass(frozen=True)
 class RepresentationCheckFailure:
-    """One law violation `Representation.check()` recorded, deduped by
-    `(law, detail)` across the `n` sampled draws — a count of how many
-    draws exhibited it, not one row per draw. `check()` is a diagnostic
-    tool for a supplied morphism's author (API.md, "The Representation
-    Layer": "the suite as a tool, since a supplied morphism has no other
-    way to be shown sound"), not a per-draw audit trail."""
+    """One law `Representation.check()` found violated.
+
+    Deduplicated by law and detail across the sampled draws — a count of
+    how many draws exhibited the problem, not one row per draw.
+
+    Attributes
+    ----------
+    law : str
+        Short name of the violated law, such as `"decode_totality"` or
+        `"feasibility_agreement"`.
+    detail : str
+        A representative message naming the offending path or value.
+    count : int
+        How many of the sampled draws exhibited it.
+    """
 
     law: str  # short law name, e.g. "decode_totality" | "feasibility_agreement"
     detail: str  # a representative message naming the offending path/value
@@ -233,12 +422,17 @@ class RepresentationCheckFailure:
 
 @dataclass(frozen=True)
 class RepresentationCheck:
-    """`rep.check(n=200, seed=None)` (API.md, "The Representation Layer";
-    DECISIONS.md — `check()`'s report shape is an implementation choice the
-    spec leaves open). Never raises on a law violation: mirrors
-    `ValidationResult`/`SamplingReport`/`PartialEval` — a report, not an
-    exception, matching every other diagnostic surface this library
-    returns. `ok` is `True` iff `failures` is empty."""
+    """What `Representation.check()` found: a report, never an exception.
+
+    Attributes
+    ----------
+    n : int
+        How many draws the check was based on.
+    ok : bool
+        Whether every law held. `True` exactly when `failures` is empty.
+    failures : tuple[RepresentationCheckFailure, ...]
+        The violations found, one entry per distinct law and detail.
+    """
 
     n: int
     ok: bool

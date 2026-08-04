@@ -22,11 +22,14 @@ lift descendants) and a `concrete_prefix` used to write output keys
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from designspace.build._space import Space
 from designspace.ir import ChoiceDomain, ListDomain, ParamError
 from designspace.paths import element_prefix, instance_prefix
+
+if TYPE_CHECKING:
+    import designspace as ds  # noqa: F401  (doctest namespace; see conftest.py)
 
 
 def _split_choice_value(value: Any) -> tuple[str | None, dict[str, Any] | None, bool]:
@@ -191,6 +194,40 @@ def _flatten_list_element(
 
 
 def flatten(config: dict[str, Any], space: Space) -> dict[str, Any]:
+    """Turn a nested configuration into one keyed by path.
+
+    Configurations nest — a struct is a dict, a choice with a payload is a
+    single-key dict — while `Space.params` is flat. This bridges the two,
+    producing keys in the path grammar, which are also the DataFrame column
+    names. `ds.unflatten()` reverses it.
+
+    A choice contributes both its discriminator and its payload's
+    parameters, so no information is lost.
+
+    Parameters
+    ----------
+    config : dict[str, Any]
+        A configuration in nested form.
+    space : Space
+        The space it belongs to, which supplies the structure to walk.
+
+    Returns
+    -------
+    dict[str, Any]
+        The configuration keyed by path.
+
+    Examples
+    --------
+    >>> s = ds.space(
+    ...     ds.param("opt").choice(sgd=ds.space(ds.param("momentum").real(0, 1))),
+    ...     ds.param("lr").real(0, 1),
+    ... )
+    >>> config = {"opt": {"sgd": {"momentum": 0.5}}, "lr": 0.1}
+    >>> ds.flatten(config, s)
+    {'opt': 'sgd', 'opt.sgd.momentum': 0.5, 'lr': 0.1}
+    >>> ds.unflatten(ds.flatten(config, s), s) == config
+    True
+    """
     out: dict[str, Any] = {}
     _flatten_level(config, space, template_prefix="", concrete_prefix="", out=out, errors=None)
     return out

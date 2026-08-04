@@ -46,7 +46,7 @@ when M7 shipped. Every milestone after M7 works under this protocol:
 
 1. **One counter, two surfaces.** `to_json`'s version and the preimage's version are the same
    number. `from_json` raises on an unknown one.
-2. **Additive changes need no bump** during the pre-release span (M8–M13): a new `origin` value, a
+2. **Additive changes need no bump** during the pre-release span (M8–M13.5): a new `origin` value, a
    new expression node kind, a new entry in the non-serializable set — anything no shipped document
    or committed vector depends on. M7.5 (`require`) and M7.6 (`discourage`) set this precedent.
 3. **Add, never replace, known-answer vectors.** A milestone that touches the format adds vectors
@@ -275,7 +275,7 @@ name early; the views subclass `ParamExpr` directly until then (D-27).
 **Build order within milestone:** canonical config encoding → `config_hash` → `config_diff` (variant-switch decomposition, positional repeat alignment) → `to_json`/`from_json` + version + non-serializable set + drop manifest → `fingerprint` (type tags, RFC 8785 — implement JCS in-repo or vendored, do not add a dependency without a DECISIONS entry — scopes, mark sentinel) **last**.
 **Bound-origin preimage canonicalization (freeze-blocker from D-29(4)/M5).** The `fingerprint` step **must** canonicalize every bound-origin constraint (`origin == "bound"`) to its forbidden-state negation before hashing — a stored `x <= y` bound constraint enters the preimage as `x > y`, the shape a user `.forbid()` stores for the *same* feasibility. This is a provenance-specific canonical **encoding** (same category as "subsets sorted", "−0.0→0.0"), homed in the normalization pipeline, **not** algebraic expression rewriting. Rationale: M5 stores the *desired* predicate `x <= y` (for the `y − x` margin) and `eval/_constraint_eval.py::is_violated` keys feasibility off `origin`, which is excluded from the preimage; without this canonicalization a bound sugar and a user `.forbid(x <= y)` would have identical preimages but **opposite** feasible sets, breaking "equal fingerprints ⟹ identical valid-config sets". Also add the general guard: no preimage-excluded field (`origin`, `Constraint.params`, `dependency_graph`) may be feasibility-load-bearing.
 **Gate:** the full Identity law block from the spec: sugar-equivalence pairs (log_scale/prior, implies, variadic repeat/chain, expression bounds/expansion), order-sensitivity, scope-monotonicity, round-trip law, mark distinctness, type-tag distinctness, float edges — plus **known-answer digest vectors** committed under `tests/conformance/vectors/` for every corpus fixture. Whole corpus round-trips. **Plus the bound-origin polarity law (D-29(4)):** a bound-sugar space and its `.forbid(x > y)` manual expansion are fingerprint-equal **and** feasibility-equal; a bound-sugar space and `.forbid(x <= y)` are fingerprint-**distinct** and feasibility-distinct. (Cross-ref: M4.5's deferred note already requires `fingerprint`/`to_json` to call `check_fully_resolved`.)
-**Exit:** **freeze the wire format** (format-version integer `1`) — an internal checkpoint that anchors the freeze discipline (top of file) for every later milestone, **not** a public release. Public releases are deferred: the first is **v0.1 at M14**, and the format-version integer stays `1` across the whole pre-release span (M8–M13), which is exactly what the byte-identical KA-vector gates in M7.5/M8 enforce. Update `PROGRESS.md`.
+**Exit:** **freeze the wire format** (format-version integer `1`) — an internal checkpoint that anchors the freeze discipline (top of file) for every later milestone, **not** a public release. Public releases are deferred: the first is **v0.1 at M14**, and the format-version integer stays `1` across the whole pre-release span (M8–M13.5), which is exactly what the byte-identical KA-vector gates in M7.5/M8 enforce. Update `PROGRESS.md`.
 
 ### M7.5 — Post-freeze API additions
 Implements the four API changes folded into `API.md` on 2026-07-21 (the discussion
@@ -779,7 +779,7 @@ block. Sweep the `PLAN.md` typo (25 occurrences across `src/`/`tests/`, includin
 green on 3.12/3.13/3.14; the core-only CI job imports `designspace` and runs the non-frame suite;
 test count unchanged at 1451, since nothing behavioral changes. **Exit:** internal — no public tag.
 
-### M13 — Documentation
+### M13 — Public API documentation
 **Spec:** no new runtime surface. **User-facing docstring pass** across the public/exported
 surface — `Space`'s 48 members, `ds.*` functions, the public IR/result dataclasses, the builder
 view types, and the protocols — for library users (what it does, why, a runnable example),
@@ -789,41 +789,190 @@ spec-referencing maintainer docstrings (they document mechanism, not usage). Def
 deliberately: the public surface was not final until M12 (M12.5 touched only packaging/CI, no
 runtime surface), so writing user docstrings once against the finished API avoids rewriting them
 as M8–M12 reshaped it. `to_json_schema` is **not** part of this pass — the user chose to defer it
-past v0.1, to M15, alongside the optional extras (below): its two real uses (schema-based
+past v0.1, to M15, alongside the optional extras: its two real uses (schema-based
 validation/autocomplete for a JSON config file edited outside Python; constraining an LLM's
 structured output when it proposes a config) are both consumer integrations, useful but not
 required for a v0.1 built around the Python API itself, and its output is deliberately shape-only —
 it cannot express `.forbid()`/`.when()`/cross-param constraints, so it was never going to replace
 `space.validate()` even at v0.1.
 
-**Enforced, not aspirational:** `pytest --doctest-modules` for the docstring examples, plus a
-docstring-coverage lint (ruff `D` rules or `interrogate`) scoped to `__init__`'s exports, both
-folded into the existing `pytest` gate. Decide at this milestone's open whether the `D` selection
-scopes to the public surface only (ruff currently reports 264 `D205` / 142 `D209` repo-wide if
-applied unscoped) or reflows all 85 module docstrings — recommend scoping to the public surface,
-since private docstrings already meet this repo's own bar for their audience.
+**Split from the documentation site (user-directed, 2026-08-04).** This entry originally carried
+both the docstring pass and the Sphinx site. The site is now **M13.5**, so the docstring pass
+stands as a self-contained deliverable that M14 can build on even if the site slips.
 
-**Documentation site (Sphinx + PyData theme).** Build a rendered docs site under `docs/` with
-**Sphinx** and **`pydata-sphinx-theme`**, shipped as a `designspace[docs]` extra (dev/docs-only —
-**never core**; core stays `numpy`/`rfc8785`). Extensions: `autodoc` + `autosummary` for an API
-reference generated from this milestone's docstrings; `napoleon` (NumPy/Google-style docstrings);
-`myst-parser` so guide pages are authored in Markdown, consistent with this repo's `.md` sources;
-`sphinx-copybutton`; `intersphinx` (python/numpy/polars); doctest enforcement folded into the
-**existing `pytest` gate** — `pytest --doctest-modules` for the docstring examples plus
-`pytest --doctest-glob='*.md'` for guide pages authored as plain `>>>` blocks — one runner, one
-gate. (Only if the guide pages adopt Sphinx `.. testcode::`/`.. doctest::` directives for richer
-setup/skip control does a directive-aware runner become necessary: the MyST-aware native
-`sphinx.ext.doctest` builder as a separate docs job, or `pytest-sphinx` — verify MyST-fence support
-before relying on it, since `pytest-sphinx` targets rST directive syntax.) Guide pages: tier
-guidance for structured values, mechanism-choosing, rejection hostility, defaults-vs-anchors,
-solver-integration walkthrough — source material is the spec's Solver Integration section. They
-live under `docs/` as MyST documents; **`API.md` stays the normative spec** — a separate maintainer
-artifact, not a user-docs page. Hosting (Read the Docs vs. GitHub Pages) is deferred; the
-buildable, doctest-clean site is the deliverable.
+**Format: NumPy-style sections** (Parameters / Returns / Raises / Examples) on the public surface,
+user-chosen. The repo has no prior convention — plain reflowed prose, zero section markers
+anywhere — so this is additive, and private modules keep their existing prose untouched.
+**Examples on every callable a user invokes** (the module-level functions, `Space`'s members, the
+builder view methods; ~90–100 doctests). The IR/result dataclasses get prose but no example: theirs
+would only echo a repr, and `repr(Space)` is a multi-line `mappingproxy` blob, unusable and brittle
+as expected output.
 
-**Gate:** `pytest --doctest-modules src/` green; the docstring-coverage lint green over the scoped
-surface; `cd docs && make html` clean; every `>>>` block in the guide pages executes. **Exit:**
-internal — no public tag.
+**Enforced, not aspirational**, all folded into the existing `pytest` gate (`testpaths`/`addopts`,
+so CLAUDE.md's four commit-gate commands are unchanged in number and wording):
+1. **Coverage** — `tests/test_docs.py`, griffe-driven, over `ds.__all__` and every public member
+   of every exported class.
+2. **NumPy-section validity** — same file: griffe's `numpy` parser under a captured `griffe`
+   logger, asserting zero WARNING records, plus the converse check griffe omits (every signature
+   parameter appears in the `Parameters` section).
+3. **Executable examples** — `--doctest-modules`, so every `>>>` block is a test.
+
+**Correction to this entry's own prior recommendation (measured 2026-08-04): ruff `D` cannot
+enforce coverage in this repo, and `interrogate` scopes badly.** `ruff check --select D1 src/`
+reports **0** findings — every implementation module is `_private`, and ruff treats members of
+private modules as non-public, so `D100`–`D107` never fire (confirmed by a controlled test: an
+identical file named `pub.py` yields `D101`/`D102`, named `_priv.py` yields nothing). Ruff `D`
+can only police the style of docstrings that already exist (493 findings today: 280 `D205`,
+148 `D209`, 49 `D401`, plus `D400`/`D403`), which would force churn across 85 spec-facing private
+docstrings this milestone otherwise never touches — the outcome the prior recommendation wanted
+to avoid. `interrogate` works per *file*, so it cannot separate a public `Space.sample` from a
+private helper living in the same `_space.py`. **`griffe` (dev group only, never core)** is the
+only candidate that computes publicity from `__all__`, which is exactly the stated scoping; it
+also cross-checks documented parameters against the real signature, the failure mode NumPy
+sections invite. Ruff `D` is therefore **not** enabled. Recorded here rather than in
+`DECISIONS.md`: this is a plan correction, not an `API.md` gap.
+
+*Also measured:* a runtime `__doc__` coverage check would silently under-report, because
+`@dataclass` synthesizes a `__doc__` from the signature — `ds.Space.__doc__` is a truthy
+`"Space(params: ...)"` string though `Space` has no class docstring. Griffe reads source
+statically and reports it correctly; the export gap is **38 of 79**, not the 22 a runtime scan
+finds.
+
+**Doctest determinism conventions** (forced by what the API returns): prefer discrete output
+(`sample_one(seed=0)` on an integer/categorical param is exactly reproducible — numpy's PCG64
+stream is stable — while a `log_scale` real's last ULP can move across platforms); never show a
+bare digest from `fingerprint()`/`config_hash()`, show structure or use `+ELLIPSIS`; `ds` and `np`
+are injected via a root `conftest.py`'s `doctest_namespace` rather than re-imported in 116
+examples — paired with a `TYPE_CHECKING`-guarded `import designspace as ds` in each of the 18
+modules that carry examples, since injection is invisible to a static analyser and an IDE would
+otherwise report every `ds` as unresolved (verified against PyCharm's own inspections: 13
+warnings in `build/_functions.py` before, zero after). The guard never executes, so it changes no
+behaviour; it costs one `# noqa: F401` per module, the narrowest available suppression, and
+`mypy --strict` confirms the apparent self-import creates no cycle even from `ir/_chart.py`, a
+leaf the package imports first. **One deliberate `+SKIP`:** `Space.sample()` returns a `pl.DataFrame` and the
+`core-only` CI job installs without polars, so its example is skipped and the runnable coverage
+lives on `sample_dicts`/`sample_one` (`tests/conformance/test_dataframe.py` already tests the
+DataFrame path for real). The alternative — `--ignore`-ing `build/_space.py` in that job — would
+drop 40+ real doctests.
+
+That same root `conftest.py` must carry `collect_ignore` for
+`tests/typing/_row2_and_wrong_type_modifier.py`: it is a `mypy --strict` fixture that raises
+`ResolutionError` at import by design, so `--doctest-modules` over `tests/` aborts the entire
+collection without it.
+
+**Gate:** the four commit gates green, with `pytest -q` now additionally proving every `>>>` block
+executes and both griffe gates pass; each gate demonstrated to *bite* (delete a docstring → named
+failure; rename a parameter without updating its `Parameters` block → griffe's "does not appear in
+the function signature"; alter one character of expected output → doctest failure); the `core-only`
+no-polars job stays green. No runtime, public-API, wire-format, or fingerprint change — every
+known-answer vector byte-identical. **Exit:** internal — no public tag.
+
+**Export closure (user-directed, resolved within the milestone).** What began as a flag — five
+result types returned by public `Space` methods but absent from `__all__` — was settled by
+computing the actual closure rather than working from the five that happened to be noticed: walk
+every public callable's return and parameter annotations and every public attribute type,
+transitively, and collect what is reachable but unexported. That found **thirteen**, and the
+twelve exported bring `__all__` from 79 to 91.
+
+Ten needed no judgment: `API.md`'s own IR block *declares* `Constraint`, `Condition`,
+`ConstraintEval`, `ValidationResult`, `ParamError`, `ConstraintReport`, and `SamplingReport`
+beside `ParamDef`/`PartialEval`/`ParamDiff`/`SubspaceInfo`, which were already exported, and
+declares `class Prior(Protocol)` beside the already-exported `ParamType`/`Encoding`. `Weights`
+and `PriorSpec` complete `ParamDef.prior`'s declared type alongside the exported
+`Log`/`Logit`/`Power`. So this is not a surface *expansion* — it is the export list catching up
+with what the spec already declares, which is the "exports exactly the spec surface" rule
+working as intended rather than being bent.
+
+Three were a genuine call, put to the user: `Count`, `Prop`, and `Value` are 3 of the 30 AST node
+classes in `expr/_ast.py`, of which only the three bases were public, and `API.md` names none of
+them. Resolved by splitting on whether an exported type can stand in. `Count` subclasses
+`ArithExpr` alone and `API.md` already states `ds.count()`'s result *is* an `ArithExpr`, so its
+annotation was **widened** to that and nothing exported. `Prop` and `Value` subclass **both**
+`ArithExpr` and `BoolExpr`, and that duality is load-bearing, not incidental: it is what makes
+`require(ds.value(f, x, returns=bool))` type-check, verified under `mypy --strict` before
+deciding. No exported type expresses "both", so widening would have broken a spec'd use (the
+tier table's "black" row) and export was the only option. Public AST classes: 3 of 30 → 5 of 30.
+
+`_ElementSnapshot` is the one reachable type deliberately left private — underscore-named builder
+state behind `ParamExpr.lift`, which this milestone's own `ParamExpr` docstring already directs
+readers away from in favour of `ParamDef`. Re-running the closure scan after the change reports
+it as the only remaining item, which is the check that the set is now complete rather than merely
+larger.
+
+Exporting put all twelve under this milestone's own gates, which is where the docstring work for
+them came from — the gate demanded `Attributes` sections for eight types and a worked
+implementation example for the `Prior` protocol, none of which existed. 2464 total.
+
+**As-built.** Five laws, not four: griffe reports a `Protocol`'s members as ordinary methods, and a
+`...` body has nothing to demonstrate, so protocol *members* are exempt from the example law and the
+obligation moves to the protocol *class*, where an author can read a whole worked implementation at
+once (`ParamType`, `Encoding`, `Chart` each carry one). Without that fifth law the exemption would
+have silently dropped exactly the examples that matter most. Attribute coverage is by NumPy
+`Attributes` section rather than one docstring per field, which is the idiomatic spelling and what
+autodoc renders; `ClassVar` discriminators are exempt (the view types' `type_kind` — API.md already
+says the views carry no state and never reach the IR), instance attributes are not.
+
+**One silent gate hole found and closed, which is the reason the milestone earns its keep:** pytest's
+default `norecursedirs` contains `build`, so `testpaths = ["tests", "src"]` collected **zero** of the
+83 doctests under `src/designspace/build/` — the package holding `ds.param`, `ds.space`, and every
+`Space` method. `pytest -q` reported green the whole time. `norecursedirs` is now restated in
+`pyproject.toml` without `build` (`dist` stays excluded, and `testpaths` already confines collection).
+Anything adding a directory under `src/` should re-check that list.
+
+Final counts: 116 doctests, 466 parametrized gate tests, 2400 total (1818 at M12.5). Every
+known-answer vector byte-identical; no runtime, public-API, wire-format, or fingerprint change.
+Each gate was demonstrated to bite before closing out — a deleted docstring, a renamed parameter
+whose `Parameters` block was left stale (caught from *both* directions: griffe's "does not appear in
+the function signature" and this milestone's own converse check), and a one-character change to an
+expected output each produced a named failure. The `core-only` no-polars job passes with all
+doctests running, confirming the single `+SKIP` on `Space.sample` is placed correctly.
+
+### M13.5 — Documentation site (Sphinx + PyData theme)
+Split out of M13 (user-directed, 2026-08-04) so the docstring pass could land on its own.
+Consumes M13's docstrings; adds no runtime surface.
+
+**Build:** a rendered docs site under `docs/` with **Sphinx** and **`pydata-sphinx-theme`**,
+shipped as a `designspace[docs]` extra (dev/docs-only — **never core**; core stays
+`numpy`/`rfc8785`). Extensions: `autodoc` + `autosummary` for an API reference generated from
+M13's docstrings; `napoleon` (M13 chose NumPy style); `myst-parser` so guide pages are authored
+in Markdown, consistent with this repo's `.md` sources; `sphinx-copybutton`; `intersphinx`
+(python/numpy/polars). Doctest enforcement stays folded into the **existing `pytest` gate** —
+M13 already wired `--doctest-modules`; this milestone adds `--doctest-glob='*.md'` for guide
+pages authored as plain `>>>` blocks, one runner, one gate. (Only if the guide pages adopt Sphinx
+`.. testcode::`/`.. doctest::` directives for richer setup/skip control does a directive-aware
+runner become necessary: the MyST-aware native `sphinx.ext.doctest` builder as a separate docs
+job, or `pytest-sphinx` — verify MyST-fence support before relying on it, since `pytest-sphinx`
+targets rST directive syntax.) `.gitignore` gains `docs/_build/` and any autosummary stub
+directory — today's `/build/` entry is root-anchored and would not cover them.
+
+**Guide pages:** tier guidance for structured values, mechanism-choosing, rejection hostility,
+defaults-vs-anchors, solver-integration walkthrough — source material is the spec's Solver
+Integration section (`API.md` 1261–1290), which alone covers four of the five. Consider a sixth
+on sampling diagnostics: `API.md`'s own §Sampling diagnostics is already written as guidance
+prose (the two pathologies, why the unconditioned measure is the point). Note that three of these
+draw on passages that are *unheaded paragraphs* inside larger spec sections — the white/grey/black
+predicate tiers (383–391), rejection hostility (483), defaults-vs-anchors (511) — so the pages
+must lift them out rather than map 1:1 onto headings; and that "tier" means three different things
+in the spec (predicate tiers, structured-value tiers 1/2/3, representation derived/supplied),
+which the pages must disambiguate. `examples/README.md`'s existing `API.md`-section → example
+index is the navigation skeleton; `examples/01`–`10` each already carry a `Concepts introduced
+here` block naming the surface they demonstrate.
+
+Pages live under `docs/` as MyST documents; **`API.md` stays the normative spec** — a separate
+maintainer artifact, not a user-docs page (its 25 fenced python blocks are signature listings,
+not transcripts, and will not run as doctests). Hosting (Read the Docs vs. GitHub Pages) is
+deferred; the buildable, doctest-clean site is the deliverable.
+
+**Open at this milestone's open:** whether to stay on Sphinx or move to mkdocs + mkdocstrings.
+M13 adds `griffe` — mkdocstrings' own engine — as a dev dependency, which changes the calculus
+this entry's Sphinx choice was originally made under: mkdocstrings would handle `__all__`-based
+publicity natively and take Markdown without a MyST bridge. Sphinx remains the default (it is
+already specified, and `pydata-sphinx-theme` matches the scientific-Python neighborhood the
+library targets); raise the question, do not assume it.
+
+**Gate:** `cd docs && make html` clean with no warnings; every `>>>` block in the guide pages
+executes under the existing `pytest` gate; the API reference resolves every name in `__all__`.
+**Exit:** internal — no public tag.
 
 ### M14 — v0.1 release
 **Spec:** no new runtime surface — release packaging only. `pyproject.toml` gains `version =
@@ -834,8 +983,8 @@ Real `README.md` (install, a short quickstart, feature summary, links to the doc
 **Gate:** `uv build` emits a wheel containing `py.typed`; a clean-venv install of that wheel
 imports `designspace` and type-checks correctly from a consumer's perspective (proving `py.typed`
 took effect, not just that it's present in the archive). **Exit — first public release.** With the
-full feature set (M0–M12), user docs (M13), and release packaging all in place, tag **v0.1**. The
-wire format — frozen since M7 and vector-tested byte-identical through M8–M13 — ships as
+full feature set (M0–M12), user docs (M13/M13.5), and release packaging all in place, tag **v0.1**. The
+wire format — frozen since M7 and vector-tested byte-identical through M8–M13.5 — ships as
 format-version `1`, unchanged. `to_json_schema` ships **without** v0.1 — deferred to M15 at the
 user's direction (see M13 above) — so `API.md`'s Staging section, revised when M15 opens, is what
 governs it until then. This is the first artifact intended for public consumption; everything

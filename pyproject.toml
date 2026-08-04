@@ -19,6 +19,10 @@ dev = [
     "mypy>=1.10",
     "ruff>=0.5",
     "polars>=1.0",
+    # Drives the docstring gates in tests/test_docs.py. It is the only tool that
+    # computes publicity from `__all__`, which is the scoping M13 requires: ruff's
+    # D1xx rules never fire here because every implementation module is private.
+    "griffe>=2.0",
 ]
 
 [build-system]
@@ -40,4 +44,14 @@ strict = true
 python_version = "3.12"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+# `src` is a testpath because every `>>>` example in a docstring is a test
+# (M13). Keeping `--doctest-modules` in addopts rather than in a separate
+# command is what lets CLAUDE.md's four commit gates stay four commands.
+testpaths = ["tests", "src"]
+addopts = "--doctest-modules"
+doctest_optionflags = ["ELLIPSIS", "NORMALIZE_WHITESPACE"]
+# pytest's default norecursedirs contains "build", which would silently skip
+# every doctest in src/designspace/build/ — the package holding `ds.param`,
+# `ds.space`, and `Space`. Restated without it. `dist` stays excluded, and
+# testpaths already confines collection to tests/ and src/.
+norecursedirs = ["*.egg", ".*", "_darcs", "CVS", "dist", "node_modules", "venv", "{arch}"]
