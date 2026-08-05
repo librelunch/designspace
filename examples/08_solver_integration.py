@@ -1,41 +1,39 @@
-"""Example 8 — Pump Configurator: handing a space to a consumer.
+"""Pump configurator: handing a space to a consumer.
 
-The first seven examples build and inspect spaces. This one is about what a
+The first seven examples build and inspect spaces. This one covers what a
 *consumer* does with one: a solver walking a config together one field at a
 time, a positional vector in and out, and rebuilding a space from its own
-resolved IR. Domain: a pump configurator with a bound-origin coupling
-(impeller diameter tracks the flow rate that was actually assigned).
+resolved IR. The domain is a pump configurator with a bound-origin coupling,
+where impeller diameter tracks the flow rate that was actually assigned.
 
-Concepts introduced here
--------------------------
-- The **full partial-config surface**: ``evaluate_partial`` (``param_status``,
-  ``evaluable_constraints``, ``pending_constraints``, ``n_remaining``),
-  ``param_activity``'s three values, ``remaining_domain``'s five descriptor
-  kinds (``RealRemaining`` / ``IntegerRemaining`` / ``ValueRemaining`` /
-  ``SubsetRemaining`` / ``PermutationRemaining``), the ``next_assignable``
-  -> ``missing_params`` -> ``is_complete`` driver loop, and
+Concepts introduced
+-------------------
+- The **full partial-config surface**: ``evaluate_partial`` with
+  ``param_status``, ``evaluable_constraints``, ``pending_constraints`` and
+  ``n_remaining``; ``param_activity``'s three values; ``remaining_domain``'s
+  five descriptor kinds (``RealRemaining``, ``IntegerRemaining``,
+  ``ValueRemaining``, ``SubsetRemaining``, ``PermutationRemaining``); the
+  ``next_assignable`` to ``missing_params`` to ``is_complete`` driver loop; and
   ``validate_param(path, value, context=...)``.
-- **``coordinate_paths()``** (M10.7): pack a config into a positional vector
-  and back via ``flatten``/``unflatten`` on a fixed-layout space, then a
-  caught ``ds.ResolutionError`` (row 33) on a conditional space — deriving
-  "which flat keys are coordinates, not lift-length bookkeeping" by hand
-  fails *silently* (a config that still validates and differs), which is
-  exactly what this method exists to avoid.
-- **Metaprogramming**: ``ds.param_from_def(pd)`` round-tripping a
-  ``ParamDef`` back to a builder expression, walking a constraint's own
-  expression tree via the ``.kind``/``.children``/``.params`` triple every
-  ``BoolExpr``/``ArithExpr`` exposes, ``ds.space_from_ir(...)``
-  reconstructing a fingerprint-equal space, and a registry-driven
-  generation loop using ``ds.all_(*prereqs)`` (including its zero-operand
-  identity) — the ``compiler_pipeline`` corpus pattern.
-- ``.custom(sampler, validator)``, the callback shorthand: generative but
-  not serializable — a ``ds.SerializationError`` from ``to_json()``, and
-  ``fingerprint(on_unserializable="mark")`` succeeding where the default
+- **``coordinate_paths()``**, which packs a config into a positional vector and
+  back via ``flatten`` and ``unflatten`` on a fixed-layout space, followed by a
+  caught ``ds.ResolutionError`` (row 33) on a conditional space. Deriving which
+  flat keys are coordinates, as opposed to lift-length bookkeeping, by hand
+  fails *silently*, producing a config that still validates and differs. That
+  silent failure is what this method exists to avoid.
+- **Metaprogramming**: ``ds.param_from_def(pd)`` round-tripping a ``ParamDef``
+  back to a builder expression; walking a constraint's own expression tree via
+  the ``.kind``/``.children``/``.params`` triple every ``BoolExpr`` and
+  ``ArithExpr`` exposes; ``ds.space_from_ir(...)`` reconstructing a
+  fingerprint-equal space; and a registry-driven generation loop using
+  ``ds.all_(*prereqs)``, including its zero-operand identity. This is the
+  ``compiler_pipeline`` corpus pattern.
+- ``.custom(sampler, validator)``, the callback shorthand. It is generative but
+  not serializable, giving a ``ds.SerializationError`` from ``to_json()`` and a
+  ``fingerprint(on_unserializable="mark")`` that succeeds where the default
   raises.
 
-Run it:  ``uv run python examples/08_solver_integration.py``
-
-See ``examples/README.md`` for the full feature -> example index.
+Run with ``uv run python examples/08_solver_integration.py``.
 """
 
 from __future__ import annotations
@@ -52,9 +50,11 @@ STAGE_ORDER = ("intake", "boost", "discharge")
 
 @dataclass(frozen=True)
 class _KernelBandwidth:
-    """A minimal non-serializable payload for the `.custom(sampler,
-    validator)` shorthand demo -- there is no `describe()`/`type_key` here
-    on purpose, since the shorthand carries no structural encoding at all.
+    """A minimal non-serializable payload for the ``.custom(sampler,
+    validator)`` shorthand.
+
+    It deliberately declares no ``describe()`` and no ``type_key``, because the
+    shorthand carries no structural encoding at all.
     """
 
     value: float = 0.0
@@ -72,35 +72,35 @@ def build_space() -> ds.Space:
             ds.param("seal_type").categorical("mechanical", "packing", "magnetic"),
             ds.param("certifications").subset(CERTIFICATIONS, min_size=0, max_size=3),
             ds.param("stage_order").permutation(STAGE_ORDER),
-            # A literal, unconditional lift -- keeps this a *fixed-layout*
-            # space (every count static, no param carries a condition).
+            # A literal, unconditional lift. It keeps this a *fixed-layout*
+            # space: every count is static and no parameter carries a condition.
             ds.param("vibration_profile").real(0.0, 1.0).repeat(4),
         )
-        # Packing seals are discontinued -- a single unset-bare-operand
+        # Packing seals are discontinued. This is a single unset-bare-operand
         # exclusion, fully reducible by `remaining_domain`.
         .forbid(
             ds.param("seal_type") == "packing",
         )
-        # Magnetic seals aren't ATEX-rated -- a *compound* coupling across
-        # two params, deliberately left unreduced: `remaining_domain` is
-        # sound (never excludes a still-feasible value) but not complete,
-        # and a conjunction of two bare-operand comparisons isn't the
-        # single-unset-operand shape it reduces.
+        # Magnetic seals are not ATEX-rated. This is a *compound* coupling
+        # across two parameters, deliberately left unreduced: `remaining_domain`
+        # is sound, meaning it never excludes a still-feasible value, but it is
+        # not complete, and a conjunction of two bare-operand comparisons is not
+        # the single-unset-operand shape it reduces.
         .forbid(
             (ds.param("seal_type") == "magnetic") & ds.param("certifications").contains("ATEX"),
         )
     )
 
 
-def main() -> None:
-    space = build_space()
-    print(f"Pump Configurator space: {space.n_params} parameters\n")
+def show_summary(space: ds.Space) -> None:
+    print(f"Pump configurator space: {space.n_params} parameters\n")
 
+
+def show_coordinate_paths(space: ds.Space) -> None:
+    print("--- coordinate_paths() ---")
     config = space.sample_one(seed=0)
     flat = flatten(config, space)
 
-    # -- coordinate_paths() -------------------------------------------------------
-    print("--- coordinate_paths() ---")
     paths = space.coordinate_paths()
     print(f"  {len(paths)} coordinates: {paths}")
     vector = [flat[p] for p in paths]
@@ -108,11 +108,10 @@ def main() -> None:
     print(f"  positional vector -> unflatten round-trips to the same config: {restored == config}")
 
     print(
-        "\n  A hand-rolled filter fails silently -- it can't tell 'x' (a "
-        "coordinate) from 'x' being a count-bookkeeping entry without "
-        "walking the ListDomain chain, which is exactly what this method "
-        "does for you. And it is only defined when the layout doesn't "
-        "depend on the config:"
+        "\n  A hand-rolled filter fails silently. It cannot tell a coordinate "
+        "'x' from an 'x' that is count-bookkeeping without walking the "
+        "ListDomain chain, which is what this method does. It is defined only "
+        "where the layout does not depend on the config:"
     )
     conditional_space = ds.space(
         ds.param("flag").bool(),
@@ -123,8 +122,12 @@ def main() -> None:
     except ds.ResolutionError as e:
         print(f"  ResolutionError: {e}")
 
-    # -- The partial-config surface --------------------------------------------
+
+def show_partial_configs(space: ds.Space) -> None:
     print("\n--- Partial configs ---")
+    config = space.sample_one(seed=0)
+    flat = flatten(config, space)
+
     partial: dict[str, Any] = {}
     print(f"  param_activity({{}}): {space.param_activity(partial)}")
     pe = space.evaluate_partial(partial)
@@ -145,20 +148,20 @@ def main() -> None:
     print(
         f"    certifications | seal_type=magnetic   -> "
         f"{space.remaining_domain('certifications', {'seal_type': 'magnetic'})}"
-        "   (unreduced -- the compound coupling above, sound not complete)"
+        "   (unreduced: the compound coupling above, sound but not complete)"
     )
     print(
         f"    stage_order                           -> {space.remaining_domain('stage_order', {})}"
     )
 
     print(
-        "\n  validate_param(..., context=...): the bound-origin coupling only "
-        "evaluates once flow_rate_lpm is in context --"
+        "\n  validate_param(..., context=...): the bound-origin coupling "
+        "evaluates only once flow_rate_lpm is in context."
     )
     print(
         f"    impeller=350, no context      -> valid="
         f"{space.validate_param('impeller_diameter_mm', 350.0).valid} "
-        "(constraint omitted -- under-determined, not guessed)"
+        "(the constraint is omitted as under-determined, never guessed)"
     )
     ctx_result = space.validate_param(
         "impeller_diameter_mm", 350.0, context={"flow_rate_lpm": 300.0}
@@ -166,7 +169,7 @@ def main() -> None:
     print(f"    impeller=350, flow=300 context -> valid={ctx_result.valid}")
 
     print(
-        "\n  Driver loop -- next_assignable -> missing_params -> is_complete, "
+        "\n  Driver loop, next_assignable to missing_params to is_complete, "
         "revealing the sampled config's own values one step at a time:"
     )
     partial = {}
@@ -189,15 +192,17 @@ def main() -> None:
         f"missing_params: {space.missing_params(partial)}"
     )
 
-    # -- Metaprogramming ------------------------------------------------------
+
+def show_metaprogramming(space: ds.Space) -> None:
     print("\n--- Metaprogramming ---")
     pd = space.params["num_stages"]
     rebuilt_expr = ds.param_from_def(pd)
     print(f"  param_from_def(params['num_stages']) -> {type(rebuilt_expr).__name__}")
 
-    # `BoolExpr`/`ArithExpr` are walkable ASTs (`.kind`, `.children`,
-    # `.params`) -- the facility a rewrite tool builds on. Walk the compound
-    # "magnetic seals aren't ATEX-rated" forbid one level deep.
+    # `BoolExpr` and `ArithExpr` are walkable ASTs through `.kind`,
+    # `.children` and `.params`, which is the facility a rewrite tool builds
+    # on. This walks the compound "magnetic seals are not ATEX-rated" forbid
+    # one level deep.
     compound = space.constraints[-1].expr
     print(
         f"  {compound.kind!r} node over {sorted(compound.params)}, "
@@ -212,10 +217,10 @@ def main() -> None:
         f"{rebuilt_space.fingerprint() == space.fingerprint()}"
     )
 
-    # A registry-driven generation loop: one bool flag per manufacturing
-    # step, `require`d against its own prerequisites via `ds.all_(*prereqs)`
-    # -- including the zero-operand identity for a prereq-free step
-    # (Degeneracy Table: "ds.all_() | Literal True").
+    # A registry-driven generation loop: one bool flag per manufacturing step,
+    # `require`d against its own prerequisites via `ds.all_(*prereqs)`. A
+    # prereq-free step uses the zero-operand identity, per the Degeneracy
+    # Table's "ds.all_() | Literal True" row.
     step_prereqs: dict[str, tuple[str, ...]] = {
         "cast_housing": (),
         "machine_bore": ("cast_housing",),
@@ -231,10 +236,11 @@ def main() -> None:
     print(
         f"  registry-generated space: {build_order_space.n_params} bool flags, "
         f"{len(build_order_space.constraints)} generated `require`s "
-        f"(cast_housing's is `all_()` -> trivially satisfied)"
+        f"(cast_housing's is `all_()`, so it is trivially satisfied)"
     )
 
-    # -- .custom(sampler, validator) shorthand --------------------------------
+
+def show_custom_shorthand() -> None:
     print("\n--- .custom(sampler, validator) shorthand ---")
     noise_space = ds.space(
         ds.param("kernel_bandwidth").custom(
@@ -250,6 +256,15 @@ def main() -> None:
         print(f"  to_json() raises SerializationError: {e}")
     marked = noise_space.fingerprint(on_unserializable="mark")
     print(f"  fingerprint(on_unserializable='mark') succeeds: {marked[:24]}...")
+
+
+def main() -> None:
+    space = build_space()
+    show_summary(space)
+    show_coordinate_paths(space)
+    show_partial_configs(space)
+    show_metaprogramming(space)
+    show_custom_shorthand()
 
 
 if __name__ == "__main__":

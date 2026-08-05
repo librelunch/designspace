@@ -1,15 +1,15 @@
 # Sampling diagnostics
 
 `space.sampling_report()` draws configurations from the **unconditioned**
-measure, before any rejection, and aggregates what happened. It reports. It
-never repairs, reweights, or suggests a fix.
+measure, before any rejection, and aggregates what happened. It reports only,
+and never repairs, reweights, or suggests a fix.
 
-Drawing unconditioned is the entire point, and it is the part worth
-understanding before reading a report.
+Drawing unconditioned is the design decision that makes the report useful, and
+it is the part to understand before reading one.
 
-## Why unconditioned
+## The unconditioned measure
 
-`sample()` gives you the post-rejection distribution. Two pathologies are
+`sample()` returns the post-rejection distribution. Two pathologies are
 invisible in it, because rejection has already hidden them.
 
 ### Unknown-swallowing
@@ -32,8 +32,8 @@ Consider a budget over a parameter that is not always active:
 
 ```
 
-An 82% acceptance rate looks healthy. But the budget is only *enforced* on the
-draws where `c` exists at all:
+An 82% acceptance rate looks healthy. The budget, however, is *enforced* only on
+the draws where `c` exists at all:
 
 ```pycon
 >>> budget = report.constraints[0]
@@ -42,23 +42,23 @@ draws where `c` exists at all:
 
 ```
 
-Less than half. Wherever `use_c` is false the constraint quietly stops
-enforcing, and nothing in `sample()`'s output would ever tell you. `applicable`
-is the only signal.
+Less than half. Wherever `use_c` is false the constraint stops enforcing, and
+nothing in `sample()`'s output reports that. `applicable` is the only signal.
 
-The fix is usually `.if_inactive()`, which says explicitly what an absent `c`
-should contribute. Nothing prompts you to reach for it, which is why this
-surface exists.
+The usual fix is `.if_inactive()`, which states explicitly what an absent `c`
+should contribute. Nothing else prompts an author to reach for it, which is why
+this surface exists.
 
 ### Funnels
 
 A constraint that is inapplicable on part of the space biases the conditioned
-measure *toward* that part, since rejection accepts those draws unconditionally.
+measure *toward* that part, since rejection accepts those draws
+unconditionally.
 
-This is what `require` is supposed to do: it conditions the declared measure.
-It is not visible from the resulting sample.
+This is what `require` is defined to do: it conditions the declared measure. The
+effect is not visible from the resulting sample.
 
-## Reading `satisfied` correctly
+## Interpreting `satisfied`
 
 `satisfied` is conditioned on **applicability**, not on all draws:
 
@@ -68,23 +68,23 @@ It is not visible from the resulting sample.
 
 ```
 
-A constraint applicable in 1% of draws and always satisfied there reports
-`1.0`, not `0.01`. Collapsing the two would erase the distinction this surface
-exists to draw, so read the pair together. `applicable` says how often the
-question was asked, `satisfied` how often the answer was yes.
+A constraint applicable in 1% of draws and always satisfied there reports `1.0`,
+not `0.01`. Collapsing the two would erase the distinction this surface exists
+to draw, so the pair is read together: `applicable` says how often the question
+was asked, and `satisfied` how often the answer was yes.
 
-When `applicable` is `0.0`, meaning the constraint was never Kleene-defined
+Where `applicable` is `0.0`, meaning the constraint was never Kleene-defined
 across any draw, `satisfied` reports `0.0` by convention rather than `NaN`, so a
 frozen report always equals itself. It carries no information in that case, and
 `applicable` is the number to read.
 
-## Tightening is opt-in
+## Bound tightening
 
 The reference sampler has a best-effort optimization: fold an already-assigned
 bound-origin coupling into the draw instead of drawing and rejecting. For
 `sample()` this is unobservable, since truncation and conditioning agree.
 
-For a *report* it is not unobservable at all, which is why it defaults to off:
+For a *report* it is observable, which is why it defaults to off:
 
 ```pycon
 >>> honest = space.sampling_report(n=200, seed=0)
@@ -93,16 +93,16 @@ For a *report* it is not unobservable at all, which is why it defaults to off:
 ```
 
 Drawn unconditioned, tightening would launder the report's own subject. On a
-bound-coupled space it collapses the rows most likely to carry a
-pathology to `satisfied ≈ 1.0`.
+bound-coupled space it collapses the rows most likely to carry a pathology to
+`satisfied ≈ 1.0`.
 
-So the two flags answer different questions:
+The two settings therefore answer different questions:
 
-- `tighten_bounds=False` (the default) answers "how much of the declared measure
-  do my hard constraints cut away?" Bound-origin rows show their real
+- `tighten_bounds=False`, the default, answers "how much of the declared measure
+  do the hard constraints cut away?" Bound-origin rows show their real
   satisfaction fractions.
-- `tighten_bounds=True` answers "how much does tightening save me?"
+- `tighten_bounds=True` answers "how much does tightening save?"
 
-The three sampling entry points (`sample`, `sample_one`, `sample_dicts`) take no
-such flag, deliberately: tightening cannot change the distribution they return,
-so a flag there would be a performance knob wearing a semantic one's signature.
+The three sampling entry points, `sample`, `sample_one` and `sample_dicts`, take
+no such flag. Tightening cannot change the distribution they return, so a flag
+there would be a performance control wearing a semantic one's signature.

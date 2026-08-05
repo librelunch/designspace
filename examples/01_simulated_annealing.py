@@ -1,34 +1,36 @@
-"""Example 1 — Simulated Annealing: a flat parameter space.
+"""Simulated annealing: a flat parameter space.
 
-The simplest shape a design space takes: a handful of independent scalar
-knobs, one conditional knob, and two space-level rules. This is the
-configuration surface of a Simulated Annealing metaheuristic — its cooling
-schedule, its move operator, and its acceptance rule.
+The simplest shape a design space takes: independent scalar parameters, one
+conditional parameter, and two space-level rules. The space below describes the
+configuration surface of a simulated annealing metaheuristic, covering its
+cooling schedule, its move operator, and its acceptance rule.
 
-Concepts introduced here
-------------------------
+Concepts introduced
+-------------------
 - Scalar parameter types: ``real``, ``integer``, ``categorical``, ``ordinal``,
   ``bool``.
-- Priors as coordinate systems: ``.log_scale()`` (multiplicative geometry for
-  a temperature that spans orders of magnitude) and ``.quantized()`` (snap a
-  continuous knob to a grid).
-- A single conditional parameter via ``.when(...)`` — inactive parameters are
-  simply *absent* from a config, never ``None``.
-- ``.forbid(...)`` defines feasibility (the reference sampler respects it);
-  ``.encourage(...)`` only annotates (it is reported, never enforced).
-- ``.is_in(*values)`` — a forbid naming a set of move choices at once.
-- Structural operations on an already-built ``Space``: ``.freeze(...)`` pins
-  tuned knobs to a single value (kept, domain narrowed) after a search;
-  ``.slice(...)`` removes a rejected knob entirely, substituting its value at
-  every reference site; ``.filter(tags=...)`` carves out a tagged
-  sub-space; ``.extend(...)`` adds a new knob after the fact.
+- Priors as coordinate systems. ``.log_scale()`` gives multiplicative geometry
+  to a temperature spanning orders of magnitude; ``.quantized()`` snaps a
+  continuous parameter to a grid.
+- A conditional parameter via ``.when(...)``. Inactive parameters are absent
+  from a config, never ``None``.
+- ``.forbid(...)`` defines feasibility and the reference sampler respects it.
+  ``.encourage(...)`` annotates only: it is reported, never enforced.
+- ``.is_in(*values)``, a forbid naming a set of move choices at once.
+- Structural operations on a built ``Space``. ``.freeze(...)`` pins a parameter
+  to one value and keeps it, narrowing its domain. ``.slice(...)`` removes the
+  parameter and substitutes its value at every reference site.
+  ``.filter(tags=...)`` carves out a tagged subspace. ``.extend(...)`` adds a
+  parameter after the fact.
 
-This example (and 02-04) grows the *shape* of a space. Examples 05-08 hold
-the shape plain and grow the *vocabulary* used on it instead — the full
-expression language, charts, DataFrame output, sampling diagnostics, the
-partial-config driver-loop surface, and metaprogramming.
+Notes
+-----
+Examples 01 to 04 grow the shape of a space. Examples 05 to 10 hold the shape
+plain and grow the vocabulary applied to it: the full expression language,
+charts, DataFrame output, sampling diagnostics, the partial-config driver-loop
+surface, and metaprogramming.
 
-Run it:  ``uv run python examples/01_simulated_annealing.py``
+Run with ``uv run python examples/01_simulated_annealing.py``.
 """
 
 from __future__ import annotations
@@ -54,13 +56,13 @@ def build_space() -> ds.Space:
             # The acceptance rule. Ordinal: ordered by declaration, so
             # comparisons like ``>= "boltzmann"`` are meaningful.
             ds.param("acceptance").ordinal("greedy", "boltzmann", "metropolis").tag("operator"),
-            # Whether to reheat on stagnation, and — only then — by how much.
+            # Whether to reheat on stagnation, and if so by how much.
             ds.param("reheat").bool(),
             ds.param("reheat_factor").real(1.5, 5.0).when(ds.param("reheat")),
         )
         # Feasibility: annealing must cool, so the stopping temperature has to
         # sit strictly below the starting one. A forbid rejects the bad region
-        # outright — the sampler will never emit a config that trips it.
+        # outright, and the sampler never emits a config that trips it.
         .forbid(
             ds.param("min_temp") >= ds.param("initial_temp"),
         )
@@ -70,10 +72,10 @@ def build_space() -> ds.Space:
         .forbid(
             ds.param("neighborhood").is_in("insert", "reverse") & (ds.param("steps_per_temp") < 5),
         )
-        # A soft preference, not a rule: flag schedules that cool aggressively.
-        # Declared constraints never change feasibility or the sampler; they
-        # ride along in ``evaluate_constraints`` with a signed margin so a
-        # consumer can weigh them however it likes.
+        # A declared preference: flag schedules that cool aggressively.
+        # Declared constraints never change feasibility or the sampler. They
+        # ride along in ``evaluate_constraints`` with a signed margin, so a
+        # consumer can weigh them as it sees fit.
         .encourage(
             ds.param("cooling_rate") >= 0.95,
             tags=("slow-cooling",),
@@ -81,50 +83,57 @@ def build_space() -> ds.Space:
     )
 
 
-def main() -> None:
-    space = build_space()
+def show_summary(space: ds.Space) -> None:
     print(
-        f"Simulated Annealing space: {space.n_params} parameters, "
+        f"Simulated annealing space: {space.n_params} parameters, "
         f"conditional={space.is_conditional}\n"
     )
 
+
+def show_sampling(space: ds.Space) -> None:
     # One reproducible draw from the declared measure.
     config = space.sample_one(seed=0)
     print("A sampled configuration:")
     for key, value in config.items():
         print(f"  {key:16} = {value!r}")
 
-    # Feasibility is param-validity plus forbids — nothing else.
+    # Feasibility is parameter validity plus forbids, and nothing else.
     print(f"\nis_feasible: {space.is_feasible(config)}")
     print(f"validate().valid: {space.validate(config).valid}")
 
-    # The flat, path-keyed view (same grammar used everywhere: columns,
-    # references, error messages).
+    # The flat, path-keyed view. The same grammar appears everywhere: DataFrame
+    # columns, expression references, error messages.
     print("\nFlattened (path-keyed) view:")
     for key, value in ds.flatten(config, space).items():
         print(f"  {key:16} = {value!r}")
 
-    # "Inactive means absent": draw until we see the reheat branch both on and
-    # off, and note that reheat_factor only appears when reheat is True.
+
+def show_conditional_activity(space: ds.Space) -> None:
+    # Inactive means absent. Across a batch of draws, reheat_factor appears
+    # only where reheat came out True.
     print("\nConditional activity of `reheat_factor` across 8 draws:")
     for cfg in space.sample_dicts(8, seed=1):
         present = "reheat_factor" in cfg
         print(f"  reheat={cfg['reheat']!s:5} -> reheat_factor present: {present}")
 
-    # The declared constraint, reported with its margin (positive = slack).
+
+def show_declared_constraints(space: ds.Space) -> None:
+    # The declared constraint, reported with its margin. A positive margin is
+    # slack.
+    config = space.sample_one(seed=0)
     print("\nDeclared constraints on the sampled config:")
     for ce in space.evaluate_constraints(config):
         if not ce.constraint.hard:  # skip the forbid; show the annotation
             tag = ", ".join(sorted(ce.constraint.tags))
             print(f"  [{tag}] satisfied={ce.satisfied} margin={ce.margin:+.4f}")
 
-    # -- Structural operations: reshaping an already-built Space -------------
-    print("\n--- Structural operations ---")
 
-    # A search on this problem class found a good schedule -- pin it and keep
-    # searching only the operator/acceptance knobs. Unlike .slice(), .freeze()
-    # KEEPS the param (still present in every config) but narrows its domain
-    # to that single value, so a submitted config can never disagree with it.
+def show_freeze(space: ds.Space) -> None:
+    # A search on this problem class found a good schedule. Pinning it leaves
+    # only the operator and acceptance parameters to search. `.freeze()` keeps
+    # the parameter, so it is still present in every config, and narrows its
+    # domain to the single value; a submitted config can never disagree with
+    # it. `.slice()` below does the opposite.
     tuned = space.freeze(initial_temp=50.0, cooling_rate=0.85)
     print(
         f"\nfreeze(initial_temp=50.0, cooling_rate=0.85): still {tuned.n_params} params "
@@ -136,10 +145,13 @@ def main() -> None:
             f"neighborhood={cfg['neighborhood']!r}"
         )
 
-    # Reheating never paid off in practice -- remove it permanently. .slice()
-    # REMOVES the param and substitutes its fixed value at every reference
-    # site; reheat_factor's `.when(reheat)` condition collapses to a constant
-    # (`False == False`), so it stays declared but can never be sampled.
+
+def show_slice(space: ds.Space) -> None:
+    # Reheating never paid off in practice, so remove it permanently.
+    # `.slice()` removes the parameter and substitutes its fixed value at every
+    # reference site. `reheat_factor`'s `.when(reheat)` condition collapses to a
+    # constant (`False == False`), so it stays declared and can never be
+    # sampled.
     no_reheat = space.slice(reheat=False)
     still_absent = all("reheat_factor" not in c for c in no_reheat.sample_dicts(20, seed=3))
     print(
@@ -147,19 +159,33 @@ def main() -> None:
         f"reheat_factor never sampled: {still_absent}"
     )
 
-    # Just the cooling schedule, for a report that only discusses those knobs.
-    # This *does* print a UserWarning: the `neighborhood`/`steps_per_temp`
-    # forbid references params outside the "schedule" subtree, so `.filter()`'s
-    # best-effort default drops it and warns rather than raising (`strict=True`
-    # would raise instead) -- the same best-effort mechanism `.select()` uses,
-    # covered in depth in `examples/02_genetic_algorithm.py`.
+
+def show_filter_and_extend(space: ds.Space) -> None:
+    # Just the cooling schedule, for a report that only discusses those
+    # parameters. This emits a UserWarning: the neighborhood/steps_per_temp
+    # forbid references parameters outside the "schedule" subtree, so
+    # `.filter()`'s best-effort default drops it and warns. `strict=True` would
+    # raise instead. `.select()` uses the same best-effort mechanism and
+    # `examples/02_genetic_algorithm.py` covers it in depth.
     schedule_only = space.filter(tags=("schedule",))
     print(f"\nfilter(tags=('schedule',)): {list(schedule_only.params)}")
 
-    # A knob added after the fact. `.extend()` is additive; `ds.space()` (no
-    # new params) would be the identity.
+    # A parameter added after the fact. `.extend()` is additive; `ds.space()`
+    # with no new parameters would be the identity.
     with_logging = space.extend(ds.param("log_every_n").integer(1, 100))
     print(f"\nextend(log_every_n): {with_logging.n_params} params (was {space.n_params})")
+
+
+def main() -> None:
+    space = build_space()
+    show_summary(space)
+    show_sampling(space)
+    show_conditional_activity(space)
+    show_declared_constraints(space)
+    print("\n--- Structural operations ---")
+    show_freeze(space)
+    show_slice(space)
+    show_filter_and_extend(space)
 
 
 if __name__ == "__main__":

@@ -1089,6 +1089,82 @@ griffe gates it. Separately, `myst_heading_anchors` does not make a cross-docume
 `page.md#heading` link resolve even though docutils emits the matching `id`; that one link was
 rewritten to page level rather than pinned to a slug that the resolver disagrees about.
 
+### M13.6 — Examples section and documentation prose
+Split out ahead of M14 (user-directed, 2026-08-05). Consumes M13.5's site; adds no runtime
+surface and touches nothing under `src/`.
+
+**Spec:** the ten scripts under `examples/` are the most complete demonstrations the project has
+and the site does not link to them. `examples/README.md` holds the `API.md`-section index but
+lives in the repo tree. M13.6 gives the site a third top-level entry, **Examples**, which
+`pydata-sphinx-theme` renders as a header tab beside Guides and API reference. Separately, the
+guide prose is written in an essayistic, second-person register that does not match a reference
+library; it is rewritten to the register of the NumPy and SciPy user guides.
+
+**Build:**
+
+- `docs/examples/`: an index plus one page per script, numbered to match `examples/NN_*.py`.
+  Pages are narrative but hold **no copied code**. Every snippet is pulled with
+  `{literalinclude}` and `:pyobject:`, so `examples/` stays the single source of truth and
+  `tests/test_examples.py` remains the thing that proves the code runs.
+- `examples/*.py`: each `main()` split into named, self-contained step functions taking `space`
+  as their only argument, which is what makes `:pyobject:` a usable extraction unit. Steps
+  recompute from their seed instead of threading state, so each reads as a complete thought on
+  its docs page.
+- `sphinx-design` added to the `docs` extra, with `myst_enable_extensions = ["colon_fence"]`.
+  The theme already ships `.sd-*` styling, so its components render natively. Used only where a
+  page genuinely presents one-of-N alternatives; comparisons the reader is meant to read in full
+  (the four mechanisms, the tier 1/2/3 ladder) stay as sections.
+- Prose rewritten across `docs/index.md`, `docs/guides/*.md`, `docs/reference.md`, the ten
+  example module docstrings, and `examples/README.md`, which shrinks to a pointer at the site.
+
+**Gate:** three new laws in `tests/test_docs_site.py`, all pure text or AST and always-on:
+
+1. every `examples/*.py` has a page in `docs/examples/` and appears in its toctree, glob-driven
+   like `tests/test_examples.py` so a new example is covered the moment it lands;
+2. every `{literalinclude}` in `docs/examples/*.md` resolves: the file exists and each
+   `:pyobject:` names a top-level def in it. This is what makes a narrative page safe. Renaming a
+   step function fails `pytest -q` immediately instead of silently emptying a code block or
+   waiting for the environment-gated `-W` build;
+3. no U+2014 across `docs/**/*.md`, `examples/*.py`, and `examples/README.md`. Two commits
+   established this by hand and nothing protected it.
+
+Plus: the four commit gates pass; the site still builds clean under `-W` with `nitpicky = True`;
+the header carries three tabs; and no code appears in `docs/examples/` except through
+`literalinclude`.
+
+Register is deliberately **not** gated. Second-person counts, "rather than" counts and antithesis
+counts are editorial judgment, and a threshold test over them would be brittle and would invite
+gaming. The em-dash law is the exception only because it is objective.
+
+**As-built (2026-08-05).** 2535 tests, 2 skipped (2491 at M13.5). The site builds clean under
+`-W` with `nitpicky = True` across 11 new pages. 64 `literalinclude` pulls render, matching the
+per-page source counts exactly.
+
+*sphinx-design landed, and no page earned a tab-set.* The dependency was added as directed, and
+the theme's own `.sd-*` styling meant zero custom CSS. But a `{tab-set}` shows one of N and hides
+the rest, and nothing in the current content wants that. The four mechanisms in
+`choosing-a-mechanism` and the tier 1/2/3 ladder in `structured-values` are comparisons the
+reader is meant to read all of; hiding three quarters of either would remove the argument. An
+install-variant tab-set was considered and rejected as premature, since `version` is still
+`0.0.0` and M14 is what publishes. What the two index pages did want was routing, so they use
+`{grid}` and `{grid-item-card}`: ten cards and seven, each a title plus one line, with the
+`toctree` kept `:hidden:` behind them. That is the same dependency doing the job the pages
+actually have.
+
+*Self-contained steps were the load-bearing part of the refactor.* Splitting `main()` was the
+stated goal, but a step taking `config` as a parameter reads as a fragment once it is alone on a
+docs page. Every step therefore takes `space` alone and recomputes from its seed, which is free
+because the seed makes the two identical. Three steps that touch no `Space` at all
+(`show_value_misuse`, `show_custom_shorthand`, `show_arity`, `show_generativity`,
+`show_freeze_and_slice`, `show_supplied_morphism`) take no argument, rather than accepting one
+they ignore.
+
+*The env-var gate proved itself mid-milestone.* Running the plain `uv run pytest -q` commit gate
+prunes the `docs` extra from the project environment, so the very next `DESIGNSPACE_DOCS_BUILD=1`
+run found Sphinx gone. `test_site_builds_clean` **failed** rather than skipping, exactly as
+M13.5 designed it to, and named the missing modules. An import-keyed guard would have skipped
+silently and reported green.
+
 ### M14 — v0.1 release
 **Spec:** no new runtime surface — release packaging only. `pyproject.toml` gains `version =
 "0.1.0"`, `license`, `authors`, `classifiers`, `[project.urls]`; the `LICENSE` file lands here.

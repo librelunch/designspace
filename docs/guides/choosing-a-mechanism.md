@@ -3,21 +3,18 @@
 Several spellings describe overlapping sets of configurations. They are **not**
 interchangeable to the library: semantically overlapping encodings are
 structurally distinct, and no normalization is attempted. Two spaces that admit
-the same configurations will still fingerprint differently if you built them
-differently.
+the same configurations fingerprint differently if they were built differently.
 
-So the choice is real, and it is worth making deliberately rather than by habit.
-
-| you have | use |
+| situation | mechanism |
 |---|---|
 | one or two parameters that only matter sometimes | `bool` + `.when()` |
 | genuine alternatives, or alternatives with heavy payloads | `.choice()` |
-| parameters that are always active together, and you want them namespaced | `.space()` (a struct) |
+| parameters that are always active together and want a namespace | `.space()` (a struct) |
 | a set of items where each *member* carries its own payload | bool-per-item + `.when()` + `ds.count()` |
 
-## One or two dependents: bool plus `.when()`
+## Conditional parameters: `bool` and `.when()`
 
-When a flag gates a parameter or two, a bool is the whole mechanism.
+Where a flag gates a parameter or two, a bool is the whole mechanism.
 
 ```pycon
 >>> import designspace as ds
@@ -31,7 +28,7 @@ When a flag gates a parameter or two, a bool is the whole mechanism.
 
 ```
 
-An inactive parameter is **absent** from the config, not present-and-null:
+An inactive parameter is **absent** from the config, not present and null:
 
 ```pycon
 >>> off = space.sample_one(seed=0)
@@ -40,9 +37,9 @@ An inactive parameter is **absent** from the config, not present-and-null:
 
 ```
 
-This is the cheapest mechanism, and it stops paying once the gated group grows.
-Three or four `.when()` calls all repeating the same condition is the signal to
-reach for a choice.
+The mechanism costs the least of the four and stops paying once the gated group
+grows. Three or four `.when()` calls repeating the same condition is the signal
+to reach for a choice.
 
 ## Alternatives: `.choice()`
 
@@ -63,8 +60,9 @@ parameter in its own right, and the payload parameters live under it by path.
 ```
 
 A config is a **nested** dict, and a choice nests one level further: the
-variant name is the key, its payload the value. Read the two apart with
-`ds.variant()` and `ds.payload()` rather than by indexing:
+variant name is the key and its payload the value. `ds.variant()` and
+`ds.payload()` read the two apart, which keeps the calling code independent of
+that nesting convention:
 
 ```pycon
 >>> ds.variant(config, "optimizer")
@@ -83,15 +81,15 @@ the IR and every error message use:
 
 ```
 
-Only the selected variant's parameters are present. Reach for this when the
-alternatives are genuinely different things rather than one thing switched off.
-`adam` and `sgd` do not share a `momentum`, and pretending they do with a
-nullable parameter loses that.
+Only the selected variant's parameters are present. Use a choice where the
+alternatives are different things rather than one thing switched off. `adam` and
+`sgd` do not share a `momentum`, and a nullable parameter spelling them as one
+loses that.
 
-## Pure grouping: `.space()`
+## Grouping: `.space()`
 
-When parameters are always active together and you only want a namespace, a
-struct groups them without introducing a discriminator at all.
+Where parameters are always active together and only need a namespace, a struct
+groups them without introducing a discriminator.
 
 ```pycon
 >>> space = ds.space(
@@ -108,13 +106,13 @@ struct groups them without introducing a discriminator at all.
 
 ```
 
-A struct adds no conditionality. If you find yourself grouping *and* gating,
-that is a choice with one variant, and writing it as one keeps the gate visible.
+A struct adds no conditionality. Grouping *and* gating at the same time is a
+choice with one variant, and writing it as one keeps the gate visible.
 
 ## Subset members with payloads
 
 `.subset()` picks a set of items, but a subset member cannot carry parameters of
-its own. When each selected item needs a payload, spell it as one bool per item
+its own. Where each selected item needs a payload, spell it as one bool per item
 plus `.when()`, and recover "how many are on" with `ds.count()`.
 
 ```pycon
@@ -131,8 +129,8 @@ True
 ```
 
 `ds.count()` counts how many of its boolean arguments hold, which is what lets a
-cardinality rule ("at least one regularizer") be written over parameters that
-are separate by construction.
+cardinality rule such as "at least one regularizer" be written over parameters
+that are separate by construction.
 
-If the members need *no* payload, use `.subset()` instead. It is one parameter
-rather than *n*, and it gets a subset-shaped prior and chart for free.
+Where the members need *no* payload, `.subset()` applies instead. It is one
+parameter rather than *n*, and it carries a subset-shaped prior and chart.

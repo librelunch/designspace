@@ -1,28 +1,29 @@
 # Structured values
 
-Graphs, layouts, schedules, pipelines: anything whose value is a *structure*
-rather than a number. There are three ways to declare one, and they all trade
-off the same thing. The more of the structure you hand to a custom type, the
-less of it the library can see.
+Graphs, layouts, schedules and pipelines are values whose content is a
+*structure* rather than a number. Three mechanisms declare one, and they trade
+off the same quantity: the more of the structure a custom type owns, the less
+of it the library can see.
 
-Pick by asking **where the invariant lives**.
+The question that selects a tier is **where the invariant lives**.
 
-| tier | shape | use when |
+| tier | shape | applies when |
 |---|---|---|
 | 1 | parametric family: a choice over named structures | the structure is nameable |
 | 2 | primitive decomposition: element lifts with per-element constraints | constraints are local to elements |
 | 3 | custom type with a constructive sampler | invariants are global, or rejection is hostile |
 
 ```{note}
-These tiers are unrelated to the white/grey/black tiers in
+These tiers are unrelated to the white, grey and black tiers in
 [predicate transparency](predicate-transparency.md). That scale ranks
-predicates. This one ranks structures.
+predicates; this one ranks structures.
 ```
 
 ## Tier 1: a parametric family
 
-When the structures worth searching have names, enumerate them. The space stays
-entirely primitive: every parameter has a chart, a prior, and full introspection.
+Where the structures of interest have names, enumerate them. The space
+stays entirely primitive, so every parameter retains a chart, a prior, and full
+introspection.
 
 ```pycon
 >>> import designspace as ds
@@ -37,13 +38,13 @@ entirely primitive: every parameter has a chart, a prior, and full introspection
 
 ```
 
-This is the cheapest tier and the most under-used. "The structure is nameable"
-is true far more often than it feels. A handful of named topologies usually
-covers the space a modeller cares about.
+Tier 1 costs the least of the three, and "the structure is nameable" holds more
+often than it first appears. A handful of named topologies usually covers the
+region a modeller cares about.
 
 ## Tier 2: primitive decomposition
 
-When the structure is a collection of similar elements, lift a template over a
+Where the structure is a collection of similar elements, lift a template over a
 count. The count can itself be a parameter, which is what makes the structure
 variable-length.
 
@@ -69,34 +70,34 @@ error message names one:
 
 ```
 
-Use this tier when the constraints you need are **local**: they talk about one
-element, or about an element and its neighbour. A *static* count buys you more.
-With the length known at resolution, you can machine-generate the unrolled
-pairwise constraints instead of writing them out.
+Tier 2 applies where the constraints needed are **local**, meaning they talk
+about one element, or about an element and its neighbour. A *static* count
+extends the reach: with the length known at resolution, the unrolled pairwise
+constraints can be machine-generated instead of written out.
 
 The limit is rejection. Dense combinatorial constraints over elements, such as
 pairwise distinctness or conflict sets near a packing limit, collapse the
-acceptance rate. That is the signal to move to tier 3. See
+acceptance rate. That is the signal to move to tier 3; see
 [rejection](rejection.md).
 
 ## Tier 3: a custom type
 
-When the invariant is **global** (connectivity, pairwise spacing, a feasibility
-property no per-element rule expresses), stop trying to declare it and construct
-it instead. A custom type carries its own sampler, so every value it hands back
-is already valid.
+Where the invariant is **global**, covering connectivity, pairwise spacing, or a
+feasibility property no per-element rule expresses, a custom type constructs the
+value instead of declaring it. The type carries its own sampler, so every value
+it returns is already valid.
 
 The judgment this tier demands is **where to draw the ownership boundary**. The
-rule: parameters coupled to the constructive invariant go *inside* the type,
-and independent payloads stay outside as primitive parameters.
+rule: parameters coupled to the constructive invariant go *inside* the type, and
+independent payloads stay outside as primitive parameters.
 
-That boundary matters because everything you move inside loses its chart and its
+That boundary matters because everything moved inside loses its chart and its
 prior. A graph's edge set belongs inside, since getting it right is the whole
 job of the constructive sampler. A per-node learning rate is an independent
 payload, and keeping it primitive keeps it log-scalable, introspectable, and
 perturbable in u-space.
 
-Align the two with a property-driven lift count:
+A property-driven lift count aligns the two:
 
 ```pycon
 >>> class GraphType:
@@ -134,36 +135,36 @@ True
 
 ```
 
-The connectivity invariant never appears as a constraint, because `sample`
-cannot produce a disconnected graph. That is what "constructive" buys you, and
-why this tier holds up where rejection falls over.
+Because `sample` cannot construct a disconnected graph, connectivity never
+appears as a constraint and never contributes to rejection. That is what
+"constructive" means here, and why the tier holds up where rejection does not.
 
 `.prop()` reads a named property off the custom value, and using it as a count
 keeps the payload list exactly as long as the structure the type built. A type
-aligned to this way must define a canonical ordering stable under JSON
-round-trips. Without one, `node_lr[2]` means a different node after a save and
+aligned this way must define a canonical ordering that is stable under JSON
+round-trips. Without one, `node_lr[2]` names a different node after a save and
 reload.
 
-## The boundary that does not move
+## Limits of the expression language
 
 Value-dependent indexing (`islands[edges[k].src]`) and quantification over
 dynamic ranges are permanently outside the expression language. Relational
 semantics belong to tier 3 or to the consumer.
 
-Prefer generative reparameterization over measure-zero constraints. A simplex
-declared as "*n* reals that sum to 1" has probability zero of ever being
+Generative reparameterization is preferable to a measure-zero constraint. A
+simplex declared as "*n* reals that sum to 1" has probability zero of ever being
 sampled. Declared by stick-breaking it is primitive, chart-covered, and always
-valid, with the manifold geometry riding in an `Encoding` instead of in a
-constraint rejection can never satisfy.
+valid, with the manifold geometry carried in an `Encoding` instead of in a
+constraint that rejection can never satisfy.
 
-## One tension worth knowing about
+## Custom types and representations
 
 A custom type that other parameters depend on through `.prop()` cannot later be
 bridged away from `custom` with a `Representation` without dangling them. That
-cuts directly against the tier-3 advice above, which steers exactly the
-bridge-worthy structures toward carrying properties.
+cuts against the tier-3 advice above, which steers exactly the bridge-worthy
+structures toward carrying properties.
 
-The library offers no resolution here. The tension is real and it belongs to
-the modeller. If you expect to bridge a type later, either keep prop-driven
-alignment out of the space, or supply a bridge whose target is another custom
-type exposing the same properties.
+The library offers no resolution here; the tension belongs to the modeller.
+Where a type is expected to be bridged later, either keep prop-driven alignment
+out of the space, or supply a bridge whose target is another custom type
+exposing the same properties.

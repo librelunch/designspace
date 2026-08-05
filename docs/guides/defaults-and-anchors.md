@@ -1,16 +1,16 @@
 # Defaults and anchors
 
-Two features that both associate values with a space, and are constantly
-confused because of it. They answer different questions:
+Two features associate values with a space, and they are easily confused. They
+answer different questions:
 
-- a **default** is a per-parameter fill value: *what should this parameter be
-  if nobody said?*
-- an **anchor** is a named whole configuration: *what was the configuration we
-  shipped?*
+- a **default** is a per-parameter fill value: what should this parameter be if
+  nothing said otherwise?
+- an **anchor** is a named whole configuration: what was the configuration that
+  shipped?
 
-## Defaults fill a partial config
+## Filling a partial config
 
-Declare them per parameter, then complete anything partial:
+Defaults are declared per parameter and complete anything partial:
 
 ```pycon
 >>> import designspace as ds
@@ -23,7 +23,7 @@ Declare them per parameter, then complete anything partial:
 
 ```
 
-Whatever you supply wins; the rest is filled:
+Supplied values win and the rest are filled:
 
 ```pycon
 >>> space.apply_defaults({"workers": 12})
@@ -31,11 +31,10 @@ Whatever you supply wins; the rest is filled:
 
 ```
 
-### A default is never silently clamped
+### Domain validation
 
-This is worth stating because so many libraries do the opposite. A default
-outside its domain is an error at resolution, not a value quietly moved to the
-nearest legal one:
+A default outside its domain is an error at resolution. It is never moved
+quietly to the nearest legal value:
 
 ```pycon
 >>> ds.space(ds.param("w").integer(1, 16).default(99))
@@ -45,14 +44,14 @@ designspace.errors.ResolutionError: param 'w': default 99 is outside its domain
 
 ```
 
-The check spans every kind: a choice default must name a declared variant, a
-subset or permutation default must be a legal one. (A struct parameter admits no
-default of its own; give defaults to its fields.)
+The check spans every kind: a choice default must name a declared variant, and a
+subset or permutation default must be a legal one. A struct parameter admits no
+default of its own, and its fields take defaults instead.
 
-### `apply_defaults` is constraint-blind
+### Interaction with constraints
 
-It fills parameters. It does not consult your constraints, so its output can be
-infeasible:
+`apply_defaults` fills parameters and does not consult constraints, so its
+output can be infeasible:
 
 ```pycon
 >>> space = ds.space(
@@ -67,14 +66,13 @@ False
 
 ```
 
-This is deliberate, and it matches how user-written forbids have always
-behaved: they were never checked at fill time. If you need a feasible
-completion, fill and then `validate`. The library will not guess which parameter
-to move.
+This is deliberate and matches how user-written forbids have always behaved:
+they were never checked at fill time. A feasible completion requires filling and
+then validating. The library does not guess which parameter to move.
 
-## Anchors name whole configs
+## Anchors
 
-An anchor is a reference point: the incumbent, last quarter's baseline, the
+An anchor is a reference point: the incumbent, last quarter's baseline, or the
 configuration a paper reported.
 
 ```pycon
@@ -88,27 +86,26 @@ configuration a paper reported.
 
 ```
 
-`.anchors` hands back a read-only view rather than the dict itself, as every
-public accessor does. A `Space` is immutable, and handing out a mutable interior
-would be a way around that. Wrap it in `dict()` when you want a copy you can
-edit.
+`.anchors` returns a read-only view rather than the dict itself, as every public
+accessor does. A `Space` is immutable, and handing out a mutable interior would
+be a way around that. Wrapping the view in `dict()` produces an editable copy.
 
-## Derive, do not duplicate
+## Deriving anchors from defaults
 
-That example is the pattern worth taking away. When a space already has complete
-defaults, **build the anchor from them** rather than writing the same numbers
-twice:
+The example above is the pattern to take away. Where a space already has
+complete defaults, the anchor is **built from them** instead of restating the
+same numbers:
 
 ```python
 space.anchor(configs={"shipped": space.apply_defaults({})})
 ```
 
-Defaults do **not** auto-create an anchor. The library will not invent a named
-reference point you did not ask for. Deriving one is a single expression, and
+Defaults do **not** auto-create an anchor; the library does not invent a named
+reference point that was not asked for. Deriving one is a single expression, and
 it cannot drift out of sync the way a hand-copied dict does.
 
-## Roles are a convention, not API
+## Role conventions
 
-The library has no notion of "incumbent", "baseline", or "champion". Anchor
-roles are a `.meta()` convention. Keep them there rather than hoping a future
-version will bless one spelling.
+The library has no notion of "incumbent", "baseline" or "champion". Anchor roles
+are a `.meta()` convention, and no future version will bless one spelling of
+them as API.

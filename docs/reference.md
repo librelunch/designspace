@@ -1,8 +1,7 @@
 # API reference
 
-Every name `designspace` exports, grouped by what you reach for it to do.
-The pages are generated from the docstrings themselves, so they are the same
-text `help()` shows.
+Every name `designspace` exports, grouped by purpose. The pages are generated
+from the docstrings, so they carry the same text `help()` returns.
 
 ## Building a space
 
@@ -35,7 +34,7 @@ The entry points, and the builder view a parameter takes on once its type is cho
 
 ## Expressions
 
-Conditions, constraints, and derived quantities. Expressions are values: build them, pass them around, walk them with `.kind`/`.children`.
+Conditions, constraints, and derived quantities. Expressions are values: they can be built, passed around, and walked through `.kind` and `.children`.
 
 ```{eval-rst}
 .. autosummary::
@@ -187,8 +186,8 @@ Every error designspace raises names the offending definition path.
 ## Type aliases
 
 The names the public signatures are written in. Each is exactly the spelling
-shown -- they carry no behaviour, and exist so a signature can be followed to
-a definition instead of guessed at.
+shown. They carry no behaviour, and exist so that a signature can be followed
+to a definition instead of guessed at.
 
 ```{eval-rst}
 
@@ -215,5 +214,5 @@ a definition instead of guessed at.
 .. py:data:: designspace.FingerprintUnserializable
    :value: Literal["raise", "mark"]
 
-   As `OnUnserializable`, minus `drop` -- dropping a site would change what is being identified.
+   As `OnUnserializable`, minus `drop`, because dropping a site would change what is being identified.
 ```

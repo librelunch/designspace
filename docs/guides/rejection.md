@@ -1,14 +1,13 @@
-# When rejection stops working
+# Rejection sampling
 
 The reference sampler draws from the declared measure and rejects whatever
-violates a hard constraint. That is correct, and for most spaces it is also
-fast. Then it isn't, and the failure is abrupt rather than gradual.
+violates a hard constraint. For most spaces this is both correct and fast. Its
+failure mode is abrupt, and its cause is specific: **dense combinatorial
+constraints collapse the acceptance rate**. Pairwise distinctness, conflict sets
+near a packing limit, and anything else where the legal region is a vanishing
+fraction of the declared one.
 
-**Dense combinatorial constraints collapse the acceptance rate.** Pairwise
-distinctness, conflict sets near a packing limit, anything where the legal
-region is a vanishing fraction of the declared one.
-
-## Watching it collapse
+## Acceptance rate under dense constraints
 
 Six slots drawn independently, required to be pairwise distinct:
 
@@ -24,10 +23,10 @@ Six slots drawn independently, required to be pairwise distinct:
 
 ```
 
-Around one draw in seventy-five survives. Nothing is wrong: 6! legal
+Around one draw in seventy-five survives. Nothing is malfunctioning: 6! legal
 assignments out of 6⁶ is 1.5%, and rejection is finding exactly that.
 
-Add two more slots and it gets worse fast:
+Two more slots make it substantially worse:
 
 ```pycon
 >>> names = [f"s{i}" for i in range(8)]
@@ -39,28 +38,28 @@ Add two more slots and it gets worse fast:
 
 ```
 
-Push it far enough and sampling gives up rather than hanging. The default is
-10,000 retries, and the error names the constraints that dominated the
-rejections:
+Beyond the retry limit, sampling raises `SamplingError` rather than hanging. The
+default limit is 10,000 draws, and the error names the constraints that
+dominated the rejections:
 
 ```text
 SamplingError: sample_one: no feasible draw found after 10000 retries;
 dominant constraint(s): ["'eq' (887/10000 draws)", "'eq' (885/10000 draws)", ...]
 ```
 
-That list is the diagnostic. Constraints that dominate rejection are the ones to
-restructure.
+That list is the diagnostic, and the constraints dominating rejection are the
+ones to restructure.
 
-## The remedy is constructive, not numerical
+## Remedies
 
-There is no tuning knob here. Raising the retry limit buys a linear factor
-against a combinatorial problem, which is not a trade worth making. Two real
-options:
+There is no tuning parameter for this. Raising the retry limit buys a linear
+factor against a combinatorial problem. Two remedies apply.
 
 ### Reparameterize
 
-Ask whether the constraint is really a constraint, or a structure you spelled as
-one. "All distinct" over *n* slots with *n* values is a permutation:
+The first question is whether the constraint is a constraint at all, or a
+structure spelled as one. "All distinct" over *n* slots with *n* values is a
+permutation:
 
 ```pycon
 >>> space = ds.space(ds.param("order").permutation(list(range(8))))
@@ -72,21 +71,22 @@ one. "All distinct" over *n* slots with *n* values is a permutation:
 Every draw is valid by construction. Acceptance is 100%, the parameter keeps a
 proper chart and prior, and the fifteen forbids are gone.
 
-This is the case worth looking for first, and it is more common than it seems.
+This case is the one to look for first, and it is more common than it appears.
 Simplexes, orderings, partitions and assignments all have primitive spellings
 that make the measure-zero constraint disappear.
 
 ### Enforce inside a custom sampler
 
-When the invariant is genuinely global and has no primitive spelling
-(connectivity, minimum pairwise spacing, a packing that must fit), move
-construction inside a `.custom()` type whose sampler cannot produce an invalid
-value. That is tier 3 in [structured values](structured-values.md), and
-rejection hostility is the main reason to reach for it.
+Where the invariant is global and has no primitive spelling, covering
+connectivity, minimum pairwise spacing, or a packing that must fit, construction
+moves inside a `.custom()` type whose sampler cannot produce an invalid value.
+That is tier 3 in [structured values](structured-values.md), and hostility to
+rejection is the main reason to reach for it.
 
-## The thing not to do
+## Softening hard constraints
 
-Do not soften a hard constraint to `.encourage()` to make sampling succeed.
-`.encourage()` does not affect feasibility, so the space will start producing
-configurations that violate the rule you meant, quickly and without complaint.
-Softening changes what the space *means*. It is not a performance fix.
+Softening a hard constraint to `.encourage()` is not a remedy for slow sampling.
+`.encourage()` does not affect feasibility, so the space starts producing
+configurations that violate the rule the author meant, quickly and without
+complaint. Softening changes what the space *means*, and it is not a performance
+adjustment.

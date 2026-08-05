@@ -1,6 +1,6 @@
 # Progress
 
-Current milestone: **M14 (open)**
+Current milestone: **M13.6 (open)**
 
 | Milestone | Completed | Tests | DECISIONS entries |
 |---|---|---|---|

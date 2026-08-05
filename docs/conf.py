@@ -24,6 +24,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "myst_parser",
     "sphinx_copybutton",
+    "sphinx_design",
 ]
 
 templates_path = ["_templates"]
@@ -38,6 +39,12 @@ napoleon_google_docstring = False
 # need MyST to emit anchor targets. docutils gives the rendered HTML an `id`
 # either way, so without this a link silently points at nothing.
 myst_heading_anchors = 3
+
+# MyST ships with no optional extensions enabled. `colon_fence` is the one the
+# site needs: sphinx-design's directives nest, and `:::` delimiters let an outer
+# `{tab-set}` contain inner ```` ``` ```` code fences without either closing the
+# other.
+myst_enable_extensions = ["colon_fence"]
 
 autosummary_generate = True
 autodoc_member_order = "bysource"

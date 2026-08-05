@@ -1,9 +1,8 @@
 # Predicate transparency
 
-How you *write* a predicate decides how much of the library's machinery can act
-on it. All three forms below are one line, and all three are enforced
-correctly, so the cost is invisible at the call site. That is why it is worth
-naming.
+The way a predicate is *written* decides how much of the library's machinery can
+act on it. All three forms below are one line and all three are enforced
+correctly, so the cost is invisible at the call site.
 
 | tier | form | margins | `remaining_domain` narrowing | tighten-not-reject |
 |---|---|---|---|---|
@@ -12,13 +11,14 @@ naming.
 | black | an opaque predicate | no | no | no |
 
 ```{note}
-Unrelated to the tier 1/2/3 of [structured values](structured-values.md). This
-ranks predicates; that ranks structures.
+These tiers are unrelated to the tier 1/2/3 of
+[structured values](structured-values.md). This scale ranks predicates; that
+one ranks structures.
 ```
 
 ## White box
 
-The predicate is an expression the library can read. Everything works.
+The predicate is an expression the library can read, and every facility applies.
 
 ```pycon
 >>> import designspace as ds
@@ -31,10 +31,10 @@ The predicate is an expression the library can read. Everything works.
 
 ```
 
-A margin says *how far* from the boundary a configuration sits, not merely
-whether it is legal. That is what a solver follows downhill. And because the
-structure is visible, the space can answer what is still available for one
-parameter given the others:
+A margin reports *how far* from the boundary a configuration sits, rather than
+only whether it is legal, which is the signal a solver follows downhill.
+Because the structure is visible, the space can also report what remains
+available for one parameter given the others:
 
 ```pycon
 >>> space.remaining_domain("b", {"a": 4})
@@ -44,8 +44,9 @@ IntegerRemaining(lo=0, hi=4, grid=None)
 
 ## Grey box
 
-The value is opaque, but it comes out as a **number** and you compare it
-structurally. The comparison stays visible even though the computation does not.
+The value is opaque but arrives as a **number**, and the comparison against it
+is structural. The comparison stays visible even though the computation does
+not.
 
 ```pycon
 >>> cost = ds.value(lambda x: x * 2.0, ds.param("x"), returns=float)
@@ -55,9 +56,9 @@ structurally. The comparison stays visible even though the computation does not.
 
 ```
 
-The margin survives, because the library did not need to understand
-`lambda x: x * 2.0` to subtract `6.0` from `8.0`. What it cannot do is narrow a
-domain, since that would mean inverting the opaque part:
+The margin survives because subtracting `6.0` from `8.0` requires no
+understanding of `lambda x: x * 2.0`. Narrowing a domain does require it, since
+that would mean inverting the opaque part:
 
 ```pycon
 >>> space.remaining_domain("x", {})
@@ -67,7 +68,7 @@ IntegerRemaining(lo=0, hi=10, grid=None)
 
 ## Black box
 
-The predicate itself is opaque. The library can only call it and believe the
+The predicate itself is opaque. The library can only call it and take the
 answer.
 
 ```pycon
@@ -78,23 +79,24 @@ answer.
 
 ```
 
-`margin` is `None`, because there is no boundary to measure a distance to. The
-constraint still works. It is a wall rather than a slope.
+`margin` is `None` because there is no boundary to measure a distance to. The
+constraint is still enforced; it behaves as a wall rather than a slope.
 
-## Why prefer transparency
+## Rationale
 
-Not for solver consumption. A solver facing a black-box objective is not handing
-your constraints to a MIP or CP solver anyway.
+The argument for transparency is not solver consumption. A solver facing a
+black-box objective is not handing these constraints to a MIP or CP solver
+anyway.
 
-The argument is that margins, `evaluate_partial`, `remaining_domain`, and
-bound-origin tightening are all **designspace's own machinery**, and all of them
-run on structure. Write a black-box predicate and you switch them off for that
-constraint, inside a library you are otherwise paying for.
+Margins, `evaluate_partial`, `remaining_domain` and bound-origin tightening are
+all **designspace's own machinery**, and all of them run on structure. A
+black-box predicate switches them off for that constraint, inside a library
+otherwise being paid for.
 
-## The move that is almost always available
+## Tightening instead of rejecting
 
 A grey predicate is usually within reach where a black one gets written out of
-habit. Anything physical has a numeric value:
+habit, because anything physical has a numeric value:
 
 ```pycon
 >>> black = ds.value(lambda w: w <= 5.0, ds.param("weight_g"), returns=bool)
@@ -102,6 +104,5 @@ habit. Anything physical has a numeric value:
 
 ```
 
-The two accept identical configurations. The second keeps the margin that the
-first throws away, and it costs one line of rewriting, done once, at
-declaration time.
+The two accept identical configurations. The second keeps the margin the first
+discards, at the cost of one line of rewriting, done once, at declaration time.
