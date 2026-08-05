@@ -38,17 +38,17 @@ False
 
 ## Contents
 
-The guides work through the decisions a space declaration involves. The
-tutorials cover the library one topic at a time, and every code block on them is
-executed when the site is built, so the outputs shown are real. The API
-reference is generated from the docstrings, so it is the same text `help()`
-returns.
+The tutorials cover the library one topic at a time, and every code block on
+them is executed when the site is built, so the outputs shown are real. The
+design notes take the decisions a declaration forces and work through what each
+option costs. The API reference is generated from the docstrings, so it is the
+same text `help()` returns.
 
 ```{toctree}
 :maxdepth: 2
 
-guides/index
 tutorials/index
+design-notes/index
 reference
 ```
 
@@ -58,5 +58,6 @@ designspace declares spaces and does not search them. It ships no search
 operators, no distance functions, no tree generators, and no algebraic
 normalization of expressions. No value is ever silently clamped: a value
 outside its domain is an error, never a rounded input. These are deliberate
-boundaries, and the [solver integration guide](guides/solver-integration.md)
-describes where the library hands off to the consumer that does search.
+boundaries, and the
+[solver hand-off tutorial](tutorials/11-identity-and-solvers.md) describes where
+the library hands off to the consumer that does search.

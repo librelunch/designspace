@@ -82,16 +82,34 @@ space.validate_param("acceptance", "simulated").param_errors
 
 ## Feasibility
 
-Validation and feasibility are different questions. Validation asks whether
-every value is in its domain; feasibility additionally applies the hard
-constraints.
+`validate` covers two separate things: whether each value is legal for its
+parameter, and whether the constraints hold. `valid` is the conjunction, so it
+is false if either fails, and the two halves of the result are what tell them
+apart.
 
 ```{code-cell}
-infeasible = dict(config, min_temp=config["initial_temp"] * 2)
-space.validate(infeasible).valid, space.is_feasible(infeasible)
+# Both values sit inside their own domains; it is the pair that is illegal.
+infeasible = dict(config, initial_temp=0.05, min_temp=0.5)
+result = space.validate(infeasible)
+result.valid, result.param_errors
 ```
 
-Every value is in range, so validation passes, but the forbid is tripped.
+Every value is in range, so `param_errors` is empty; the forbid is what makes
+`valid` false. `is_feasible` asks only the constraint half of that question:
+
+```{code-cell}
+space.is_feasible(infeasible)
+```
+
+```{code-cell}
+:tags: [remove-output]
+
+# A malformed config and a well-formed but infeasible one both report
+# valid=False, and `param_errors` is what distinguishes them.
+assert space.validate(infeasible).param_errors == ()
+assert space.validate(bad).param_errors != ()
+```
+
 `infeasibility_reasons` names what failed:
 
 ```{code-cell}

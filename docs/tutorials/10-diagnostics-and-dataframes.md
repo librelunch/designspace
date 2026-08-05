@@ -129,6 +129,17 @@ round(report.activity["warm_start_frac"], 3)
 `activity` gives the fraction of draws in which each parameter was active,
 which is what the unguarded constraint's `applicable` is tracking.
 
+## Funnels
+
+Unknown-swallowing has a second consequence beyond a constraint quietly not
+enforcing. A constraint that is inapplicable on part of the space biases the
+conditioned measure *toward* that part, since rejection accepts those draws
+unconditionally.
+
+This is what `require` is defined to do: it conditions the declared measure.
+The effect is not visible from the resulting sample, which is the reason the
+report draws unconditioned.
+
 ## Reading the report correctly
 
 `satisfied` is conditioned on **applicability**, not on all draws. A constraint

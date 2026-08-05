@@ -1099,8 +1099,9 @@ hand-written, and the ten scripts under `examples/` were invisible from the site
 adds a third top-level entry, **Tutorials**, which `pydata-sphinx-theme` renders as a header tab.
 Eleven pages cover the surface one topic at a time, each carried by a concrete application, and
 **every code block executes when the site is built** so the output beneath it is the value that
-block actually returned. Separately, the guide prose is rewritten from an essayistic,
-second-person register to that of the NumPy and SciPy user guides.
+block actually returned. The former Guides tab becomes **Design notes**, cut to the five pages
+that argue a trade-off rather than restate what a tutorial now shows. Separately, its prose is
+rewritten from an essayistic, second-person register to that of the NumPy and SciPy user guides.
 
 **Build:**
 
@@ -1131,9 +1132,10 @@ Register is deliberately **not** gated. Second-person counts, "rather than" coun
 counts are editorial judgment, and a threshold test over them would be brittle and would invite
 gaming. The em-dash law is the exception only because it is objective.
 
-**As-built (2026-08-05).** 2518 passed, 2 skipped (2519 passed, 1 skipped under
+**As-built (2026-08-05).** 2512 passed, 2 skipped (2513 passed, 1 skipped under
 `DESIGNSPACE_DOCS_BUILD`); 2491 at M13.5. The site builds clean under `-W` with
-`nitpicky = True` across 12 new pages, and 158 code cells execute and render.
+`nitpicky = True` across 12 new tutorial pages, and 160 code cells execute and
+render. Nav carries three tabs: Tutorials, Design notes, API reference.
 
 *`literalinclude` was built first, and reading it back is what rejected it.* The first cut of this
 milestone (commit `4dd795f`, kept in history) pulled code out of `examples/*.py` with
@@ -1174,6 +1176,30 @@ back as source documents: eleven orphan-toctree warnings plus a broken xref each
 `-W`. A first build passes and every later one fails, which is why an ad-hoc
 `rm -rf docs/_build && sphinx-build` was green while `test_site_builds_clean` was red. Exactly the
 class of failure M13.5 put the build inside `pytest` to catch.
+
+*Guides became Design notes, and three of them were duplicates.* The tutorials
+were written alongside a Guides tab, and the two overlapped badly enough that
+the nav bar could not say which section answered which question. Measured at
+heading level: `solver-integration`'s "Shape 1/2/3" headings were **verbatim
+identical** to tutorial 11's, `sampling-diagnostics` matched four of tutorial
+10's five, and `choosing-a-mechanism` matched three of tutorial 03's near word
+for word. The first two were deleted after their genuinely unique sections moved
+across (the custom-type generation ladder and adapter conventions into tutorial
+11, Funnels into tutorial 10); `choosing-a-mechanism` and `defaults-and-anchors`
+were cut down to the judgment they carry, the latter retitled `anchors` since
+tutorial 09 now owns defaults. Guides 7 → 5, renamed **Design notes** because
+the surviving pages all argue a trade-off rather than instruct: the tutorials
+teach a mechanism and show what it returns, the design notes argue which
+mechanism and what it costs. Nav is Tutorials / Design notes / API reference.
+
+*The doctests caught two factual errors in prose during that edit.* `validate()`
+covers domain legality **and** constraints, so a page claiming it checks only
+domains was wrong twice over; `param_errors` is what separates a malformed
+config from a well-formed infeasible one. And the "well-formed but infeasible"
+example doubled `initial_temp` to trip a forbid, which pushed `min_temp` outside
+its own `1e-4..1.0` domain and made the config malformed instead, quietly
+demonstrating the opposite of the claim. Both surfaced because the assertions
+run, which is the argument for law 3 restated.
 
 *One em-dash survives in the built HTML, correctly.* Page 07 renders
 `SerializationError: ... has no structural encoding — pass on_unserializable='mark' or 'drop'`,

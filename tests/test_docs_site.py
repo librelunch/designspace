@@ -4,7 +4,7 @@ Six laws, in increasing cost. The first five are pure text or AST and always
 run; only the sixth builds anything.
 
 1. the API reference lists every name in `__all__`;
-2. every guide page carries at least one `>>>` block — the guard against the
+2. every design note carries at least one `>>>` block — the guard against the
    silent-zero hole, see below;
 3. every tutorial page's `{code-cell}` blocks execute, in order, in one shared
    namespace (M13.6);
@@ -61,7 +61,7 @@ import designspace as ds
 _ROOT = Path(__file__).resolve().parent.parent
 _DOCS = _ROOT / "docs"
 _EXAMPLES = _ROOT / "examples"
-_GUIDES = sorted((_DOCS / "guides").glob("*.md"))
+_DESIGN_NOTES = sorted((_DOCS / "design-notes").glob("*.md"))
 _TUTORIALS = sorted(p for p in (_DOCS / "tutorials").glob("*.md") if p.stem != "index")
 _EXAMPLE_SCRIPTS = sorted(_EXAMPLES.glob("*.py"))
 # `_build` is gitignored output, not authored prose, and `conf.py` excludes it
@@ -98,26 +98,27 @@ def test_reference_lists_every_export() -> None:
     )
 
 
-def test_guide_pages_exist() -> None:
-    """The guide directory is not empty and is reachable from its index."""
-    assert _GUIDES, "docs/guides/ has no pages"
-    index = (_DOCS / "guides" / "index.md").read_text()
-    orphans = [p.stem for p in _GUIDES if p.stem != "index" and p.stem not in index]
-    assert not orphans, f"guide pages missing from the toctree: {', '.join(orphans)}"
+def test_design_notes_exist() -> None:
+    """The design-notes directory is not empty and is reachable from its index."""
+    assert _DESIGN_NOTES, "docs/design-notes/ has no pages"
+    index = (_DOCS / "design-notes" / "index.md").read_text()
+    orphans = [p.stem for p in _DESIGN_NOTES if p.stem != "index" and p.stem not in index]
+    assert not orphans, f"design notes missing from the toctree: {', '.join(orphans)}"
 
 
-@pytest.mark.parametrize("page", _GUIDES, ids=[p.stem for p in _GUIDES])
-def test_guide_page_carries_doctests(page: Path) -> None:
-    """Every guide page except the index carries a runnable example.
+@pytest.mark.parametrize("page", _DESIGN_NOTES, ids=[p.stem for p in _DESIGN_NOTES])
+def test_design_note_carries_doctests(page: Path) -> None:
+    """Every design note except the index carries a runnable example.
 
     `--doctest-glob=*.md` runs them; this asserts there is something to run,
     so a page cannot quietly become prose-only while the gate reports green.
     """
     if page.stem == "index":
-        pytest.skip("the index is a table of contents, not a guide")
+        pytest.skip("the index is a table of contents, not a design note")
     assert ">>>" in page.read_text(), (
-        f"{page.name} carries no `>>>` example. Guide pages are executable "
-        f"documentation; see PLAN.md M13.5."
+        f"{page.name} carries no `>>>` example. A design note argues a "
+        f"trade-off, and the argument is grounded in code that runs; see "
+        f"PLAN.md M13.5."
     )
 
 

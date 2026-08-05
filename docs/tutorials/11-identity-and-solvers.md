@@ -94,6 +94,18 @@ assert ds.config_hash(config, space) == ds.config_hash(config, restored)
 assert restored.validate(config).valid
 ```
 
+## Three shapes of hand-off
+
+designspace declares spaces. It does not search them, and it ships no
+operators, no distances and no adapters. Pointing a solver at a `Space` is
+therefore work for the consumer or the solver author, and it takes one of three
+shapes.
+
+Which shape applies depends on a fact about the solver rather than about the
+space: every solver defines the space it can work with. Base CMA-ES is ℝⁿ.
+Variants add integers and categoricals. SMAC and irace add conditionals. Others
+work on graphs.
+
 ## Shape 1: interpret the `Space` directly
 
 A solver that understands the IR walks it. Topological order first, then
@@ -204,7 +216,37 @@ result = rep.check(n=200, seed=1)
 result.ok, result.n, result.failures
 ```
 
+## Custom types negotiate per parameter
+
+A `.custom()` parameter is an open world, and it offers two **independent**
+channels.
+
+**The generation ladder**, where the richest available rung wins:
+
+1. a native adapter that recognizes the type's `type_key`;
+2. a `Representation` whose target this solver can handle, with the geometry
+   authored by the type author and the loss declared rather than silent;
+3. opaque `sample(rng)`, sufficient for random search and resampling moves.
+
+**The modeling channel**, orthogonal to generation: `properties()` featurizes
+values for surrogates and reporting whichever rung produced them, and
+`to_json`/`config_hash` give observation identity. A type opaque to generation
+can still be rich to modeling, because the two channels are independent.
+
+## Adapter conventions
+
+Strategy-entangled operations are the only things forced into adapters:
+crossover schemes, mutation policies, trust regions. When writing one:
+
+- key it by the same `type_key` used in serialization;
+- give it the live `ParamType` instance and derive domain facts from it through
+  `describe`, `validate` and `extract`, instead of re-declaring them;
+- pass it a `Representation` instead of embedding one;
+- scope it per *(capability, type)*. Scoping per *(solver, type)* multiplies
+  adapters for no gain.
+
 ## Where to go next
 
-The [guides](../guides/index.md) cover the decisions behind these mechanisms,
-and the [API reference](../reference.md) documents every exported name.
+The [design notes](../design-notes/index.md) cover the decisions behind these
+mechanisms, and the [API reference](../reference.md) documents every exported
+name.
