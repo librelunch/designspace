@@ -16,6 +16,10 @@ docs = [
     "sphinx>=8",
     "pydata-sphinx-theme>=0.16",
     "myst-parser>=4",
+    # myst-nb supersedes myst-parser as the `.md` parser (see docs/conf.py) and
+    # executes the tutorial pages at build time. myst-parser stays listed above
+    # because `myst_heading_anchors` and `myst_enable_extensions` are still ours.
+    "myst-nb>=1.4",
     "sphinx-copybutton>=0.5",
     "sphinx-design>=0.6",
 ]

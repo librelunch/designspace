@@ -39,14 +39,16 @@ False
 ## Contents
 
 The guides work through the decisions a space declaration involves. The
-examples are ten runnable scripts, each documented in full. The API reference
-is generated from the docstrings, so it is the same text `help()` returns.
+tutorials cover the library one topic at a time, and every code block on them is
+executed when the site is built, so the outputs shown are real. The API
+reference is generated from the docstrings, so it is the same text `help()`
+returns.
 
 ```{toctree}
 :maxdepth: 2
 
 guides/index
-examples/index
+tutorials/index
 reference
 ```
 

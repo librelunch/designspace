@@ -1,25 +1,30 @@
 # Examples
 
-Ten runnable scripts, each self-contained:
+One task-shaped script, meant to be copied and adapted:
 
 ```console
-uv run python examples/01_simulated_annealing.py
+uv run python examples/tuning_loop.py
 ```
 
-Examples 01 to 04 grow the *shape* of a space, from flat through hierarchical,
-variable-length and custom-typed. Examples 05 to 10 hold the shape plain and
-grow what is *done* with a space instead.
+`tuning_loop.py` declares a space, draws candidates from it, scores each against
+a stub objective, keeps the incumbent, and reports the best configuration
+together with the `(fingerprint, config_hash)` pair it should be stored under.
+Replacing the objective with a real evaluation, and random search with a real
+optimizer, leaves the rest of the file unchanged.
 
-The documentation site walks through every script and carries the
-`API.md`-section to example index. Build it with:
+`tests/test_examples.py` runs every script here to completion, so a milestone
+that changes the public surface is caught rather than letting these rot
+silently.
+
+## Learning the API
+
+The documentation site is where the surface is covered, one topic at a time,
+across eleven tutorial pages. Every code block on them is executed when the site
+is built, so the outputs shown are real. Build it with:
 
 ```console
 uv sync --extra docs
-uv run sphinx-build -b html docs docs/_build
+uv run --extra docs sphinx-build -b html docs docs/_build
 ```
 
-then open `docs/_build/examples/index.html`.
-
-`tests/test_examples.py` runs all ten to completion, so a milestone that
-changes the public surface is caught here rather than letting these rot
-silently.
+then open `docs/_build/tutorials/index.html`.

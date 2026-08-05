@@ -5,6 +5,13 @@ __pycache__/
 /build/
 docs/_build/
 docs/api/
+# myst-nb's execution cache. Kept outside docs/_build/ deliberately: it is what
+# lets an unchanged tutorial page skip re-execution across builds.
+docs/.jupyter_cache/
+# The executed notebooks myst-nb writes per page. Build output, not source, and
+# ruff formats `.ipynb` by default, so leaving it tracked would put generated
+# files through the format gate.
+docs/jupyter_execute/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
