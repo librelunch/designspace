@@ -1,4 +1,4 @@
-"""Space — Structural Operations (API.md): `slice`, `freeze`,
+"""Space: Structural Operations (API.md): `slice`, `freeze`,
 `active_subspace`, `select`, `filter`, `extend`.
 
 Each returns a new `Space`; anchor interactions and the positional-`dict`
@@ -1169,7 +1169,7 @@ def _statically_resolve_frozen(
 
 
 def freeze(space: Space, to_fix: dict[str, Any]) -> Space:
-    """`.freeze(values=None, **kw)` (API.md, "Space — Structural
+    """`.freeze(values=None, **kw)` (API.md, "Space: Structural
     Operations"): fix values, keep params in output, conditions resolve
     statically. Each top-level path expands (D-50) into a set of `ParamDef`
     replacements (domain-narrow/default-set), removed paths (choice's

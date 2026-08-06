@@ -52,7 +52,7 @@ def subspaces(space: Space) -> dict[str, SubspaceInfo]:
 
 def dependency_graph(space: Space) -> dict[str, frozenset[str]]:
     """Each definition path's condition + constraint + repeat-count
-    dependencies (API.md, "Space — Introspection"): a param's own
+    dependencies (API.md, "Space: Introspection"): a param's own
     condition (if any) contributes its referenced params; every constraint
     couples all the params it mentions together (added symmetrically, since
     a plain constraint has no distinguished target — unlike a condition,

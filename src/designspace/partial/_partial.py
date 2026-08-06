@@ -1,4 +1,4 @@
-"""Space — Partial Configs (API.md).
+"""Space: Partial Configs (API.md).
 
 `evaluate_partial` / `remaining_domain` / `param_activity` / `is_complete` /
 `missing_params` / `next_assignable` / the public `topological_order`, all
@@ -56,7 +56,7 @@ _PENDING_STATUSES = ("active_unset", "unknown")
 
 def topological_order(space: Space) -> list[str]:
     """Definition paths in dependency order, omitting lift descendant
-    templates (API.md, "Space — Partial Configs")."""
+    templates (API.md, "Space: Partial Configs")."""
     from designspace.eval._kleene import topological_order as _internal_order
 
     check_fully_resolved(space)
@@ -248,7 +248,7 @@ def _negate_compare(cmp: Compare) -> Compare:
 
 def _feasible_expr(c: Constraint) -> BoolExpr:
     """The feasible-side predicate for a *hard* constraint, by origin
-    (API.md, "Space — Partial Configs"): a feasible-predicate constraint
+    (API.md, "Space: Partial Configs"): a feasible-predicate constraint
     (`origin` `"bound"` or `"require"`) already stores the desired (feasible)
     predicate; a forbid's `expr` names the *forbidden* state, so feasible = its
     negation. One level of double-negation is collapsed (`~Not(x) == x`) so a

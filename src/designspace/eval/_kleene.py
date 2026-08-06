@@ -988,7 +988,7 @@ class PartialActivity(NamedTuple):
 
 def compute_activity_partial(space: Space, config: dict[str, Any]) -> PartialActivity:
     """Three/four-valued activity + presence over a *partial* flat config
-    (API.md, "Space — Partial Configs"): `"set"` (active & present),
+    (API.md, "Space: Partial Configs"): `"set"` (active & present),
     `"active_unset"` (active & absent), `"inactive"`, `"unknown"` (Kleene-
     Unknown but resolvable). Collapsing `"set"`/`"active_unset"` to `True`
     and everything else to `False` reproduces `compute_activity` exactly

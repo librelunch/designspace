@@ -9,9 +9,6 @@ configuration surface of a simulated annealing metaheuristic, covering its
 cooling schedule, its move operator and its acceptance rule, and shows what the
 resulting `Space` reports about itself.
 
-Every code block on this page runs when the site is built, so the outputs below
-are the real returned values.
-
 ## Parameter types
 
 `ds.param(name)` opens a declaration and the next call fixes the type. Five

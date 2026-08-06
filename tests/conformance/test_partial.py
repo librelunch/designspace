@@ -1,4 +1,4 @@
-"""Conformance laws: Space — Partial Configs (API.md, "Space — Partial
+"""Conformance laws: Space: Partial Configs (API.md, "Space: Partial
 Configs"; "Conformance Laws" > "Partial Configs").
 
 - Three-valued activity collapses to binary activity under `unknown -> inactive`.

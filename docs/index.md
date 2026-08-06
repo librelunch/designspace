@@ -38,11 +38,10 @@ False
 
 ## Contents
 
-The tutorials cover the library one topic at a time, and every code block on
-them is executed when the site is built, so the outputs shown are real. The
-design notes take the decisions a declaration forces and work through what each
-option costs. The API reference is generated from the docstrings, so it is the
-same text `help()` returns.
+The tutorials cover the library one topic at a time. The design notes take the
+decisions a declaration forces and work through what each option costs. The API
+reference is generated from the docstrings, so it is the same text `help()`
+returns.
 
 ```{toctree}
 :maxdepth: 2

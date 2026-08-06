@@ -1,6 +1,6 @@
 """Conformance laws: M9 custom types (API.md, "Protocols" > "ParamType" +
 custom-type contract laws; ".custom()" both forms; ".prop()"; registry in
-`from_json`; error rows 16, 23, 27; Space — Introspection
+`from_json`; error rows 16, 23, 27; Space: Introspection
 `.has_nongenerative_params` and `.cardinality()`; freeze-on-custom).
 
 Gate items covered here: `factory(x.describe()) ≡ x`; `extract` only-after-

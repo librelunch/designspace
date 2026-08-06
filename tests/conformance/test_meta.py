@@ -1,4 +1,4 @@
-"""Conformance laws: `ds.param_from_def` (API.md, "Space — Metaprogramming";
+"""Conformance laws: `ds.param_from_def` (API.md, "Space: Metaprogramming";
 PLAN.md M8 gate). `space_from_ir`/`map_params`/`without_constraints` join
 this file once Stage 3 implements them.
 

@@ -1,6 +1,6 @@
 """M2 gate: `.validate()` / `.validate_param()` / `.is_feasible()` /
 `.infeasibility_reasons()` / `.evaluate_constraints()` (API.md,
-"Space — Validation").
+"Space: Validation").
 
 `ParamError.reason` values: "missing", "out_of_bounds", "wrong_type",
 "inactive_but_present", "not_on_grid".

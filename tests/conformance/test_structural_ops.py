@@ -1,4 +1,4 @@
-"""Conformance laws: M8 structural operations (API.md, "Space — Structural
+"""Conformance laws: M8 structural operations (API.md, "Space: Structural
 Operations"; PLAN.md M8 gate; DECISIONS.md D-44).
 
 Gate items covered here: slice-substitution reaches conditions and

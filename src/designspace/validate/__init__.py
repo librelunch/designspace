@@ -1,4 +1,4 @@
-"""validate: `.validate()` / `.is_feasible()` / etc. (API.md, "Space — Validation")."""
+"""validate: `.validate()` / `.is_feasible()` / etc. (API.md, "Space: Validation")."""
 
 from designspace.validate._validate import (
     evaluate_constraints,

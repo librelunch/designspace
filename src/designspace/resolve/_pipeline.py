@@ -293,7 +293,7 @@ def _check_merged_cycles(space: Space) -> None:
 
 
 # -- M8: ParamDef <-> ParamExpr view inversion, and re-validation of a -------
-# hand-assembled or rewritten flat IR (API.md, "Space — Metaprogramming":
+# hand-assembled or rewritten flat IR (API.md, "Space: Metaprogramming":
 # "the IR is bidirectional"; "resolution re-validates whatever comes in").
 # Shared by `meta/_meta.py` (`param_from_def`, `space_from_ir`) and
 # `serialize/_fromjson.py` (chart rebuilding on load) — kept here, next to
@@ -447,7 +447,7 @@ def revalidate_space(space: Space) -> Space:
     builder resolution performs, over an already-flat `Space` assembled
     from raw IR rather than produced by `resolve_space`'s own pipeline
     (`meta/_meta.py::space_from_ir`). "Resolution re-validates whatever
-    comes in" (API.md, "Space — Metaprogramming"): a `ParamDef` reaching
+    comes in" (API.md, "Space: Metaprogramming"): a `ParamDef` reaching
     `space_from_ir` may have come from anywhere — a coarsening
     `map_params` rewrite, a hand-built registry, a foreign document — so it
     is held to the same standard as one the fluent builder produced.

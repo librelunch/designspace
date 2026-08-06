@@ -10,7 +10,7 @@ runtime — never a bare `AttributeError`). `.repeat()` — available on any
 typed view, not on `FreshParamExpr` or the base — narrows to `ListParamExpr`,
 which re-offers `.repeat()` for nested/variadic lifts.
 
-`TypedParamExpr` is public as of M8 (API.md, "Space — Metaprogramming":
+`TypedParamExpr` is public as of M8 (API.md, "Space: Metaprogramming":
 "`TypedParamExpr` is the type-specific builder view for `pd`'s type ... when
 this surface lands (M8) it becomes the common base of those views" —
 D-27). It was already the shared implementation base of every narrowed view

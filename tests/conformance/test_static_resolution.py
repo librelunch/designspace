@@ -1,5 +1,5 @@
 """Conformance laws: `.slice()`/`.freeze()` statically resolve the derived
-structure a fixed value determines (API.md, "Space — Structural
+structure a fixed value determines (API.md, "Space: Structural
 Operations"; DECISIONS.md D-92).
 
 Both operations already substitute a fixed value at its reference sites.

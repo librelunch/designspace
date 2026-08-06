@@ -1,6 +1,6 @@
 """`.validate()` / `.validate_param()` / `.is_feasible()` /
 `.infeasibility_reasons()` / `.evaluate_constraints()`
-(API.md, "Space — Validation").
+(API.md, "Space: Validation").
 
 Feasibility is param validity plus hard constraints (forbids) only —
 `.encourage()` declarations never affect `valid`, matching

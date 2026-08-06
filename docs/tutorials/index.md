@@ -4,10 +4,6 @@ Eleven pages working through the library one topic at a time. Each is carried
 by a concrete application, so the mechanism being introduced has something real
 to act on.
 
-Every code block runs when the site is built, and the output beneath it is the
-value that block actually returned. Nothing on these pages is transcribed by
-hand.
-
 The pages build on each other in order, but each declares its own space and can
 be read on its own.
 
