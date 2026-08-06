@@ -6,7 +6,7 @@ Exercises: permutation, `position_of`.
 from __future__ import annotations
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 JOBS = ("job_a", "job_b", "job_c", "job_d", "job_e")
 

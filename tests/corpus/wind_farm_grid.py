@@ -10,7 +10,7 @@ needed; that's M4's per-element instantiation).
 from __future__ import annotations
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 SITES = tuple(f"site_{i}" for i in range(6))
 ADJACENT_PAIRS = tuple((SITES[i], SITES[i + 1]) for i in range(len(SITES) - 1))

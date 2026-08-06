@@ -18,7 +18,7 @@ D-27). It was already the shared implementation base of every narrowed view
 `ds.param_from_def(pd: ParamDef) -> TypedParamExpr` a base to return.
 
 Class shape, bottom to top:
-    ParamExpr                     (build/_paramexpr.py — no type methods, no .repeat();
+    ParamExpr                     (builder/_paramexpr.py — no type methods, no .repeat();
                                     type_kind: ClassVar[str | None] = None)
     +-- FreshParamExpr            12 type methods only; inherits type_kind = None
     +-- TypedParamExpr            .repeat() only — shared by every narrowed view
@@ -55,7 +55,7 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, Self
 
-from designspace.build._paramexpr import ParamExpr, _ElementSnapshot
+from designspace.builder._paramexpr import ParamExpr, _ElementSnapshot
 from designspace.custom import ParamType
 from designspace.errors import ResolutionError
 from designspace.expr import ArithExpr
@@ -640,7 +640,7 @@ class FreshParamExpr(ParamExpr):
         >>> s.is_feasible({"band": {"lo": 0.8, "hi": 0.2}})
         False
         """
-        from designspace.build._space import Space
+        from designspace.builder._space import Space
         from designspace.resolve._pipeline import resolve_space
 
         # `.space(prebuilt: Space)` (DECISIONS.md D-20/D-15): the only route

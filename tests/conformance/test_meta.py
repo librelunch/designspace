@@ -20,7 +20,7 @@ from dataclasses import replace
 import pytest
 
 import designspace as ds
-from designspace.build._views import TypedParamExpr
+from designspace import TypedParamExpr
 from designspace.errors import ResolutionError
 from designspace.ir import QuantizedSpec, RealDomain
 

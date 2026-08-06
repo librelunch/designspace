@@ -40,7 +40,7 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
-from designspace.build._paramexpr import ParamExpr
+from designspace.builder._paramexpr import ParamExpr
 from designspace.errors import ResolutionError
 from designspace.expr import ArithExpr, ArithOp, Compare, Literal
 from designspace.ir import Constraint, IntegerDomain, RealDomain
@@ -212,7 +212,7 @@ def compute_bound_envelopes(
 
 
 def bound_origin_targets(
-    space: Any,  # designspace.build._space.Space; Any avoids an import cycle
+    space: Any,  # designspace.builder._space.Space; Any avoids an import cycle
 ) -> dict[str, tuple[ArithExpr | None, ArithExpr | None]]:
     """path -> (lo_expr, hi_expr) recovered from `space.constraints`'
     bound-origin entries. `origin` is derived provenance (API.md, "IR") —

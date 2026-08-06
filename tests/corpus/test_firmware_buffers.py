@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from firmware_buffers import TOTAL_HI, TOTAL_LO, build_space
 
-from designspace.build._space import Space
+from designspace import Space
 
 
 def test_resolves():

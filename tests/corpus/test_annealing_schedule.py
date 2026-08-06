@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from annealing_schedule import DEFAULT_ACCEPTANCE, DEFAULT_SCHEDULE, build_space
 
-from designspace.build._space import Space
+from designspace import Space
 
 
 def test_resolves():

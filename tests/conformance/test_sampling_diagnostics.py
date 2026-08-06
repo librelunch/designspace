@@ -33,7 +33,7 @@ import numpy as np
 import pytest
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 from designspace.config import unflatten
 from designspace.errors import SamplingError
 from designspace.eval import instance_constraint_evals

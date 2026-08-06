@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from designspace.build._paramexpr import ParamExpr
-from designspace.build._space import Space
-from designspace.build._views import FreshParamExpr
+from designspace.builder._paramexpr import ParamExpr
+from designspace.builder._space import Space
+from designspace.builder._views import FreshParamExpr
 from designspace.resolve import resolve_space
 
 if TYPE_CHECKING:

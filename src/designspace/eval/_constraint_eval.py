@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from designspace.build._space import Space
+from designspace.builder._space import Space
 from designspace.eval._kleene import Unknown, evaluate_bool
 from designspace.eval._margins import margin
 from designspace.expr import Value

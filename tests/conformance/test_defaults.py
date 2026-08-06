@@ -19,7 +19,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 from designspace.config import flatten, unflatten
 from designspace.errors import ResolutionError
 

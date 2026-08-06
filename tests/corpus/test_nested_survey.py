@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from nested_survey import MAX_TOTAL_MINUTES, build_space
 
-from designspace.build._space import Space
+from designspace import Space
 
 
 def test_resolves() -> None:

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from designspace.build._space import Space
+from designspace.builder._space import Space
 from designspace.eval._kleene import Unknown, evaluate_arith
 from designspace.expr import BoolExpr, BoolOp, Compare, Not, Value
 

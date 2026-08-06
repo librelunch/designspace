@@ -27,7 +27,7 @@ from dataclasses import replace
 from typing import Any
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 from designspace.ir import CustomDomain, ListDomain, ParamDef, RealDomain
 
 

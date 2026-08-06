@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from designspace.build._space import Space
+from designspace.builder._space import Space
 from designspace.config import flatten, unflatten
 from designspace.config._flatten import _flatten_list_element
 from designspace.eval import (

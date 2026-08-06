@@ -23,7 +23,7 @@ from types import MappingProxyType
 import pytest
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 from designspace.config import flatten
 from designspace.eval import Unknown, compute_activity, evaluate_arith, evaluate_bool
 

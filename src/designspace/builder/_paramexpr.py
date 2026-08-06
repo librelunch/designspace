@@ -10,7 +10,7 @@ public modifier method shares the field's natural name (`prior`, `default`,
 body collide (the `def` statement overwrites the field's class-level default),
 so the method needs its own name for the state it reads and writes.
 
-The type methods and `.repeat()` live in `build/_views.py`, not here — see
+The type methods and `.repeat()` live in `builder/_views.py`, not here — see
 API.md, "Builder view types" and DECISIONS.md D-27/D-28. `ParamExpr` is
 the base type: no type methods, no `.repeat()`, but every modifier that stays
 universal across param types (`.prior()`, `.default()`, `.when()`, `.tag()`,
@@ -19,7 +19,7 @@ universal across param types (`.prior()`, `.default()`, `.when()`, `.tag()`,
 referenced param turns out to declare).
 
 `type_kind` is a `ClassVar`, not a field (DECISIONS.md D-28): each view in
-`build/_views.py` declares its own fixed `type_kind`
+`builder/_views.py` declares its own fixed `type_kind`
 (`RealParamExpr.type_kind = "real"`, …), so it is excluded from `__init__`
 entirely — `ParamExpr(path="x", type_kind="integer")` is a `TypeError`, not
 a value resolution can misread. A bare `ParamExpr`/`FreshParamExpr` (no type
@@ -188,7 +188,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     path: str
     # ClassVar, not a field (DECISIONS.md D-28): excluded from __init__, so
     # ParamExpr(path="x", type_kind="integer") is a TypeError, not a value
-    # resolution has to police. Each view in build/_views.py overrides this
+    # resolution has to police. Each view in builder/_views.py overrides this
     # with its own fixed string; a bare ParamExpr/FreshParamExpr (no type
     # chosen) inherits None.
     type_kind: ClassVar[str | None] = None

@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 
 import designspace as ds
-from designspace.build import (
+from designspace import (
     BoolParamExpr,
     CategoricalParamExpr,
     ChoiceParamExpr,

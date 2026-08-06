@@ -17,7 +17,7 @@ Keep exactly one milestone in progress.
 
 ## Working protocol
 
-- **One milestone per branch/PR.** Do not start milestone N+1 while N's exit criteria fail.
+- **One milestone.** Do not start milestone N+1 while N's exit criteria fail.
 - **Laws first.** At the start of each milestone, write that milestone's conformance-law tests (they will fail),
     then implement until green. Conformance tests are permanent — never delete or loosen one; a milestone may only add.
 - **Track progress in `PROGRESS.md`:** one line per completed milestone with date, test count, and any DECISIONS entries created.
@@ -27,9 +27,8 @@ Keep exactly one milestone in progress.
 
 ## Global conventions
 
-- Python ≥ 3.12 (raised from ≥3.11 at M12.5 — numpy's own shipped stubs use `type` statements
-  requiring 3.12+, so the 3.11 floor was never actually satisfiable). Layout: `src/designspace/`,
-  tests in `tests/`.
+- Python ≥ 3.12
+- Layout: `src/designspace/`, tests in `tests/`.
 - Tooling: `uv` for env, `ruff` (lint+format), `mypy --strict`, `pytest`, `hypothesis` for property tests.
 - All public objects are **immutable** (`@dataclass(frozen=True)` or equivalent); builders return new objects. 
   No global mutable state; RNG passed explicitly.
@@ -46,13 +45,13 @@ when M7 shipped. Every milestone after M7 works under this protocol:
 
 1. **One counter, two surfaces.** `to_json`'s version and the preimage's version are the same
    number. `from_json` raises on an unknown one.
-2. **Additive changes need no bump** during the pre-release span (M8–M13.5): a new `origin` value, a
-   new expression node kind, a new entry in the non-serializable set — anything no shipped document
-   or committed vector depends on. M7.5 (`require`) and M7.6 (`discourage`) set this precedent.
+2. **Additive changes need no bump** during the pre-release span ("<0.1"): a new `origin` value, a
+   new expression node kind, a new entry in the non-serializable set, anything no shipped document
+   or committed vector depends on.
 3. **Add, never replace, known-answer vectors.** A milestone that touches the format adds vectors
    for the new construct and must show **every pre-existing vector byte-identical**. This is the
    gate that actually enforces the freeze; the version integer alone would not.
-4. **Any non-additive change bumps the integer** and requires user approval — it is a compatibility
+4. **Any non-additive change bumps the integer** and requires user approval: it is a compatibility
    break, not an implementation detail.
 5. **`rfc8785` is pinned exactly.** Bumping that pin is an act under this protocol, not a routine
    dependency update: a transitive change to number formatting would silently shift every committed
@@ -64,7 +63,7 @@ when M7 shipped. Every milestone after M7 works under this protocol:
 src/designspace/
   __init__.py      # public surface only; re-exports
   expr/            # M0  AST nodes, operators, guardrails, all_/any_/count
-  build/           # M1  ds.param / ds.space builders, modifiers, layering
+  builder/         # M1  ds.param / ds.space builders, modifiers, layering
   ir/              # M1  ParamDef, Domain, Constraint, Condition, results
   resolve/         # M1+ pass pipeline, error table, desugaring; M5 envelopes
   charts/          # M2  chart families, integers, grids, periodic, truncation
@@ -124,7 +123,7 @@ Add each at the milestone tagged; from then on it runs in every end-to-end suite
 
 ### M1 — Builder, resolution skeleton, IR (flat scalar spaces)
 **Spec:** Construction; Parameter Types (scalar rows only); Modifiers (identity-level; domain-level parsing without chart semantics); IR; Resolution steps 1–5, 7–8; error-table rows applicable to flat scalars; Degeneracy table (scalar rows); Errors/Concurrency.
-**Build:** `build/`, `ir/`, `resolve/` as a real pass pipeline (collect → type-check → desugar → resolve refs → cycle-check → validate declarations → emit IR), each pass a function over an explicit intermediate. Duplicate-value checks with type-tagged equality; name-character rules; self-reference detection; duplicate-modifier rules (LWW vs accumulate).
+**Build:** `builder/`, `ir/`, `resolve/` as a real pass pipeline (collect → type-check → desugar → resolve refs → cycle-check → validate declarations → emit IR), each pass a function over an explicit intermediate. Duplicate-value checks with type-tagged equality; name-character rules; self-reference detection; duplicate-modifier rules (LWW vs accumulate).
 **Gate:** every implemented error-table row has a test asserting error class *and* that the message contains the offending path; degenerate scalars resolve; declaration order preserved in `Space.params`.
 **Not yet:** charts, sampling, choice/struct/lifts, expression bounds (reject with "not implemented" ResolutionError listing the construct).
 
@@ -224,7 +223,7 @@ structurally). This touches resolution's synthetic constructions; settle it on p
 first, then write the laws, then implement.
 
 **Build:**
-- `build/_paramexpr.py` / new `build/_views.py` — the view subclasses. Move the 9
+- `builder/_paramexpr.py` / new `builder/_views.py` — the view subclasses. Move the 9
   type methods off the base onto `FreshParamExpr`; put `.repeat()` on the typed
   views and `ListParamExpr` (a type is required before a lift), not on the base or
   `FreshParamExpr`; the base keeps modifiers, expression operators, and the
@@ -234,7 +233,7 @@ first, then write the laws, then implement.
 - `__getattr__` on the typed views re-raises the path-named `ResolutionError` for a
   type-method name (preserving row 2's message on `.real(0,1).bool()`, not a bare
   `AttributeError`); a non-type-method miss stays a normal `AttributeError`.
-- The construction trap sites, which must build the right class: `build/_functions.py`
+- The construction trap sites, which must build the right class: `builder/_functions.py`
   (`param()` returns `FreshParamExpr`), and resolution's internal `ParamExpr(...)`
   constructions at `resolve/_pipeline.py` (synthetic list element ~549/552, which
   today also *fabricates* `type_calls`; discriminator ref ~660) — these build base
@@ -267,7 +266,7 @@ name early; the views subclass `ParamExpr` directly until then (D-27).
 - `eval/` — factor the topological activity walk (+ `_expand_lift_activity`) into one shared, classifier-parameterized helper; `compute_activity` (binary) and new `compute_activity_partial` (three-valued; pending-dependency rule; three-valued `IsActive`) are thin adapters.
 - `defaults/` — `apply_defaults` cascade modeled on `sample/_sample.py::_draw_config` (fill-from-default replaces draw): topological walk, incremental activity, choice=variant / struct=field-wise / element-broadcast / `list_default` / lifted-descendant defaults; defaulted-count-param cascade; **fill-only output**; `has_complete_defaults`. Complete row-21 default validation for choice/subset/permutation and reject struct-level defaults (no new error row).
 - `partial/` — `evaluate_partial`, `remaining_domain` (per-kind descriptor + the one-unset-operand reducer: bare-target, hard-only, origin polarity via `is_violated`, reusing `bound_origin_targets`), `param_activity`, `is_complete`, `missing_params`, `next_assignable`, public `topological_order`.
-- `build/_space.py` — wire the nine methods (thin delegators; each calls `check_fully_resolved`).
+- `builder/_space.py` — wire the nine methods (thin delegators; each calls `check_fully_resolved`).
 **Gate:** idempotence + monotonicity (hypothesis); activity-respecting fill (the `turbo`/`chassis` case from the spec's history); completeness postcondition; element/list default exclusivity; the reducer guarantee tested positively *and* negatively (a two-unset-operand implication is documented as not propagated); three-valued activity **collapses to binary**; the driver-loop **coincidence** `next_assignable == [] ⟺ is_complete`; `remaining_domain` soundness. No new error-table rows (row 21 completed in code). Corpus: `pump_configurator` as a scripted driver loop.
 
 ### M7 — Identity and serialization
@@ -293,7 +292,7 @@ Sampling §reject on forbids **and requires**; Config Utilities §instance-path
 `"require"`.
 
 **Build:**
-- `build/_space.py` — new `.require(*conditions, tags=(), meta=None)`; `resolve/_constraints.py::add_constraints` gains an `origin` parameter (default `"user"`), `.require` passes `hard=True, origin="require"`.
+- `builder/_space.py` — new `.require(*conditions, tags=(), meta=None)`; `resolve/_constraints.py::add_constraints` gains an `origin` parameter (default `"user"`), `.require` passes `hard=True, origin="require"`.
 - Generalize the four `origin == "bound"` special-cases to `origin in ("bound", "require")`: `identity/_ir_codec.py` (forbidden-state preimage canonicalization), `eval/_constraint_eval.py::is_violated` (feasible-iff-satisfied), `partial/_partial.py` (`remaining_domain` reduction + feasible-side polarity), `resolve/_bounds.py` (canonicalization gate). **Leave `dependency_graph`/`topological_order` bound-only** — `require`, like a forbid, builds no chart and imposes no assignment order (`resolve/_bounds.py:151`-style ordering is bound-specific).
 - `config/_helpers.py::_get_by_path` — honor the path grammar's `[k]` indexing so `variant`/`payload`/`destructure` walk into lifted-choice elements (`pipeline[1]`); the bare list path raises a guiding misuse error naming the indexed form. Stays `Space`-free.
 - `remaining_domain` empty/non-existent path already raises `TypeError` via `_lookup_param_shape` — add coverage, no code change.
@@ -316,7 +315,7 @@ gains `"discourage"`; derived `Constraint.kind`/`feasible_when_satisfied` and
 `ConstraintEval.violated`).
 
 **Build:**
-- `build/_space.py` — rename `.constrain` → `.encourage`; add `.discourage`
+- `builder/_space.py` — rename `.constrain` → `.encourage`; add `.discourage`
   (`add_constraints(hard=False, origin="discourage")`). `resolve/_constraints.py` — the
   `call` label maps `(origin, hard)` to the four verb names.
 - `ir/_param.py` / `ir/_results.py` — derived properties: `Constraint.kind`
@@ -434,7 +433,7 @@ vector byte-identical**, plus a fingerprint sweep over all fixtures.
 
 The space-guided walk is written five times and M11 would make six. `_direct_children` lives private
 in `config/_flatten.py` yet is imported by `config/_unflatten.py`, `identity/_config_encode.py`,
-`frame/_rows.py`, `frame/_schema.py`, and `build/_space.py` — the last two through *local* imports to
+`frame/_rows.py`, `frame/_schema.py`, and `builder/_space.py` — the last two through *local* imports to
 break cycles. Four recursions share one skeleton with parallel `_*_choice` / `_*_list_element` helper
 pairs, and the `"[]."`/`"[i]."` convention is re-derived across 13 modules. Extraction is literally
 the spec's own principle for this layer.
@@ -739,7 +738,7 @@ validator)` shorthand, which poisons a domain with no structural content to lose
 is present.
 
 `frame/_schema.py`/`frame/_rows.py` (`Utf8`/JSON-string, M10-anticipated), `identity/_tags.py`'s
-`EncodeContext` docstring (M10.8-anticipated), and `build/_space.py::has_nongenerative_params`'s own
+`EncodeContext` docstring (M10.8-anticipated), and `builder/_space.py::has_nongenerative_params`'s own
 docstring (M9-anticipated) needed no correction, only activation — confirming the three-milestone
 forward-anticipation held. One pre-existing gap *was* fixed alongside the new kinds, not merely
 activated: `has_nongenerative_params` scanned `self.params` flat, which silently missed a
@@ -846,13 +845,13 @@ are injected via a root `conftest.py`'s `doctest_namespace` rather than re-impor
 examples — paired with a `TYPE_CHECKING`-guarded `import designspace as ds` in each of the 18
 modules that carry examples, since injection is invisible to a static analyser and an IDE would
 otherwise report every `ds` as unresolved (verified against PyCharm's own inspections: 13
-warnings in `build/_functions.py` before, zero after). The guard never executes, so it changes no
+warnings in `builder/_functions.py` before, zero after). The guard never executes, so it changes no
 behaviour; it costs one `# noqa: F401` per module, the narrowest available suppression, and
 `mypy --strict` confirms the apparent self-import creates no cycle even from `ir/_chart.py`, a
 leaf the package imports first. **One deliberate `+SKIP`:** `Space.sample()` returns a `pl.DataFrame` and the
 `core-only` CI job installs without polars, so its example is skipped and the runnable coverage
 lives on `sample_dicts`/`sample_one` (`tests/conformance/test_dataframe.py` already tests the
-DataFrame path for real). The alternative — `--ignore`-ing `build/_space.py` in that job — would
+DataFrame path for real). The alternative — `--ignore`-ing `builder/_space.py` in that job — would
 drop 40+ real doctests.
 
 That same root `conftest.py` must carry `collect_ignore` for
@@ -914,10 +913,11 @@ says the views carry no state and never reach the IR), instance attributes are n
 
 **One silent gate hole found and closed, which is the reason the milestone earns its keep:** pytest's
 default `norecursedirs` contains `build`, so `testpaths = ["tests", "src"]` collected **zero** of the
-83 doctests under `src/designspace/build/` — the package holding `ds.param`, `ds.space`, and every
-`Space` method. `pytest -q` reported green the whole time. `norecursedirs` is now restated in
-`pyproject.toml` without `build` (`dist` stays excluded, and `testpaths` already confines collection).
-Anything adding a directory under `src/` should re-check that list.
+83 doctests in the builder package, then named `src/designspace/build/` — the package holding
+`ds.param`, `ds.space`, and every `Space` method. `pytest -q` reported green the whole time. M13
+closed it by restating `norecursedirs` in `pyproject.toml` without `build`. *(Superseded 2026-08-06:
+the package was renamed to `builder/` and the restatement deleted, so pytest's defaults are correct
+as they ship. A directory under `src/` named for build output would still be skipped.)*
 
 Final counts: 116 doctests, 466 parametrized gate tests, 2400 total (1818 at M12.5). Every
 known-answer vector byte-identical; no runtime, public-API, wire-format, or fingerprint change.
@@ -1030,9 +1030,9 @@ that the M13 gates now cover. Exporting also removed five ignore-list entries ou
 resolve for real rather than being silenced.
 
 Exporting `Seed` forced a latent duplication into the open: it was defined **twice**, identically,
-in `build/_space.py` and `sample/_sample.py`, with `represent/` importing one and `frame/` +
+in `builder/_space.py` and `sample/_sample.py`, with `represent/` importing one and `frame/` +
 `sample/_diagnostics.py` importing the other. Two `designspace.Seed` candidates cannot both be the
-export, so the definition is now single, in `build/_space.py` — the upstream module, since
+export, so the definition is now single, in `builder/_space.py` — the upstream module, since
 `sample/_sample.py` imports it and not the reverse — and the three consumers import from there.
 `mypy --strict`'s no-implicit-reexport rule is what surfaced the second and third consumers.
 
@@ -1245,12 +1245,12 @@ only).
 **Build:** the three extras as scoped in API.md's Staging section, plus `serialize/_jsonschema.py`
 for `to_json_schema`, mirroring the domain walk already in `serialize/_tojson.py` and
 `identity/_ir_codec.py`'s `encode_domain` rather than writing a third walker, wired onto `Space` via
-a deferred import (matching the existing `build/_space.py` pattern); new
+a deferred import (matching the existing `builder/_space.py` pattern); new
 `tests/conformance/test_json_schema.py`, laws-first per usual protocol. Carries forward M13's
 documentation obligation explicitly: the docstring pass at M13 covers only what exists then, so
 this milestone writes its own user-facing docstrings, under the same coverage lint, before merging.
 
-**Gate:** the four commit gates plus the doctest/docstring-coverage gates established at M13, all
+**Gate:** the commit gates (CLAUDE.md) plus the docstring-coverage gates established at M13, all
 green; pre-existing known-answer vectors byte-identical; every corpus fixture's
 `to_json_schema()` output validates that fixture's own sampled configs; `examples/README.md`'s "Not
 yet implemented" section (which currently names exactly `.to_json_schema()`) is deleted. **Exit:**

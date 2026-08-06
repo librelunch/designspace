@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from designspace.build._space import Space
+from designspace.builder._space import Space
 from designspace.charts._grid import build_grid_shape, grid_membership
 from designspace.config._flatten import _split_choice_value
 from designspace.errors import SerializationError

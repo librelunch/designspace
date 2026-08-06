@@ -1,8 +1,15 @@
-"""Pytest configuration shared by the whole suite.
+"""Pytest configuration for the doctest gate.
 
-Two jobs, both consequences of M13 putting `--doctest-modules` in `addopts`:
+Both jobs here serve `pytest --doctest-modules --doctest-glob=*.md src docs`:
 inject the names every docstring example assumes, and keep collection away
-from the one module in the tree that is not importable by design.
+from the one file under `docs/` that is configuration rather than prose.
+
+**This file belongs at the repository root, not under `tests/`.** A conftest
+applies only to items collected at or below its own directory, and neither of
+the trees the doctest gate walks is inside `tests/`. The fixture has to reach
+docstrings in `src/designspace/**` and pages in `docs/**/*.md`, and
+`collect_ignore` entries resolve relative to the conftest's own directory, so
+`docs/conf.py` is unreachable from anywhere else.
 """
 
 from __future__ import annotations
@@ -11,16 +18,10 @@ from typing import Any
 
 import pytest
 
-# `--doctest-modules` imports every module under `testpaths`, and this one
-# raises `ResolutionError` at import on purpose: it is a `mypy --strict`
-# fixture for the M4.6 view types (fed to mypy by tests/typing/
-# test_static_typing.py, never executed). Without this entry the whole
-# collection aborts.
+# `--doctest-modules` imports every module under the paths it is given, and
+# this is Sphinx configuration rather than library code: nothing to test, and
+# importing it is not free.
 collect_ignore = [
-    "tests/typing/_row2_and_wrong_type_modifier.py",
-    # M13.5 put `docs/` on `testpaths` so the guide pages' `>>>` blocks run.
-    # That also puts `docs/conf.py` in `--doctest-modules`' path, where it is
-    # Sphinx configuration rather than library code and has nothing to test.
     "docs/conf.py",
 ]
 

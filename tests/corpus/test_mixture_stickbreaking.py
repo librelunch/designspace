@@ -14,7 +14,7 @@ from mixture_stickbreaking import (
     stickbreaking_rule,
 )
 
-from designspace.build._space import Space
+from designspace import Space
 from designspace.ir import ListDomain, RealDomain
 
 

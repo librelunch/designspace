@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from designspace.build._paramexpr import ParamExpr
+from designspace import ParamExpr
 from designspace.errors import SerializationError
 from designspace.expr import (
     ArithOp,

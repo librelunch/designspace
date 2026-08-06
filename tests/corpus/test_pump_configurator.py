@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pump_configurator import build_space
 
-from designspace.build._space import Space
+from designspace import Space
 from designspace.ir import (
     IntegerRemaining,
     PermutationRemaining,

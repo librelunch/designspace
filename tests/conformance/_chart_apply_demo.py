@@ -18,7 +18,7 @@ needs a frozen byte-identical digest for.
 from __future__ import annotations
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 
 def _source_space() -> Space:

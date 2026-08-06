@@ -50,11 +50,17 @@ uv run ruff check
 uv run ruff format --check
 uv run mypy --strict src/
 uv run pytest -q
+uv run pytest -q --doctest-modules --doctest-glob='*.md' src docs
+uv run --extra docs sphinx-build -b html -W docs docs/_build
 ```
 
-All four must pass. Do not skip a gate, weaken strictness, add broad ignores, hide a
+All six must pass. Do not skip a gate, weaken strictness, add broad ignores, hide a
 failure, or change these commands to make a commit pass. The same commands must run in
 CI.
+
+Every gate is one command that says what it checks. Do not fold one into another to
+shorten the list: the doctest run and the site build were each hidden inside `pytest -q`
+once, and neither was a gate anyone ran.
 
 
 ## Additional instructions
@@ -64,8 +70,6 @@ CI.
   permanent and may never be deleted or loosened.
 - No dead scaffolding: do not stub future milestones' public APIs. `src/designspace/__init__.py` exports exactly  
   the spec surface implemented so far.
-- Frozen after M7 ships: the JSON format and fingerprint preimage. Changes require the version-bump protocol in
-  the plan (bump the shared integer, add — never replace — known-answer vectors).
 - Out-of-scope list in the spec is binding even for "helpers": no search operators, no distances, no tree generators,
   no algebraic expression normalization, no clamping anywhere.
 - All public objects immutable; RNG passed explicitly; error messages name the offending definition path(s).

@@ -10,7 +10,7 @@ then `buf_a`, then `buf_b`, then `buf_c`).
 from __future__ import annotations
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 TOTAL_LO = 4096
 TOTAL_HI = 65536

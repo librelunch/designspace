@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from typing import Any, cast
 
-from designspace.build._paramexpr import ParamExpr
+from designspace.builder._paramexpr import ParamExpr
 from designspace.errors import ResolutionError
 from designspace.expr import (
     SCALAR_TYPES,

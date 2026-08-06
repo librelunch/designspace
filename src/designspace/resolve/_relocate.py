@@ -4,7 +4,7 @@ IR of its enclosing scope (API.md, "Paths and Scoping" — relocatability;
 "Expressions" rule 3 — cascading deactivation).
 
 A child Space resolves standalone and eagerly: `ParamExpr.space()`/
-`.choice()` (build/_paramexpr.py) call `resolve_space` immediately on the
+`.choice()` (builder/_paramexpr.py) call `resolve_space` immediately on the
 payload's exprs. A leaf reference that binds in the child's own scope is
 already checked there (row 6/14); a reference that binds *nowhere locally*
 is tolerated as a possible enclosing-scope up-reference (D-26) and
@@ -25,7 +25,7 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import Any, cast
 
-from designspace.build._paramexpr import ParamExpr
+from designspace.builder._paramexpr import ParamExpr
 from designspace.expr import (
     ArithExpr,
     ArithOp,
@@ -234,7 +234,7 @@ def _rename_map(child: Any, new_prefix: str) -> dict[str, str]:
 
 
 def relocate_child(
-    child: Any,  # designspace.build._space.Space; Any avoids an import cycle
+    child: Any,  # designspace.builder._space.Space; Any avoids an import cycle
     new_prefix: str,
     injected_condition: BoolExpr | None,
 ) -> tuple[dict[str, ParamDef], list[Condition], list[Constraint]]:
@@ -269,7 +269,7 @@ def relocate_child(
 
 
 def instantiate_element(
-    space: Any,  # designspace.build._space.Space; Any avoids an import cycle
+    space: Any,  # designspace.builder._space.Space; Any avoids an import cycle
     template_prefix: str,
     concrete_prefix: str,
 ) -> tuple[dict[str, ParamDef], list[Condition]]:

@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 _CONF_DIR = Path(__file__).resolve().parent
 if str(_CONF_DIR) not in sys.path:

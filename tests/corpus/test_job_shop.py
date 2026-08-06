@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from job_shop import JOBS, build_space
 
-from designspace.build._space import Space
+from designspace import Space
 from designspace.errors import ResolutionError
 
 

@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 
 import designspace as ds
-from designspace.build._paramexpr import ParamExpr
+from designspace import ParamExpr
 from designspace.charts._builtin import LogChart, UniformChart
 from designspace.eval import compute_activity, evaluate_arith
 from designspace.expr import ChartApply, Field, Sum

@@ -25,7 +25,7 @@ from hypothesis import assume, given
 from hypothesis import strategies as st
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 from designspace.eval import compute_activity, evaluate_bool, margin
 
 

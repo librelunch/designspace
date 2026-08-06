@@ -16,7 +16,7 @@ checked exactly like any other param's `.when()` at *this* level (steps
 4-5 already handle it uniformly, since it's just an ordinary ParamExpr
 entry in `defs`); its payload's *descendant* params were already fully
 resolved (by their own, earlier `resolve_space` call — see
-build/_paramexpr.py's `.space()`/`.choice()`) and only need reprefixing
+builder/_paramexpr.py's `.space()`/`.choice()`) and only need reprefixing
 plus one folded-in activation condition (resolve/_relocate.py), never
 re-validation.
 """
@@ -29,10 +29,10 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import Any
 
-from designspace.build._names import check_meta_json_serializable, check_name
-from designspace.build._paramexpr import ParamExpr, _ElementSnapshot
-from designspace.build._space import Space
-from designspace.build._views import (
+from designspace.builder._names import check_meta_json_serializable, check_name
+from designspace.builder._paramexpr import ParamExpr, _ElementSnapshot
+from designspace.builder._space import Space
+from designspace.builder._views import (
     BoolParamExpr,
     CategoricalParamExpr,
     ChoiceParamExpr,
@@ -121,7 +121,7 @@ def resolve_space(exprs: tuple[ParamExpr, ...]) -> Space:
     _check_types_and_names(defs)  # step 2
     defs = _desugar(defs)  # step 3: implies -> ~left | right (D-1); log_scale
     # already resolves eagerly at the builder. Lift ("repeat") layer folding
-    # already happened at the builder (`.repeat()`, build/_paramexpr.py) —
+    # already happened at the builder (`.repeat()`, builder/_paramexpr.py) —
     # this step only rewrites `.when()` conditions.
     defs_by_path = {d.path: d for d in defs}
     _resolve_condition_refs(defs, defs_by_path)  # step 4
@@ -717,7 +717,7 @@ def _validate_domain(d: ParamExpr) -> None:
 def _check_custom_domain(path: str, domain: CustomDomain) -> None:
     """Row 2-adjacent construction check, not a numbered error row: the
     `.custom()` two-form overload itself already rejects a malformed call
-    at the builder (`build/_views.py::FreshParamExpr.custom`) — this is a
+    at the builder (`builder/_views.py::FreshParamExpr.custom`) — this is a
     final sanity check for a programmatically-built `CustomDomain` reaching
     resolution some other way (`ds.param_from_def`, `space_from_ir`),
     mirroring that same check exactly."""

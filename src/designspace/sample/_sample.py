@@ -22,7 +22,7 @@ from typing import Any
 
 import numpy as np
 
-from designspace.build._space import Seed, Space
+from designspace.builder._space import Seed, Space
 from designspace.charts import build_chart
 from designspace.config import unflatten
 from designspace.custom import is_generative

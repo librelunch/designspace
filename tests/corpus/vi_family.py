@@ -22,7 +22,7 @@ from itertools import pairwise
 from typing import Any
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 
 def _is_connected(n_nodes: int, edges: list[tuple[int, int]]) -> bool:

@@ -1,6 +1,6 @@
 """`ds.param_from_def` / `ds.space_from_ir` (API.md, "Space —
 Metaprogramming"; DECISIONS.md D-41). `.map_params`/`.without_constraints`
-sugar lives on `Space` (build/_space.py), both routed through
+sugar lives on `Space` (builder/_space.py), both routed through
 `space_from_ir`.
 
 "The IR is bidirectional": `param_from_def` inverts one resolved `ParamDef`
@@ -28,8 +28,8 @@ from collections.abc import Iterable, Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from designspace.build._space import Space
-from designspace.build._views import TypedParamExpr
+from designspace.builder._space import Space
+from designspace.builder._views import TypedParamExpr
 from designspace.errors import ResolutionError
 from designspace.ir import Condition, Constraint, ListDomain, ParamDef
 from designspace.resolve import param_def_to_view, rebuild_charts, revalidate_space

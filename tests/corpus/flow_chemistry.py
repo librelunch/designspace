@@ -7,7 +7,7 @@ Exercises: subset inclusion priors, `contains`, `sum_over`, implications.
 from __future__ import annotations
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 REAGENTS = ("acid", "base", "catalyst", "solvent", "oxidizer")
 COSTS = {"acid": 2.0, "base": 1.5, "catalyst": 10.0, "solvent": 0.5, "oxidizer": 3.0}

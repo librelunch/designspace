@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from designspace.build._space import Space
+from designspace.builder._space import Space
 from designspace.ir import ChoiceDomain, ListDomain
 from designspace.paths import element_prefix, instance_prefix
 

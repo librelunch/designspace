@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from wind_farm_grid import ADJACENT_PAIRS, build_space
 
-from designspace.build._space import Space
+from designspace import Space
 
 
 def test_resolves():

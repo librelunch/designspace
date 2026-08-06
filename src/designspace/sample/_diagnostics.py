@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
-from designspace.build._space import Seed, Space
+from designspace.builder._space import Seed, Space
 from designspace.eval import evaluate_constraint, instance_evals_indexed, is_violated
 from designspace.ir import Constraint, ConstraintEval, ConstraintReport, ListDomain, SamplingReport
 from designspace.paths import definition_form

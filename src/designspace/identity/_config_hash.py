@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from designspace.build._space import Space
+from designspace.builder._space import Space
 from designspace.identity._config_encode import encode_config
 from designspace.identity._jcs import canonical_digest
 

@@ -1,6 +1,6 @@
 """`.anchor()` / `.meta()`: space-level anchors and metadata (API.md,
 "Constraints and Feasibility"; deferred past M2 to M8 — see
-build/_space.py, DECISIONS.md D-40).
+builder/_space.py, DECISIONS.md D-40).
 
 Anchors are named whole reference configs — the same nested-phenotype
 shape `.validate()`/`.sample_dicts()` use — validated against the space
@@ -26,8 +26,8 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import Any
 
-from designspace.build._names import check_meta_json_serializable
-from designspace.build._space import Space
+from designspace.builder._names import check_meta_json_serializable
+from designspace.builder._space import Space
 from designspace.errors import ResolutionError
 
 

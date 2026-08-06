@@ -18,23 +18,18 @@ jobs:
       - run: uv run ruff format --check
       - run: uv run mypy --strict src/
       - run: uv run pytest -q
+      - run: uv run pytest -q --doctest-modules --doctest-glob='*.md' src docs
 
   docs:
-    # The site build is gated inside `pytest` (tests/test_docs_site.py) so the
-    # four commit-gate commands stay four. It is opt-in via
-    # DESIGNSPACE_DOCS_BUILD — it costs ~17s and no other job here wants it —
-    # so this job exists to set that and make it actually run.
+    # The sixth commit gate. `uv run --extra docs` installs the extra for this
+    # run, so this is the CLAUDE.md command verbatim.
     runs-on: ubuntu-latest
-    env:
-      DESIGNSPACE_DOCS_BUILD: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - run: uv sync --extra docs
-      - run: uv run pytest -q tests/test_docs_site.py
-      - run: uv run sphinx-build -b html -W docs docs/_build
+      - run: uv run --extra docs sphinx-build -b html -W docs docs/_build
 
   core-only:
     # Proves the core install path (numpy + rfc8785 only, no `polars` extra)
@@ -50,6 +45,13 @@ jobs:
           python-version: "3.12"
       - run: uv sync --no-install-package polars
       - run: uv run python -c "import designspace"
+      # Three deselections rather than three more `--ignore`s. Each names the
+      # only polars-dependent thing in a file that is otherwise entirely
+      # core: the DataFrame tutorial among eleven pages and three unrelated
+      # laws, and the two dtype laws among 146 kind-by-surface tests. Ignoring
+      # either file would drop the rest. Same reasoning that kept
+      # `builder/_space.py`'s doctests in this job at M13, where one example
+      # carries `+SKIP` instead.
       - run: >
           uv run pytest -q
           --ignore=tests/conformance/test_dataframe.py
@@ -57,3 +59,10 @@ jobs:
           --ignore=tests/corpus/test_flat_hpo.py
           --ignore=tests/corpus/test_memetic_pipeline.py
           --ignore=tests/unit/test_frame.py
+          --deselect "tests/test_docs_site.py::test_tutorial_page_executes[10-diagnostics-and-dataframes]"
+          --deselect tests/conformance/test_kind_surface_matrix.py::TestEveryKindSatisfiesEveryLaw::test_dataframe_dtype_matches_the_table
+          --deselect tests/conformance/test_kind_surface_matrix.py::TestEveryKindSatisfiesEveryLaw::test_container_lift_dtype_is_an_array
+      # Doctests over `src` reach this job too, which is what the single
+      # `# doctest: +SKIP` in `builder/_space.py` is for. No `.md` page carrying
+      # a `>>>` block touches polars.
+      - run: uv run pytest -q --doctest-modules --doctest-glob='*.md' src docs

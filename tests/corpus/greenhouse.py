@@ -8,7 +8,7 @@ PROGRESS.md/DECISIONS.md for the same pattern this fixture's forbears use).
 from __future__ import annotations
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 
 def build_space() -> Space:

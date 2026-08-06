@@ -16,7 +16,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace
 from typing import Any
 
-from designspace.build._space import Space
+from designspace.builder._space import Space
 from designspace.errors import ResolutionError
 from designspace.ir import ListDomain, ParamDef
 from designspace.meta._meta import _build_space_from_ir, space_from_ir

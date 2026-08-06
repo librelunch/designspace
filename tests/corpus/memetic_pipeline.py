@@ -7,7 +7,7 @@ strings alongside parameterized ones in the same list).
 from __future__ import annotations
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 MIN_OPS = 2
 MAX_OPS = 6

@@ -5,7 +5,7 @@ scoping is why these run on griffe rather than ruff or `__doc__`:
 
 - **Ruff cannot express it.** Ruff's `D1xx` missing-docstring rules never
   fire in this repo, because every implementation module is private
-  (`build/_space.py`, `ir/_domain.py`, ...) and ruff treats members of a
+  (`builder/_space.py`, `ir/_domain.py`, ...) and ruff treats members of a
   private module as non-public. Ruff is also file-local, so it could never
   learn that `Space` is public by way of `designspace/__init__.py`'s
   `__all__`. Measured at M13's open: `ruff check --select D1 src/` reports

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from designspace.build._space import Space
+from designspace.builder._space import Space
 from designspace.config._flatten import flatten
 from designspace.ir import ParamDiff
 

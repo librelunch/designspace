@@ -21,7 +21,7 @@ choice contributes exactly one coordinate (its discriminator).
 
 from __future__ import annotations
 
-from designspace.build._space import Space, _has_dynamic_count
+from designspace.builder._space import Space, _has_dynamic_count
 from designspace.errors import ResolutionError
 from designspace.ir import ListDomain
 from designspace.paths import element_prefix, instance_prefix

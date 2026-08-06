@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from designspace.build._space import Seed, Space
+from designspace.builder._space import Seed, Space
 from designspace.frame._rows import build_row
 from designspace.frame._schema import build_schema
 from designspace.sample import sample_flat

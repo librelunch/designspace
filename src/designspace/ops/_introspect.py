@@ -6,8 +6,8 @@ selection is exactly a lookup into `subspaces()`.
 
 from __future__ import annotations
 
-from designspace.build._paramexpr import ParamExpr
-from designspace.build._space import Space
+from designspace.builder._paramexpr import ParamExpr
+from designspace.builder._space import Space
 from designspace.expr import ArithExpr, BoolExpr, Compare, Literal
 from designspace.ir import ChoiceDomain, ListDomain, SubspaceInfo
 

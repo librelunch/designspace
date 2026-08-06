@@ -25,7 +25,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from designspace.build._paramexpr import ParamExpr
+from designspace.builder._paramexpr import ParamExpr
 from designspace.expr import ChartApply, Expr
 from designspace.ir import Chart, ListDomain, ParamDef, RealDomain
 

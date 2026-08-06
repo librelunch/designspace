@@ -4,7 +4,7 @@ Public surface grows strictly with implemented milestones; see
 PLAN.md. Nothing speculative is exported.
 """
 
-from designspace.build import (
+from designspace.builder import (
     BoolParamExpr,
     CategoricalParamExpr,
     ChoiceParamExpr,

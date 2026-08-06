@@ -35,8 +35,8 @@ from collections.abc import Mapping
 from itertools import pairwise
 from typing import Any, ClassVar, NamedTuple
 
-from designspace.build._paramexpr import ParamExpr
-from designspace.build._space import Space
+from designspace.builder._paramexpr import ParamExpr
+from designspace.builder._space import Space
 from designspace.expr import (
     ArithExpr,
     ArithOp,

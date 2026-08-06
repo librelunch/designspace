@@ -11,7 +11,7 @@ descriptor stays sound, not complete, for that coupling).
 from __future__ import annotations
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 CERTIFICATIONS = ("CE", "UL", "ATEX")
 

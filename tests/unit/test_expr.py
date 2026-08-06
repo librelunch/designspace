@@ -2,7 +2,7 @@
 
 No evaluation or resolution is exercised here — these nodes are pure, unresolved
 AST fragments built directly against designspace.expr (ds.param does not exist
-until M1's build/).
+until M1's builder/).
 """
 
 from __future__ import annotations
@@ -365,7 +365,7 @@ class TestAllAny:
 
 class TestParams:
     def test_params_empty_without_param_refs(self):
-        # M0 has no param-referencing leaf (that lands in build/ at M1);
+        # M0 has no param-referencing leaf (that lands in builder/ at M1);
         # params is exercised here only for the empty case.
         node = (lit(1.0) + lit(2.0)) > 3
         assert node.params == frozenset()

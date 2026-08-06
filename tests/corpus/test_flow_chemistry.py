@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from flow_chemistry import build_space
 
-from designspace.build._space import Space
+from designspace import Space
 from designspace.errors import ResolutionError
 
 

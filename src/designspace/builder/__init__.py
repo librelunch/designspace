@@ -1,11 +1,11 @@
-"""build: `ds.param` / `ds.space` builders, modifiers, layering (API.md,
+"""builder: `ds.param` / `ds.space` builders, modifiers, layering (API.md,
 "Construction" / "Parameter Types" / "Modifiers and Layering").
 """
 
-from designspace.build._functions import param, space
-from designspace.build._paramexpr import ParamExpr
-from designspace.build._space import Seed, Space
-from designspace.build._views import (
+from designspace.builder._functions import param, space
+from designspace.builder._paramexpr import ParamExpr
+from designspace.builder._space import Seed, Space
+from designspace.builder._views import (
     BoolParamExpr,
     CategoricalParamExpr,
     ChoiceParamExpr,

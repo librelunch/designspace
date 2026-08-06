@@ -14,7 +14,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import Any
 
-from designspace.build._space import Space
+from designspace.builder._space import Space
 from designspace.errors import SerializationError
 from designspace.identity._ir_codec import (
     decode_anchors,

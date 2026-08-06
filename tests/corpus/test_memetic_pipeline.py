@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from memetic_pipeline import MAX_OPS, MIN_OPS, build_space
 
-from designspace.build._space import Space
+from designspace import Space
 
 
 def test_resolves():

@@ -15,7 +15,7 @@ folds to the literal `True`, so its `.implies()` is trivially satisfied —
 from __future__ import annotations
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 # pass name -> prerequisite pass names (all must be enabled if this pass is).
 PASS_REGISTRY: dict[str, tuple[str, ...]] = {

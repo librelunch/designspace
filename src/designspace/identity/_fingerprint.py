@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from designspace.build._space import Space
+from designspace.builder._space import Space
 from designspace.identity._ir_codec import (
     EncodeContext,
     encode_anchors,

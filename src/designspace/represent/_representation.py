@@ -23,7 +23,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from designspace.build._space import Seed, Space
+from designspace.builder._space import Seed, Space
 from designspace.ir import Constraint, RepresentationCheck, RepresentationCheckFailure
 
 if TYPE_CHECKING:

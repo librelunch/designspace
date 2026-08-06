@@ -27,8 +27,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any, cast
 
-from designspace.build._paramexpr import ParamExpr
-from designspace.build._space import Space
+from designspace.builder._paramexpr import ParamExpr
+from designspace.builder._space import Space
 from designspace.errors import ResolutionError
 from designspace.expr import (
     ArithExpr,

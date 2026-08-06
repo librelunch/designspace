@@ -61,7 +61,7 @@ from types import MappingProxyType
 import pytest
 
 import designspace as ds
-from designspace.build._paramexpr import ParamExpr
+from designspace import ParamExpr
 from designspace.charts._external import build_external_chart
 from designspace.errors import ResolutionError, SerializationError
 from designspace.expr import ChartApply, Compare, Literal

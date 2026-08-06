@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
-from designspace.build._paramexpr import ParamExpr
+from designspace.builder._paramexpr import ParamExpr
 from designspace.custom import has_cardinality, is_generative
 from designspace.expr import ArithExpr, BoolExpr
 from designspace.ir import (

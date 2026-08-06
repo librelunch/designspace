@@ -346,7 +346,7 @@ class TestRow27:
     def test_missing_registry_entry_raises(self):
         space = ds.space(ds.param("p").custom(Probability()))
         doc = space.to_json()
-        from designspace.build._space import Space
+        from designspace import Space
 
         with pytest.raises(SerializationError, match="row 27"):
             Space.from_json(doc)  # no custom_types registry at all

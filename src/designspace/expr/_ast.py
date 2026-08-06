@@ -685,7 +685,7 @@ class VectorExpr(Expr):
     """Mixin exposing the aggregate namespace (API.md, "Expressions" —
     "Vector expressions and aggregates"): "a scalar lift *is* a vector
     expression; `.field(name)` projects a struct lift into one." Shared by
-    `ParamExpr` (build/_paramexpr.py, when it references a lift) and
+    `ParamExpr` (builder/_paramexpr.py, when it references a lift) and
     `Field` below — neither the mixin nor its methods validate that the
     operand is actually lift-typed; that is resolve/'s job (M0's "no
     validation happens here" principle, same as `.contains()`/`.size()`).

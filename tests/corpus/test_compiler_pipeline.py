@@ -8,7 +8,7 @@ from dataclasses import replace
 
 from compiler_pipeline import PASS_REGISTRY, build_space
 
-from designspace.build._space import Space
+from designspace import Space
 
 
 def test_resolves():

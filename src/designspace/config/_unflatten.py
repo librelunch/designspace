@@ -53,7 +53,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
-from designspace.build._space import Space
+from designspace.builder._space import Space
 from designspace.expr import ArithExpr
 from designspace.ir import ChoiceDomain, ListDomain
 from designspace.paths import element_prefix, instance_prefix

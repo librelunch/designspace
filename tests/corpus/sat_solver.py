@@ -14,7 +14,7 @@ vectors" discipline forbids. Anchors are exercised instead by
 from __future__ import annotations
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 
 def build_space() -> Space:

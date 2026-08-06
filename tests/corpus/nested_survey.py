@@ -17,7 +17,7 @@ enclosing-scope reference `n_repeats`, D-91) across scopes.
 from __future__ import annotations
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 MAX_ITEMS = 6
 MAX_TOTAL_MINUTES = 45

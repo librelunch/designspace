@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from delivery_routes import TOTAL_DWELL_BUDGET_MIN, build_space
 
-from designspace.build._space import Space
+from designspace import Space
 
 
 def test_resolves():

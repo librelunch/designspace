@@ -13,7 +13,7 @@ without a sampler.
 from __future__ import annotations
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 SCHEDULE_SIGNATURE = ds.Signature({"step": int, "total": int}, float)
 

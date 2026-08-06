@@ -20,7 +20,7 @@ from __future__ import annotations
 import pytest
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 
 class _FakePrior:

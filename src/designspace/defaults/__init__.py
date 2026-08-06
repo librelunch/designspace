@@ -1,6 +1,6 @@
 """defaults: `.apply_defaults()` cascade (API.md, "Defaults").
 
-Internal machinery invoked by `build/_space.py`'s `Space.apply_defaults` —
+Internal machinery invoked by `builder/_space.py`'s `Space.apply_defaults` —
 not part of the public surface (users only ever see the plain `dict` it
 returns).
 """

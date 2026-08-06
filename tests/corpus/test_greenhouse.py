@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from greenhouse import build_space
 
-from designspace.build._space import Space
+from designspace import Space
 
 
 def test_resolves():

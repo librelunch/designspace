@@ -7,7 +7,7 @@ from __future__ import annotations
 from vi_family import CUSTOM_TYPES, FixedTopology, GraphTopology, build_finite_space, build_space
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 
 def test_resolves():

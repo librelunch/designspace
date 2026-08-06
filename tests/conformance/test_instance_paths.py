@@ -231,7 +231,7 @@ class TestCheckFullyResolvedAlsoWalksConstraints:
     surface."""
 
     def test_static_out_of_range_constraint_rejected_via_space_from_ir(self):
-        from designspace.build._paramexpr import ParamExpr
+        from designspace import ParamExpr
         from designspace.expr import Compare, Literal
         from designspace.ir import Constraint
 

@@ -20,9 +20,9 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import Any
 
-from designspace.build._names import check_meta_json_serializable
-from designspace.build._paramexpr import ParamExpr
-from designspace.build._space import Space
+from designspace.builder._names import check_meta_json_serializable
+from designspace.builder._paramexpr import ParamExpr
+from designspace.builder._space import Space
 from designspace.errors import ResolutionError
 from designspace.expr import BoolExpr, Compare
 from designspace.ir import Constraint, ParamDef

@@ -9,7 +9,7 @@ morphism between one and its phenotype, carrying a value-level `decode`/
 representation); `_transport.py` the expression rewriting that keeps
 conditions/constraints meaningful in the target; `_build.py` the
 `space.represent(*rules)` dispatcher these all feed. `Space.represent()`
-(`build/_space.py`) is the only builder-facing entry point — everything
+(`builder/_space.py`) is the only builder-facing entry point — everything
 here is otherwise reached through the `Representation`/`Encoding` objects
 `designspace/__init__.py` re-exports.
 """

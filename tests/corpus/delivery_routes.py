@@ -6,7 +6,7 @@ Exercises: struct lifts, instance paths, per-instance constraints, aggregates.
 from __future__ import annotations
 
 import designspace as ds
-from designspace.build._space import Space
+from designspace import Space
 
 N_LOCATIONS = 10
 MAX_STOPS = 5

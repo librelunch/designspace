@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from typing import Literal as TypingLiteral
 
-from designspace.build._paramexpr import ParamExpr
+from designspace.builder._paramexpr import ParamExpr
 from designspace.errors import SerializationError
 from designspace.expr import (
     ArithExpr,
@@ -181,7 +181,7 @@ def encode_default_value(value: Any) -> Any:
     fixture or spec example uses it as a struct field name, and the
     tagged-value micro-format already reserves `$`-prefixed keys elsewhere
     (`$opaque`). For `meta` (which shares this codec, DECISIONS.md D-36),
-    the same collision is *not* merely accepted — `build/_names.py
+    the same collision is *not* merely accepted — `builder/_names.py
     ::check_meta_json_serializable` rejects any `"$"`-prefixed meta key at
     construction, because meta keys are unconstrained user input (unlike a
     default's struct field names, which are already limited to declared
@@ -234,7 +234,7 @@ def encode_expr(
     """`ctx`/`site` exist only for the one opaque leaf (`Value`, below) —
     every other node is fully structural and ignores them, so every
     pre-M10.8 call site (a direct `encode_expr(node)`, e.g.
-    `build/_space.py`'s structural-equality check) is unaffected. `ctx=None`
+    `builder/_space.py`'s structural-equality check) is unaffected. `ctx=None`
     behaves as `"raise"` — the same safe default `on_unserializable` has
     everywhere else — so a caller that never threads a context still fails
     loudly on an opaque node rather than silently. `site` is a

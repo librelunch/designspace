@@ -11,8 +11,8 @@ import math
 from types import MappingProxyType
 from typing import Any
 
-from designspace.build._paramexpr import ParamExpr
-from designspace.build._space import Space
+from designspace.builder._paramexpr import ParamExpr
+from designspace.builder._space import Space
 from designspace.config import flatten
 from designspace.eval import (
     Unknown,

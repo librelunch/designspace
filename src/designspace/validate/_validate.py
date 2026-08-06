@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from designspace.build._space import Space
+from designspace.builder._space import Space
 from designspace.charts import build_grid_shape, grid_membership
 from designspace.config import flatten, flatten_with_errors
 from designspace.eval import (
