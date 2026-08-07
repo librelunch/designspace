@@ -1,9 +1,10 @@
 """`Space.sample()`'s implementation (API.md, "Sampling and Generativity",
-`.sample(n, seed=None, reject_soft=False) -> pl.DataFrame`). The only
-module in `frame/` that touches polars at runtime — `polars` is an
-optional extra (`designspace[polars]`, not core; DECISIONS.md D-51), so
-the import is lazy and guarded here alone. `sample_dicts()`/`sample_one()`
-(`designspace.sample`) need no polars and are unaffected.
+`.sample(n, seed=None, reject_soft=False) -> pl.DataFrame`).
+
+This is the only module in `frame/` that touches polars at runtime. `polars`
+is an optional extra, `designspace[polars]` rather than core, so the import
+is lazy and guarded here alone. `sample_dicts()` and `sample_one()`, in
+`designspace.sample`, need no polars.
 """
 
 from __future__ import annotations

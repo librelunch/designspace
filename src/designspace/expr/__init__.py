@@ -1,7 +1,7 @@
-"""expr: expression AST — BoolExpr/ArithExpr node types and construction.
+"""expr: the expression AST, its node types and their construction.
 
-M0 scope (API.md, "Expressions"; construction only — no evaluation, no
-resolution). `ds.param()` and other builders live in `builder/` (M1) and reuse
+Construction only; see API.md, "Expressions". Nothing here evaluates or
+resolves. `ds.param()` and the other builders live in `builder/` and reuse
 the operator mixins on BoolExpr/ArithExpr defined here.
 """
 

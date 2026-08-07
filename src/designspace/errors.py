@@ -1,7 +1,9 @@
 """Exception taxonomy (API.md, "Errors and Concurrency").
 
 `ResolutionError` covers every R-tagged row of the spec's error table.
-`SerializationError` is added when serialize/ (M7) exists to raise it.
+`SerializationError` covers the non-serializable sites `serialize/` and
+`identity/` raise on, and `SamplingError` the two failures sampling
+reports.
 """
 
 from __future__ import annotations

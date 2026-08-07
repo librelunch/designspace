@@ -103,11 +103,14 @@ def _instance_constraint_evals_partial(
     status: dict[str, str],
     activity: dict[str, bool],
 ) -> tuple[list[ConstraintEval], list[Constraint]]:
-    """The per-instance sibling of the top-level loop below — element-scoped
-    constraint templates (`ListDomain.element_constraints`) instantiated per
-    active index, once that lift's own count is determined (`status == "set"`
-    for the container; an undetermined/inactive container contributes none,
-    same as `evaluate_partial`'s general instance-status rule)."""
+    """The per-instance sibling of the top-level loop below.
+
+    Element-scoped constraint templates, held on
+    `ListDomain.element_constraints`, are instantiated per active index once
+    that lift's own count is determined, meaning `status == "set"` for the
+    container. An undetermined or inactive container contributes none, under
+    `evaluate_partial`'s general instance-status rule.
+    """
     evaluable: list[ConstraintEval] = []
     pending: list[Constraint] = []
     for path, pd in space.params.items():
@@ -233,7 +236,7 @@ def _base_descriptor(pd: ParamDef) -> RemainingDomain:
     if isinstance(domain, PermutationDomain):
         return PermutationRemaining(items=domain.items)
     raise TypeError(
-        f"remaining_domain: {pd.path!r} is a {pd.type_kind!r} param — "
+        f"remaining_domain: {pd.path!r} is a {pd.type_kind!r} param; "
         "remaining_domain does not support this kind"
     )
 
@@ -263,9 +266,12 @@ def _feasible_expr(c: Constraint) -> BoolExpr:
 
 
 def _target_and_other(path: str, cmp: Compare) -> tuple[str, ArithExpr] | None:
-    """`(op, other)` read as "`path` <op> other" — `path` must be a bare
-    (non-arithmetic) operand of `cmp`, and the *other* side must not itself
-    reference `path` (two-unset/self-referential is not reducible)."""
+    """`(op, other)`, read as "`path` <op> other".
+
+    `path` must be a bare, non-arithmetic operand of `cmp`, and the other
+    side must not itself reference `path`: a two-unset or self-referential
+    comparison is not reducible.
+    """
     if isinstance(cmp.left, ParamExpr) and cmp.left.path == path:
         other = cmp.right
         if path in other.params:

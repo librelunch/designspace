@@ -1,8 +1,9 @@
 """paths: the path grammar (API.md, "Paths and Scoping").
 
-Internal machinery consumed by config/ and resolve/ — not part of the
-public surface (users see paths as plain strings everywhere: `.params`
-keys, `validate_param`, `flatten`/`unflatten` keys).
+Internal machinery consumed by `config/` and `resolve/`, and not part of
+the public surface. A user sees paths as plain strings everywhere: as
+`.params` keys, as a `validate_param` argument, and as `flatten` and
+`unflatten` keys.
 """
 
 from designspace.paths._grammar import (

@@ -1,33 +1,38 @@
-"""`ParamType`: the open-world extension protocol (API.md, "Protocols";
-"Extension"; M9).
+"""`ParamType`: the open-world extension protocol.
 
-**Required surface only.** `sample`, `cardinality`, `properties`/`extract`
-are documented-optional capabilities a type may or may not implement
-(DECISIONS.md D-45/D-46) — duck-typed via `hasattr` at each call site,
-exactly like the existing external-`Prior` protocol's optional `.cdf()`
-(`ir/_priors.py`, `charts/_external.py`): they are never part of this
-`Protocol`'s static shape, so a type author is never forced to stub an
-unsupported capability, and `isinstance`/structural checks on `ParamType`
-itself only ever demand the required five.
+See API.md, "Protocols" and "Extension".
 
-**Value convention (DECISIONS.md D-46).** `validate`/`extract` (and a
-`sample()`-supporting type's own internal use of its sampled value) operate
-on the type's own *native* representation — whatever `sample()` returns.
-`to_json`/`from_json` are the *only* bridge between that native form and the
-JSON-safe **phenotype** form: every public, config-dict-shaped surface (a
-config leaf, `.validate()`, `.freeze()`, `.default()`, `sample_one()`'s
-return value) holds the phenotype form — `to_json(native)` — never the
-native object directly. Core calls `to_json` once, immediately after
-`sample()` produces a fresh native value, and calls `from_json` immediately
-before it needs to call `validate`/`extract` on a config-sourced value. This
-lets every existing generic value codec (`identity/_tags.py::
-encode_default_value`, the config/flatten/hash machinery) treat a custom
-leaf as an ordinary opaque JSON-shaped value, with no per-type special
-casing anywhere outside this bridge.
+**Required surface only.** `sample`, `cardinality`, and `properties` with
+`extract`, are optional capabilities a type may or may not implement,
+duck-typed through `hasattr` at each call site as the external `Prior`
+protocol's optional `.cdf()` is in `ir/_priors.py` and
+`charts/_external.py`. None belongs to this `Protocol`'s static shape, so a
+type author never has to stub an unsupported capability, and an
+`isinstance` or structural check on `ParamType` demands only the required
+five members.
 
-The `.custom(sampler, validator)` shorthand has no `to_json`/`from_json` at
-all (API.md: "Callback shorthand. Not serializable.") — for it, native and
-phenotype coincide: `sampler(rng)`'s return value is used directly.
+**Value convention.** `validate` and `extract`, and a `sample()`-supporting
+type's own use of its sampled value, operate on the type's native
+representation, meaning whatever `sample()` returns. `to_json` and
+`from_json` are the only bridge between that native form and the JSON-safe
+phenotype form.
+
+Every public, config-dict-shaped surface holds the phenotype form,
+`to_json(native)`, and never the native object: a config leaf,
+`.validate()`, `.freeze()`, `.default()` and `sample_one()`'s return value
+alike. Core calls `to_json` once, immediately after `sample()` produces a
+fresh native value, and calls `from_json` immediately before it needs
+`validate` or `extract` on a config-sourced value.
+
+That lets every generic value codec, meaning `encode_default_value` in
+`identity/_tags.py` and the config, flatten and hash machinery, treat a
+custom leaf as an ordinary opaque JSON-shaped value, with no per-type
+special casing outside this bridge.
+
+The `.custom(sampler, validator)` shorthand has no `to_json` or `from_json`
+at all; API.md calls it a "Callback shorthand. Not serializable." For it
+native and phenotype coincide, and `sampler(rng)`'s return value is used
+directly.
 """
 
 from __future__ import annotations
@@ -187,8 +192,8 @@ class ParamType(Protocol):
 
 
 def is_generative(param_type: Any) -> bool:
-    """Whether `param_type` declares `sample()` (API.md "Sampling and
-    Generativity"; DECISIONS.md D-45/D-46)."""
+    """Whether `param_type` declares `sample()` (API.md, "Sampling and
+    Generativity")."""
     return hasattr(param_type, "sample")
 
 

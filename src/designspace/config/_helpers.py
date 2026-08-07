@@ -1,13 +1,18 @@
-"""`ds.variant()` / `ds.payload()` / `ds.destructure()` (API.md, "Config
-Utilities"). Choice values are self-contained, so unlike `flatten`/
-`unflatten` these need no `Space` — the shape (bare string vs. single-key
-dict) is self-describing; `param_path` addresses a nested slot by walking
-the path grammar's segments, exactly matching definition/instance paths
-(struct namespaces and chosen variant names are plain dict keys in the
-canonical nested config, and `[k]` indexes into a lifted-choice list —
-`variant(config, "pipeline[1]")`). Addressing a lifted choice by its bare
-list path (`"pipeline"`) is a misuse error naming the indexed form (a list
-has no single variant); the scalar return types are preserved.
+"""`ds.variant()`, `ds.payload()` and `ds.destructure()`.
+
+See API.md, "Config Utilities". A choice value is self-contained, its shape
+being either a bare string or a single-key dict, so unlike `flatten` and
+`unflatten` these need no `Space`.
+
+`param_path` addresses a nested slot by walking the path grammar's segments,
+matching definition and instance paths exactly. A struct namespace and a
+chosen variant name are plain dict keys in the canonical nested config, and
+`[k]` indexes into a lifted-choice list, as in
+`variant(config, "pipeline[1]")`.
+
+Addressing a lifted choice by its bare list path, as in `"pipeline"`, is a
+misuse error whose message names the indexed form, a list having no single
+variant.
 """
 
 from __future__ import annotations
@@ -42,8 +47,9 @@ def _split(param_path: str, value: Any) -> tuple[str, dict[str, Any] | None]:
         ((name, payload_value),) = value.items()
         return name, payload_value
     if isinstance(value, list):
-        # A lifted-choice bare list path: a list has no single variant — name
-        # the indexed form the caller meant (API.md, "Config Utilities").
+        # A lifted-choice bare list path. A list has no single variant, so
+        # name the indexed form the caller meant (API.md, "Config
+        # Utilities").
         raise TypeError(
             f"{param_path!r} addresses a lifted-choice list, which has no single "
             f"variant; use an instance path like {param_path + '[0]'!r}"

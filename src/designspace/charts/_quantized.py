@@ -30,8 +30,8 @@ class QuantizedChart:
 class IntegerGridChart:
     """A quantized-real grid whose emitted values are cast to `int`.
 
-    Used for `.integer(...).quantized(...)` — the grid mechanism already
-    lands on discrete points; this just narrows the output type.
+    Used for `.integer(...).quantized(...)`. The grid mechanism already
+    lands on discrete points, so this narrows the output type alone.
     """
 
     quantized: QuantizedChart

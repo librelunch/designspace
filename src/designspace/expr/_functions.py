@@ -204,7 +204,7 @@ def value(fn: Callable[..., Any], *operands: Expr, returns: type) -> Value:
         raise TypeError(f"ds.value(): fn must be callable, got {type(fn).__name__}")
     if returns not in SCALAR_TYPES:
         raise ResolutionError(
-            f"ds.value(): returns={returns!r} is not scalar-typed — only "
+            f"ds.value(): returns={returns!r} is not scalar-typed; only "
             "int/float/bool/str are expression-visible (row 30)"
         )
     for operand in operands:

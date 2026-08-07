@@ -1,8 +1,8 @@
 """Expression AST nodes: BoolExpr and ArithExpr trees, construction only.
 
 Every node is an immutable, hashable dataclass exposing `.kind`, `.children`,
-and `.params` (API.md, "Expressions"). No evaluation or resolution happens
-here — building a node never inspects a Space or a config.
+and `.params` (API.md, "Expressions"). Nothing here evaluates or resolves:
+building a node never inspects a `Space` or a config.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 # The dual-typed scalar universe `.prop()` and `ds.value()` may declare/return
 # (API.md, "Expressions": row 16's scalar restriction "applies identically" to
 # `ds.value`). Shared here rather than duplicated in resolve/_expr_checks.py,
-# which imports it back — `resolve` already depends on `expr`, never the
+# which imports it back. `resolve` already depends on `expr`, never the
 # reverse.
 SCALAR_TYPES = (int, float, bool, str)
 
@@ -240,7 +240,7 @@ class ArithExpr(Expr):
 
     def __eq__(self, other: object) -> BoolExpr:  # type: ignore[override]
         # Overridden by design: `==` builds a Compare node rather than
-        # comparing values (API.md, "Expressions" — BoolExpr).
+        # comparing values (API.md, "Expressions" > BoolExpr).
         return Compare("eq", self, _coerce_arith(other))
 
     def __ne__(self, other: object) -> BoolExpr:  # type: ignore[override]
@@ -470,7 +470,7 @@ class IsIn(BoolExpr):
 
 @dataclass(frozen=True, eq=False)
 class IsActive(BoolExpr):
-    """`expr.is_active()`; total — always True or False, never Unknown."""
+    """`expr.is_active()`, a total predicate: always True or False, never Unknown."""
 
     operand: Expr
 
@@ -682,13 +682,16 @@ class Value(ArithExpr, BoolExpr):
 
 
 class VectorExpr(Expr):
-    """Mixin exposing the aggregate namespace (API.md, "Expressions" —
-    "Vector expressions and aggregates"): "a scalar lift *is* a vector
-    expression; `.field(name)` projects a struct lift into one." Shared by
-    `ParamExpr` (builder/_paramexpr.py, when it references a lift) and
-    `Field` below — neither the mixin nor its methods validate that the
-    operand is actually lift-typed; that is resolve/'s job (M0's "no
-    validation happens here" principle, same as `.contains()`/`.size()`).
+    """The mixin exposing the aggregate namespace.
+
+    API.md, "Expressions" > "Vector expressions and aggregates" says that "a
+    scalar lift *is* a vector expression; `.field(name)` projects a struct
+    lift into one".
+
+    Shared by `ParamExpr` in `builder/_paramexpr.py`, when it references a
+    lift, and by `Field` below. Neither the mixin nor its methods validate
+    that the operand is lift-typed; that is `resolve/`'s job, as it is for
+    `.contains()` and `.size()`.
     """
 
     def field(self, name: str) -> Field:
@@ -828,34 +831,39 @@ class Distinct(BoolExpr):
 
 @dataclass(frozen=True, eq=False)
 class ChartApply(ArithExpr, VectorExpr):
-    """A representation's decode, substituted into a transported expression
-    (API.md, "Expressions" — "Chart application"; "The Representation
-    Layer" — "Transport"). Alongside `ds.value`, this is one of the two
-    nodes the expression language will ever grow — but unlike `ds.value` it
-    is opaque-free: `fn` is always `chart.from_unit`, a pure function of the
+    """A representation's decode, substituted into a transported expression.
+
+    See API.md, "Expressions" > "Chart application" and "The Representation
+    Layer" > "Transport". With `ds.value`, this is one of the two nodes the
+    expression language will ever grow, and unlike `ds.value` it is
+    opaque-free: `fn` is always `chart.from_unit`, a pure function of the
     declaration already on `ParamDef`.
 
-    Not user-constructible: emitted only by `represent/_transport.py` when
+    It is not user-constructible. `represent/_transport.py` emits it when
     leaf substitution rewrites a reference to an encoded param, wrapping
-    whatever reference node sits at the substitution site — a bare
-    `ParamExpr` (a scalar or a direct lift) or a `Field` projection (a
-    struct lift's member). It carries the **source** chart's declaration —
-    domain, prior, quantization, periodicity — because the param `operand`
-    actually reads, in the genotype, is an ordinary `real(0,1)` whose own
-    chart is uniform (API.md: "It carries the source chart's declaration
-    ... because the param it reads in the genotype is an ordinary
-    real(0,1) whose own chart is uniform"). Vector-polymorphic like
-    `Field`: applied to a lift or a projection of one, it maps element-wise
-    over the leaves (`eval/_kleene.py::_vector_values`) — hence
-    `VectorExpr`, not just `ArithExpr`.
+    whatever reference node sits at the substitution site: a bare
+    `ParamExpr`, for a scalar or a direct lift, or a `Field` projection, for
+    a struct lift's member.
 
-    IR-typed fields are `Any` here to avoid a cycle (`expr/` must never
-    import `ir/`) — the same avoidance already used by
-    `CustomDomain.param_type` and `ListDomain.element_constraints`.
+    It carries the source chart's declaration, meaning its domain, prior,
+    quantization and periodicity, because the param `operand` reads in the
+    genotype is an ordinary `real(0, 1)` whose own chart is uniform. API.md
+    puts it as "It carries the source chart's declaration ... because the
+    param it reads in the genotype is an ordinary real(0,1) whose own chart
+    is uniform".
+
+    It is vector-polymorphic like `Field`: applied to a lift or a projection
+    of one, it maps element-wise over the leaves, which `_vector_values` in
+    `eval/_kleene.py` performs. That is why it is a `VectorExpr` and not an
+    `ArithExpr` alone.
+
+    IR-typed fields are `Any` here to avoid a cycle, `expr/` never importing
+    `ir/`, as `CustomDomain.param_type` and `ListDomain.element_constraints`
+    do in the other direction.
     """
 
     operand: Expr
-    chart: Any  # designspace.ir.Chart — decodes a unit coordinate to a source value
+    chart: Any  # designspace.ir.Chart: decodes a unit coordinate to a source value
     type_kind: str  # "real" | "integer" -- the SOURCE kind
     domain: Any  # designspace.ir.RealDomain | IntegerDomain (source)
     prior: Any = None  # designspace.ir.PriorSpec | None (source)

@@ -2,18 +2,19 @@
 `.infeasibility_reasons()` / `.evaluate_constraints()`
 (API.md, "Space: Validation").
 
-Feasibility is param validity plus hard constraints (forbids) only —
-`.encourage()` declarations never affect `valid`, matching
-"Feasibility is defined by param validity plus forbids only."
+Feasibility is param validity plus hard constraints alone. An
+`.encourage()` declaration never affects `valid`, matching "Feasibility is
+defined by param validity plus forbids only."
 
-`validate()`/`evaluate_constraints()` take the canonical *nested* config;
-internally everything still works over the flat, path-keyed dict M2 built
-(`compute_activity`/`evaluate_constraint` are unchanged). `validate()`
-specifically must not route through the lenient `flatten()`: a malformed
-choice/struct shape (`{"algo": 123}`) has to surface as a `ParamError`,
-not vanish silently, so it uses `flatten_with_errors` instead (config/) —
-one space-guided traversal, shared with `flatten()`, that also collects
-shape errors.
+`validate()` and `evaluate_constraints()` take the canonical nested config,
+while `compute_activity` and `evaluate_constraint` work over the flat,
+path-keyed dict.
+
+`validate()` must not route through the lenient `flatten()`. A malformed
+choice or struct shape such as `{"algo": 123}` has to surface as a
+`ParamError` rather than vanish, so it uses `flatten_with_errors` from
+`config/` instead: one space-guided traversal, shared with `flatten()`,
+that also collects shape errors.
 """
 
 from __future__ import annotations
@@ -136,14 +137,14 @@ def _domain_error_reason(pd: ParamDef, value: Any) -> str | None:
         bad = not isinstance(value, int) or isinstance(value, bool) or value < 0
         return "wrong_type" if bad else None
     if isinstance(domain, CustomDomain):
-        # `value` is already phenotype form (DECISIONS.md D-46) — bridge
-        # back to native only to call the type's own validate(). Every
-        # other branch above defensively type-checks a submitted value
-        # before trusting its shape; core cannot do that for an opaque
-        # custom, so it instead catches whatever `from_json`/`validate`
-        # (or the shorthand `validator`) raise on a structurally-wrong
-        # value and reports it the same way — "wrong_type", not a crash
-        # escaping through a public validate() call.
+        # `value` is already phenotype form, so bridge back to native only
+        # to call the type's own validate(). Every other branch above
+        # type-checks a submitted value before trusting its shape. Core
+        # cannot do that for an opaque custom, so it catches whatever
+        # `from_json`, `validate` or the shorthand `validator` raise on a
+        # structurally wrong value and reports it the same way, as
+        # "wrong_type" rather than as a crash escaping through a public
+        # validate() call.
         try:
             if domain.param_type is not None:
                 ok = domain.param_type.validate(domain.param_type.from_json(value))
@@ -155,7 +156,7 @@ def _domain_error_reason(pd: ParamDef, value: Any) -> str | None:
         return None if ok else "out_of_bounds"
     if isinstance(domain, SymbolicDomain | CodeDomain):
         return program_value_error(domain, value)
-    return None  # pragma: no cover - unreachable for M2 scalar kinds
+    return None  # pragma: no cover - unreachable: every kind handled above
 
 
 def _presence_error(
@@ -186,10 +187,12 @@ def _validate_lift_element(
     flat: dict[str, Any],
     activity: dict[str, bool],
 ) -> list[ParamError]:
-    """One lift instance's worth of `ParamError`s. Struct/choice elements
-    are guaranteed exactly one bracket level deep (DECISIONS.md D-24
-    rejects deeper nesting at resolution), so deriving the descendant
-    *template* prefix from `inst_path` here is always unambiguous."""
+    """One lift instance's worth of `ParamError` records.
+
+    A struct or choice element is exactly one bracket level deep, resolution
+    rejecting deeper nesting, so deriving the descendant template prefix
+    from `inst_path` is unambiguous.
+    """
     errors: list[ParamError] = []
     if domain.element_kind == "list":
         assert isinstance(domain.element_domain, ListDomain)
@@ -235,7 +238,7 @@ def _validate_lift_instances(
     if not isinstance(n, int) or isinstance(n, bool) or n < 0:
         return errors
     if isinstance(domain.count, ArithExpr):
-        # D-22: a dynamic repeat count must match the submitted length.
+        # A dynamic repeat count must match the submitted length.
         evaluated = evaluate_arith(domain.count, flat, activity, space)
         if not isinstance(evaluated, Unknown) and evaluated != n:
             errors.append(ParamError(param=path, reason="out_of_bounds", value=n))
@@ -260,8 +263,8 @@ def validate(space: Space, config: dict[str, Any]) -> ValidationResult:
     activity = compute_activity(space, flat)
     param_errors: list[ParamError] = list(param_errors_list)
     for path, pd in space.params.items():
-        # `"[]" in path`: a lift's descendant *template* (D-18) — not a
-        # real config leaf; its instances are validated separately below.
+        # `"[]" in path` marks a lift's descendant template rather than a
+        # real config leaf. Its instances are validated separately below.
         if pd.type_kind == "space" or "[]" in path or path in shape_error_paths:
             continue
         active = activity[path]
@@ -292,13 +295,18 @@ def validate(space: Space, config: dict[str, Any]) -> ValidationResult:
 
 
 def _lookup_param_shape(space: Space, path: str) -> ParamDef:
-    """`path` may be a bare definition path, a struct-lift descendant
-    instance path (`"layers[2].width"` — its `"[]"`-bracketed template is
-    already a proper `ParamDef` in `space.params`), or a direct lift
-    element instance path (`"dropout[3]"`, `"pipeline[1]"` — synthesized
-    via `_element_paramdef`). API.md: "instance paths supported."
-    Nested-lift instance paths (D-24's single-bracket-depth boundary for
-    struct/choice elements) beyond one level are not resolved here.
+    """The `ParamDef` describing `path`, which may be an instance path.
+
+    `path` may be a bare definition path; a struct-lift descendant instance
+    path such as `"layers[2].width"`, whose `"[]"`-bracketed template is
+    already a `ParamDef` in `space.params`; or a direct lift element
+    instance path such as `"dropout[3]"` or `"pipeline[1]"`, synthesized
+    through `_element_paramdef`. API.md states that "instance paths
+    supported."
+
+    A nested-lift instance path beyond one level is not resolved here,
+    matching the single-bracket depth boundary a struct or choice element
+    already carries.
     """
     if path in space.params:
         return space.params[path]

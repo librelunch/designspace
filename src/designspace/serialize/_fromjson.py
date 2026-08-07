@@ -1,12 +1,13 @@
 """`Space.from_json()` (API.md, "to_json / from_json"): reconstructs the
 resolved IR directly (no builder replay) and rebuilds every chart via
-`resolve.rebuild_charts` (which calls `charts.build_chart`) — charts are
-derived, never stored, so the round-trip law
-(`from_json(to_json(s)).fingerprint() == s.fingerprint()`) holds simply
-because both sides compute the same charts from the same domain/prior/
-quantized facts. `rebuild_charts` is shared with `meta/_meta.py::
-space_from_ir` (M8), another route that assembles a `Space` from raw
-`ParamDef`s with no chart of their own to trust.
+`resolve.rebuild_charts`, which calls `charts.build_chart`.
+
+Charts are derived and never stored, so the round-trip law
+`from_json(to_json(s)).fingerprint() == s.fingerprint()` holds because both
+sides compute the same charts from the same domain, prior and quantized
+facts. `rebuild_charts` is shared with `space_from_ir` in `meta/_meta.py`,
+the other route that assembles a `Space` from raw `ParamDef` records with no
+chart of their own to trust.
 """
 
 from __future__ import annotations

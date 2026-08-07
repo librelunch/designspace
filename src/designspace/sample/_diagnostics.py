@@ -1,11 +1,13 @@
-"""`.sampling_report()` (API.md, "Sampling diagnostics"; M10.6, PLAN.md).
+"""`.sampling_report()` (API.md, "Sampling diagnostics").
 
-Aggregation only, over the sampler's **unconditioned** measure — every draw
-made from `_draw_config` directly, bypassing `_draw_one`'s retry/rejection
-loop entirely, so both pathologies rejection hides (Unknown-swallowing,
-funnel bias) are visible. No new evaluation semantics: every value reported
-here is an existing `ConstraintEval`/activity fact, folded and divided by
-`n`. It reports; it never repairs, reweights, or suggests.
+Aggregation only, over the sampler's unconditioned measure. Every draw comes
+from `_draw_config` directly, bypassing `_draw_one`'s retry and rejection
+loop, so the two pathologies rejection hides, Unknown-swallowing and funnel
+bias, stay visible.
+
+There are no new evaluation semantics here. Every value reported is an
+existing `ConstraintEval` or activity fact, folded and divided by `n`. The
+report never repairs, reweights or suggests.
 """
 
 from __future__ import annotations
@@ -24,12 +26,14 @@ ElementKey = tuple[str, int]  # (owning list's definition path, template index)
 
 
 def _element_constraint_templates(space: Space) -> dict[ElementKey, Constraint]:
-    """Every `ListDomain.element_constraints` template, keyed by (owning
-    list path, position within that lift's own template tuple) — walked in
-    `space.params`' declaration order, so a lift that is *never* active
-    across all `n` draws still contributes a row (`applicable == 0.0`),
-    rather than the row silently vanishing because no instance was ever
-    observed."""
+    """Every `ListDomain.element_constraints` template, keyed by owner.
+
+    The key is the owning list path together with the position within that
+    lift's own template tuple. The walk follows `space.params`' declaration
+    order, so a lift that is never active across the `n` draws still
+    contributes a row with `applicable == 0.0` rather than vanishing because
+    no instance was observed.
+    """
     templates: dict[ElementKey, Constraint] = {}
     for path, pd in space.params.items():
         if pd.type_kind != "list":
@@ -48,11 +52,11 @@ def sampling_report(
     if n < 1:
         raise TypeError(f"sampling_report: n must be >= 1 (got {n!r})")
     rng = _rng_from_seed(seed)
-    # Best-effort bound-origin tightening is off by default (D-74): drawing
-    # from `bound_targets={}` matches `_draw_config`'s own untightened path
-    # and keeps the unconditioned measure blind to the sampler's own
-    # optimization, which would otherwise launder exactly the rows this
-    # report exists to show honestly.
+    # Best-effort bound-origin tightening is off by default. Drawing from
+    # `bound_targets={}` matches `_draw_config`'s own untightened path and
+    # keeps the unconditioned measure blind to the sampler's optimization,
+    # which would otherwise launder exactly the rows this report exists to
+    # show.
     bound_targets: BoundTargets = bound_origin_targets(space) if tighten_bounds else {}
 
     element_templates = _element_constraint_templates(space)
@@ -76,11 +80,11 @@ def sampling_report(
             if c.hard and is_violated(ce):
                 draw_ok = False
 
-        # Per-draw fold (D-73): group this draw's instance evals back onto
-        # their template key, then applicable/satisfied are decided once
-        # per (draw, template) rather than once per (draw, instance) — but
-        # the accept/reject decision below still checks every individual
-        # instance eval, exactly mirroring `_draw_one`'s own rejection rule.
+        # Per-draw fold: group this draw's instance evals back onto their
+        # template key, so that applicable and satisfied are decided once
+        # per (draw, template) rather than once per (draw, instance). The
+        # accept-or-reject decision below still checks every individual
+        # instance eval, mirroring `_draw_one`'s own rejection rule.
         by_template: dict[ElementKey, list[ConstraintEval]] = {}
         for path, idx, ce in instance_evals_indexed(space, config, activity):
             key = (path, idx)
@@ -98,10 +102,10 @@ def sampling_report(
         # its own sole "instance," active iff `activity[path]` says so; a
         # `"[]"`-templated key (a lifted struct/choice field) is active this
         # draw iff at least one concrete instance folded to it was active.
-        # `definition_form` of a plain scalar lift's own element path
-        # (`"bufs[0]"` -> `"bufs[]"`) never matches a `space.params` key —
-        # such lifts publish no separate element `ParamDef` — so it drops
-        # out of `activity_counts` harmlessly.
+        # `definition_form` of a plain scalar lift's own element path,
+        # turning `"bufs[0]"` into `"bufs[]"`, never matches a
+        # `space.params` key, such lifts publishing no separate element
+        # `ParamDef`, so it drops out of `activity_counts` harmlessly.
         active_templates: set[str] = set()
         for path, active in activity.items():
             if active:

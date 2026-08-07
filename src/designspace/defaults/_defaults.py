@@ -1,12 +1,14 @@
 """`.apply_defaults()` (API.md, "Defaults").
 
-A partial-evaluation operator: idempotent, monotone (never overwrites,
-never removes), activity-respecting. Modeled on `sample/_sample.py::
-_draw_config` (fill-from-default replaces draw) — the same topological
-walk and the same per-lift/per-choice/per-struct expansion, with
-`eval.classify_condition` deciding "should this get filled" (three-valued:
-inactive/unknown are both left untouched) in place of `evaluate_bool` +
-a chart draw deciding "what value to draw."
+A partial-evaluation operator: idempotent, monotone in never overwriting
+and never removing, and activity-respecting.
+
+It follows `_draw_config` in `sample/_sample.py`, filling from a default
+where that draws. The topological walk and the per-lift, per-choice and
+per-struct expansion are the same. What differs is the decision at each
+param: `eval.classify_condition` decides whether this should be filled, in
+three values with inactive and unknown both left untouched, where
+`evaluate_bool` and a chart draw decide what value to draw.
 """
 
 from __future__ import annotations
@@ -38,7 +40,7 @@ def apply_defaults(space: Space, config: dict[str, Any]) -> dict[str, Any]:
     conditions_by_target = {c.target: c for c in space.conditions}
     for path in topological_order(space):
         if "[]" in path:
-            continue  # a lift's descendant template (D-18) -- filled via _fill_instance
+            continue  # a lift's descendant template, filled via _fill_instance
         pd = space.params[path]
         condition = conditions_by_target.get(path)
         activity_class = classify_condition(condition, flat, status, space)
@@ -101,10 +103,11 @@ def _fill_list(
     flat: dict[str, Any],
     status: dict[str, str],
 ) -> bool:
-    """Fills one (possibly nested/struct-field) list's defaults in place;
-    returns whether anything was actually written — the "at least one
-    instance leaf receives a default" trigger a *containing* list checks
-    for its own materialization decision.
+    """Fill one list's defaults in place, and report whether anything was written.
+
+    The list may be nested or a struct field. The return value is the "at
+    least one instance leaf receives a default" trigger a containing list
+    checks for its own materialization decision.
     """
     if activity_class != "active":
         status[path] = activity_class

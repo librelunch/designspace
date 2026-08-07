@@ -6,12 +6,8 @@ segment  := name ("[" i "]")*        # instance path
           | name ("[]")*             # definition path
 ```
 
-One segment per param/variant/struct name; repeated brackets address nested
-lift levels (`mask[2][3]`, `mask[][]`). No lift landed yet (M4), so no
-config produced by M3 ever contains bracket syntax — this module exists
-now, "multi-index ready," per PLAN.md's M3 Build line, so
-`validate_param` and the config utilities have one grammar to grow into
-rather than a flat-name special case that needs revisiting at M4.
+One segment names a param, a variant or a struct field. Repeated brackets
+address nested lift levels, as in `mask[2][3]` and `mask[][]`.
 """
 
 from __future__ import annotations
@@ -24,15 +20,16 @@ from designspace.errors import ResolutionError
 _SEGMENT_RE = re.compile(r"^([^.\[\]]+)((?:\[[^\[\]]*\])*)$")
 _BRACKET_RE = re.compile(r"\[([^\[\]]*)\]")
 
-# A cheap, non-raising alternative to `definition_form` for stripping concrete
-# indices — `validate/_validate.py::_lookup_param_shape` and
-# `ops/_structural.py::_definition_path_of`/`_governing_definition_path` share
-# it rather than each compiling their own copy (M10.7: was independently
-# defined in both, `import re` for no other reason in either file). Kept
-# distinct from the parsing grammar above on purpose: both call sites accept
-# a possibly-non-grammar path (a `.validate_param()`/`.remaining_domain()`
-# argument, an anchor/constraint-param flat key) and must not raise on one,
-# where `definition_form`/`parse_path` would.
+# A cheap, non-raising alternative to `definition_form` for stripping
+# concrete indices. `_lookup_param_shape` in `validate/_validate.py` and
+# `_definition_path_of` and `_governing_definition_path` in
+# `ops/_structural.py` share it rather than each compiling their own copy.
+#
+# It is kept distinct from the parsing grammar above deliberately. Those
+# call sites accept a possibly non-grammar path, such as a
+# `.validate_param()` or `.remaining_domain()` argument or an anchor or
+# constraint-param flat key, and must not raise on one, where
+# `definition_form` and `parse_path` would.
 _INDEX_RE = re.compile(r"\[\d+\]")
 
 
@@ -40,11 +37,10 @@ _INDEX_RE = re.compile(r"\[\d+\]")
 class Segment:
     """One dotted component of a path.
 
-    `brackets` holds one entry per `[...]` group in declaration order:
-    an `int` for an instance index (`[i]`), or `None` for a bare
-    definition-path marker (`[]`). A segment's brackets are always uniformly
-    one kind or the other (the grammar doesn't mix `[i]` and `[]` within a
-    single segment).
+    `brackets` holds one entry per `[...]` group, in declaration order: an
+    `int` for an instance index `[i]`, or `None` for a bare definition-path
+    marker `[]`. A segment's brackets are uniformly one kind or the other,
+    the grammar never mixing `[i]` with `[]` within one segment.
     """
 
     name: str
@@ -98,32 +94,32 @@ def is_definition_path(path: str) -> bool:
 
 
 def split_instance_path(path: str) -> tuple[str, tuple[int | None, ...]] | None:
-    """Splits a path into `(base_key, trailing_brackets)` — the general
-    form of the "peel one trailing bracket group" resolution a
-    single-level lift reference used to need (M10.5/D-72): `base_key` is
-    the definition-form path backing the *final* dotted segment, and
-    `trailing_brackets` is that segment's own bracket groups (possibly
-    many, possibly negative concrete indices, or a bare `None` "`[]`"
-    template marker — the virtual per-instance discriminator placeholder a
-    lifted choice's variant-equality condition folds in, e.g. `"pipeline[]"`,
-    DECISIONS.md D-18), meant to be consumed one at a time against that
-    entry's own (possibly chained) lift domain by the caller — a caller
-    that needs a *concrete* index (evaluation-time negative-index
-    resolution) asserts none are `None`; one that only needs the *count*
-    of brackets (declared-ness/type checks) does not care about the value.
+    """Split a path into `(base_key, trailing_brackets)`.
 
-    Every *earlier* segment contributes at most one bracket to `base_key`,
-    collapsed to `"[]"` — a struct/choice lift crossing is capped at repeat
-    depth 1 (API.md, M4.5), so only the *final* segment's own bracket chain
-    can run arbitrarily deep (a scalar/subset/permutation nested lift, e.g.
-    `g[0][1]`). `None` if an earlier segment carries more than one bracket
-    group — no legally-resolved space can produce that, so it can only be a
-    malformed reference (never silently mis-resolved).
+    `base_key` is the definition-form path backing the final dotted segment.
+    `trailing_brackets` holds that segment's own bracket groups: possibly
+    many, possibly negative concrete indices, or a bare `None` marking a
+    `"[]"` template. That template is the virtual per-instance discriminator
+    placeholder a lifted choice's variant-equality condition folds in, as in
+    `"pipeline[]"`.
 
-    Shared by `resolve/_expr_checks.py` (declared-ness/type checks, row 6/12/
-    14/18/29) and `eval/_kleene.py` (ordinal domain lookup, negative-index
-    resolution) — the one walk both used to duplicate with a single-bracket
-    assumption baked in.
+    The caller consumes the brackets one at a time against that entry's own,
+    possibly chained, lift domain. A caller needing a concrete index, as
+    evaluation-time negative-index resolution does, asserts that none is
+    `None`. A caller needing only the number of brackets, as the
+    declaredness and type checks do, ignores the values.
+
+    Every earlier segment contributes at most one bracket to `base_key`,
+    collapsed to `"[]"`. A struct or choice lift crossing is capped at
+    repeat depth 1, so only the final segment's own bracket chain can run
+    arbitrarily deep, as a scalar, subset or permutation nested lift such as
+    `g[0][1]` does. The result is `None` when an earlier segment carries more
+    than one bracket group: no legally resolved space produces that, so it
+    can only be a malformed reference, and is never silently mis-resolved.
+
+    Shared by `resolve/_expr_checks.py`, for the declaredness and type
+    checks of rows 6, 12, 14, 18 and 29, and by `eval/_kleene.py`, for
+    ordinal domain lookup and negative-index resolution.
     """
     segments = parse_path(path)
     if not segments:
@@ -138,43 +134,51 @@ def split_instance_path(path: str) -> tuple[str, tuple[int | None, ...]] | None:
 
 
 def strip_last_index(path: str) -> str:
-    """Peels one trailing `"[i]"` bracket group off an instance path,
-    returning the base path one level up (`"stops[3]"` -> `"stops"`,
-    `"stops[3][1]"` -> `"stops[3]"`) — the "which lift does this concrete
-    sibling belong to" step, re-derived by hand (`path[: path.rindex("[")]`)
-    in half a dozen modules before M10.7."""
+    """Peel one trailing `"[i]"` bracket group off an instance path.
+
+    Returns the base path one level up: `"stops[3]"` gives `"stops"`, and
+    `"stops[3][1]"` gives `"stops[3]"`. This is the step that answers which
+    lift a concrete sibling belongs to.
+    """
     return path[: path.rindex("[")]
 
 
 def element_prefix(base: str) -> str:
-    """The lift's element-*template* prefix for `base`: a bare definition
-    path (`"edges"` -> `"edges[]."`) or an existing `"[]."`/`"[i]."`-
-    terminated prefix one level up, whose trailing dot is dropped before
-    appending another bracket group (`"grid[]."` -> `"grid[][]."`, the
-    depth-2 case a chained `.repeat().repeat()` produces). Compose with
-    `strip_last_index` to go from a *concrete* instance path to its lift's
-    template prefix (`element_prefix(strip_last_index("stops[3]"))` ->
-    `"stops[]."`)."""
+    """The lift's element-template prefix for `base`.
+
+    A bare definition path gives `"edges"` to `"edges[]."`. An existing
+    prefix ending in `"[]."` or `"[i]."` has its trailing dot dropped before
+    another bracket group is appended, so `"grid[]."` gives `"grid[][]."`,
+    the depth-2 case a chained `.repeat().repeat()` produces.
+
+    Compose with `strip_last_index` to go from a concrete instance path to
+    its lift's template prefix: `element_prefix(strip_last_index("stops[3]"))`
+    gives `"stops[]."`.
+    """
     if base.endswith("."):
         base = base[:-1]
     return f"{base}[]."
 
 
 def instance_prefix(base: str, index: int) -> str:
-    """The concrete per-instance prefix for lift element `index` of `base`
-    (`"stops", 3` -> `"stops[3]."`)."""
+    """The concrete per-instance prefix for lift element `index` of `base`.
+
+    `("stops", 3)` gives `"stops[3]."`.
+    """
     return f"{base}[{index}]."
 
 
 def definition_form(path: str) -> str:
-    """An instance path with every concrete index blanked to its `"[]"`
-    template marker (`workers[0].timeout_s` -> `workers[].timeout_s`,
-    `g[0][1]` -> `g[][]`) — the inverse direction from `split_instance_path`
-    (which peels one trailing group), needed wherever concrete instances
-    fold back onto the single definition-path key `space.params` declares
-    them under (M10.6 `sampling_report`'s per-draw activity fold; M11's
-    `decode` will need the identical normalization to look up an encoding).
-    A path with no brackets is already its own definition form.
+    """An instance path with every concrete index blanked to `"[]"`.
+
+    `workers[0].timeout_s` gives `workers[].timeout_s`, and `g[0][1]` gives
+    `g[][]`. This is the opposite direction from `split_instance_path`,
+    which peels one trailing group.
+
+    It is needed wherever concrete instances fold back onto the single
+    definition-path key `space.params` declares them under, as
+    `sampling_report`'s per-draw activity fold does. A path with no brackets
+    is already its own definition form.
     """
     segments = parse_path(path)
     template = tuple(

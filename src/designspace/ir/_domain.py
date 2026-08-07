@@ -1,13 +1,13 @@
 """Domain: type-specific declared value space (API.md, "IR").
 
-M1 covers the scalar rows; M3 adds combinatorial (subset, permutation) and
-structural (choice, struct) domains. M4 adds the recursive list (lift)
-domain — see DECISIONS.md D-18.
+There is one domain class per row of the type table: the scalar kinds, the
+combinatorial subset and permutation, the structural choice and struct, and
+the recursive list a `.repeat()` lift produces.
 
-`QuantizedSpec` lives here (not ir/_param.py, where API.md's illustrative
-ParamDef listing might suggest) because `ListDomain.element_quantized` needs
-it and ir/_param.py already imports from this module — defining it in
-ir/_param.py would make that a cycle.
+`QuantizedSpec` lives here rather than in `ir/_param.py`, where API.md's
+illustrative `ParamDef` listing might suggest, because
+`ListDomain.element_quantized` needs it and `ir/_param.py` already imports
+from this module. Defining it there would make a cycle.
 """
 
 from __future__ import annotations
@@ -312,9 +312,9 @@ class ListDomain:
     list_default: Any = None
     # `tuple[Constraint, ...]`; typed Any to avoid a cycle (ir/_param.py,
     # where Constraint is defined, imports this module for `Domain`).
-    # Constraints declared on a `.space(prebuilt)` element (DECISIONS.md
-    # D-20) — a *template*, `"[]"`-prefixed like the element's descendant
-    # params, expanded per active instance at evaluation time.
+    # Constraints declared on a `.space(prebuilt)` element. Each is a
+    # template, `"[]"`-prefixed like the element's descendant params, and is
+    # expanded per active instance at evaluation time.
     element_constraints: Any = ()
 
 

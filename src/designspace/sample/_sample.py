@@ -1,18 +1,18 @@
-"""`.sample_one()` / `.sample_dicts()` (API.md, "Sampling and Generativity").
+"""The reference sampler behind `.sample_one()` and `.sample_dicts()`.
 
-`sample_dicts` is M2's stand-in for the spec's `.sample(n) -> pl.DataFrame`
-— PLAN.md's M10 line: "`sample(n)` return type switches to
-`pl.DataFrame`... (`sample_dicts` retained as the M2 path)". `.sample_one()`
-keeps its final spec signature (dict output) throughout.
+See API.md, "Sampling and Generativity". `.sample(n)` returns a
+`pl.DataFrame` and lives in `frame/`; `sample_dicts` is the dict-returning
+path it is built on.
 
-M2 covered the generative scalar kinds (real, integer, categorical,
-ordinal, bool); M3 adds choice (weighted variant pick, like categorical),
-subset (Bernoulli-plus-size-rejection), and permutation (uniform
-shuffle). Struct ("space") produces no value of its own — `_draw_config`
-skips it — its members are separate, independently-drawn entries. Every
-kind buildable through M3 is generative, so the non-generative
-`SamplingError` (row 26's other half) has nothing to trigger on yet; only
-retry exhaustion is reachable.
+Each generative kind draws through its own chart. A scalar kind, meaning
+real, integer, categorical, ordinal or bool, draws its chart directly. A
+choice picks a variant by weight, as a categorical does. A subset draws
+Bernoulli inclusions and rejects on size. A permutation shuffles uniformly.
+A struct produces no value of its own, so `_draw_config` skips it; its
+members are separate, independently drawn entries.
+
+Sampling raises `SamplingError` on retry exhaustion, and on a
+non-generative param no `.default()` covers, which is row 26's other half.
 """
 
 from __future__ import annotations
@@ -134,12 +134,14 @@ def _draw_value(pd: ParamDef, rng: np.random.Generator) -> Any:
 
 
 def _draw_custom(domain: CustomDomain, rng: np.random.Generator) -> Any:
-    """A generative custom's draw (caller has already confirmed
-    `is_generative`). Full protocol: `sample()` returns the type's native
-    value, immediately bridged to phenotype form via `to_json` — every
-    config-dict-shaped value is phenotype form (DECISIONS.md D-46).
-    Shorthand: no `to_json` exists, so `sampler(rng)`'s return value is
-    used directly (native and phenotype coincide)."""
+    """Draw a generative custom value; the caller has confirmed `is_generative`.
+
+    Under the full protocol, `sample()` returns the type's native value,
+    which is bridged to phenotype form through `to_json`, every
+    config-dict-shaped value being phenotype form. Under the shorthand there
+    is no `to_json`, so `sampler(rng)`'s return value is used directly and
+    native and phenotype coincide.
+    """
     if domain.param_type is not None:
         pt = domain.param_type
         return pt.to_json(pt.sample(rng))
@@ -148,15 +150,17 @@ def _draw_custom(domain: CustomDomain, rng: np.random.Generator) -> Any:
 
 
 def _materialize_scalar(path: str, pd: ParamDef, rng: np.random.Generator) -> Any:
-    """Draws (or falls back to `.default()`) an active scalar-shaped leaf's
-    value. Every kind through M8 is generative; M9 adds the first
-    non-generative case: a full-protocol custom whose `ParamType` has no
-    `sample()` (API.md, "Sampling and Generativity"; DECISIONS.md D-46) —
-    `.default()` satisfies materialization (row 26's other half), absent
-    which sampling raises naming the param. M12 adds the second:
-    `.code()`/`.symbolic()` without `sampler=` (a bare `.symbolic(...,
-    sampler=...)` is generative; `.code()` has no `sampler=` form at all,
-    so it is always non-generative unless a `.default()` covers it)."""
+    """Draw an active scalar-shaped leaf's value, or fall back to `.default()`.
+
+    Two kinds can be non-generative. A full-protocol custom whose
+    `ParamType` supplies no `sample()` is one; a `.code()` or `.symbolic()`
+    param without `sampler=` is the other. `.symbolic(..., sampler=...)` is
+    generative, and `.code()` has no `sampler=` form at all, so it is always
+    non-generative.
+
+    For either, a `.default()` satisfies materialization, which is row 26's
+    other half. Absent one, sampling raises and the message names the param.
+    """
     if pd.type_kind == "custom":
         assert isinstance(pd.domain, CustomDomain)
         domain = pd.domain
@@ -190,9 +194,11 @@ def _draw_lift(
     activity: dict[str, bool],
     rng: np.random.Generator,
 ) -> None:
-    """Materializes an active lift at `path`: evaluates its (possibly
-    runtime-dependent) count, records it at the lift's own flat key
-    (DECISIONS.md D-18), then draws each instance."""
+    """Materialize an active lift at `path`.
+
+    Its count, which may be runtime-dependent, is evaluated and recorded at
+    the lift's own flat key, and each instance is then drawn.
+    """
     if isinstance(domain.count, ArithExpr):
         n = evaluate_arith(domain.count, config, activity, space)
         if isinstance(n, Unknown):
@@ -245,17 +251,22 @@ def _draw_lift_element(
 
 
 def _tightenable(pd: ParamDef) -> bool:
-    """Families where truncation provably equals conditioning (API.md,
-    "All charts are static" — "the reference sampler *may* recognize a
-    bound-origin constraint... and draw from the correspondingly tightened
-    chart instead of rejecting"): the built-in closed-form priors (or
-    uniform, `prior is None`) over a non-quantized real/integer. Explicitly
-    excluded — the spec's own caveat: "tightening an external prior to a
-    sub-interval needs `cdf`; absent that, rejection" — an arbitrary
-    `Prior`-satisfying object (support containment could break under a
-    narrower hi/lo) and a quantized/grid domain (cell-boundary effects are
-    subtler; DECISIONS.md D-29). Both fall back to the hard constraint
-    already sitting in `space.constraints`, rejected exactly as before.
+    """Whether truncation provably equals conditioning for this param.
+
+    API.md, "All charts are static" permits that "the reference sampler
+    *may* recognize a bound-origin constraint... and draw from the
+    correspondingly tightened chart instead of rejecting". That holds for
+    the built-in closed-form priors, and for uniform where `prior is None`,
+    over a non-quantized real or integer.
+
+    Two cases are excluded. An arbitrary `Prior`-satisfying object is
+    excluded because support containment can break under a narrower `lo` or
+    `hi`; the spec's own caveat is that "tightening an external prior to a
+    sub-interval needs `cdf`; absent that, rejection". A quantized or grid
+    domain is excluded because its cell-boundary effects are subtler.
+
+    Both fall back to the hard constraint already in `space.constraints`,
+    and are rejected as before.
     """
     if pd.type_kind not in ("real", "integer"):
         return False
@@ -271,22 +282,26 @@ def _tighten(
     activity: dict[str, bool],
     space: Space,
 ) -> ParamDef:
-    """Narrows `pd`'s domain to the tightest bound its (already-assigned)
-    bound-origin dependencies allow, rebuilding its chart the same way
-    resolution built the original (`build_chart` is oblivious to *why* a
-    domain is what it is). Falls back to `pd` unchanged — draw from the full
-    envelope, let the hard constraint reject as before — whenever a
-    dependency isn't assigned yet (Unknown) or the tightened interval would
-    be empty (an infeasible config for this coupling; rejection is the only
-    correct outcome, not a silently-empty chart).
+    """Narrow `pd`'s domain to the tightest bound its dependencies allow.
+
+    The dependencies are the already-assigned bound-origin ones. The chart
+    is rebuilt as resolution built the original, `build_chart` being
+    oblivious to why a domain is what it is.
+
+    `pd` is returned unchanged, so that the draw comes from the full
+    envelope and the hard constraint rejects as before, whenever a
+    dependency is unassigned and therefore Unknown, or the tightened
+    interval would be empty. An empty interval means an infeasible config
+    for this coupling, where rejection is the only correct outcome and a
+    silently empty chart is not.
     """
     lo_expr, hi_expr = bounds
     domain = pd.domain
     assert isinstance(domain, RealDomain | IntegerDomain)
     orig_lo, orig_hi = domain.lo, domain.hi
-    # Envelopes are always plain numbers by sample time — resolution's
-    # `compute_bound_envelopes` (M5, resolve/_bounds.py) already resolved
-    # any expression bound before this param's chart was ever built.
+    # Envelopes are plain numbers by sample time: `compute_bound_envelopes`
+    # in `resolve/_bounds.py` resolved any expression bound before this
+    # param's chart was built.
     assert isinstance(orig_lo, int | float) and isinstance(orig_hi, int | float)
     new_lo, new_hi = orig_lo, orig_hi
     if lo_expr is not None:
@@ -316,9 +331,9 @@ def _draw_config(
     activity: dict[str, bool] = {}
     for path in topological_order(space):
         if "[]" in path:
-            continue  # a lift's descendant template (D-18) -- never drawn
-            # directly; materialized via _draw_lift when its owning list
-            # param (below) is processed.
+            continue  # a lift's descendant template, never drawn directly;
+            # _draw_lift materializes it when its owning list param below is
+            # processed.
         condition = conditions_by_target.get(path)
         if condition is None:
             active = True
@@ -369,12 +384,14 @@ def sample_one(space: Space, seed: Seed = None, reject_soft: bool = False) -> di
 def _draw_one(
     space: Space, rng: np.random.Generator, reject_soft: bool
 ) -> tuple[dict[str, Any], dict[str, bool]]:
-    """One retried draw, returned **flat** (path-grammar keyed `config` +
-    parallel `activity`) — the shape shared by every sampling entry point.
-    `sample_one`/`sample_dicts` nest it via `unflatten`; `sample_flat`/the
-    DataFrame path (`frame/`) need the flat form directly, since `null`
-    placement in a DataFrame column requires the activity a nested dict's
-    "absent key" convention would otherwise discard.
+    """One retried draw, returned flat.
+
+    Flat means a path-grammar-keyed `config` with a parallel `activity` map,
+    the shape every sampling entry point shares. `sample_one` and
+    `sample_dicts` nest it through `unflatten`. `sample_flat` and the
+    DataFrame path in `frame/` need the flat form directly, since placing
+    `null` in a DataFrame column requires the activity a nested dict's
+    absent-key convention discards.
     """
     constraints = (
         list(space.constraints) if reject_soft else [c for c in space.constraints if c.hard]
@@ -415,7 +432,7 @@ def sample_dicts(
 def sample_flat(
     space: Space, n: int, seed: Seed = None, reject_soft: bool = False
 ) -> list[tuple[dict[str, Any], dict[str, bool]]]:
-    """`n` flat `(config, activity)` draws — the primitive `frame/` builds
+    """`n` flat `(config, activity)` draws, the primitive `frame/` builds
     the DataFrame path on. Same shared-`rng`-across-`n`-draws structure as
     `sample_dicts`, so `sample_flat(space, n, seed=s)` and
     `sample_dicts(space, n, seed=s)` describe the same `n` draws.

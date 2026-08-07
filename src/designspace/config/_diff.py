@@ -1,17 +1,18 @@
 """`ds.config_diff` (API.md, "Config Utilities"): structural, no
 magnitude.
 
-Built entirely on `flatten()` — a variant switch "decomposes into the
-discriminator diff... plus newly-inactive/newly-active payload diffs" and a
-"repeat length change aligns positionally" fall out for free from how
-`flatten` already keys a choice (discriminator string at the choice's own
-path, payload leaves nested under `path.variant.*`, only for whichever
-variant is active) and a lift (positionally-indexed `path[i].*` leaves): a
-plain key-set diff over the two flattened dicts reproduces exactly those
-two rules without any choice/lift-specific code here.
+Built entirely on `flatten()`. The spec's two structural rules, that a
+variant switch "decomposes into the discriminator diff... plus
+newly-inactive/newly-active payload diffs" and that a "repeat length change
+aligns positionally", follow from how `flatten` already keys a choice and a
+lift. A choice contributes its discriminator string at the choice's own path
+and its payload leaves under `path.variant.*`, for the active variant alone;
+a lift contributes positionally indexed `path[i].*` leaves. A plain key-set
+diff over the two flattened dicts reproduces both rules with no choice- or
+lift-specific code here.
 
-Equality is plain Python `==` on flattened leaf values, not the type-tagged
-comparison `config_hash`/`fingerprint` use — DECISIONS.md D-35.
+Equality is plain Python `==` on flattened leaf values, rather than the
+type-tagged comparison `config_hash` and `fingerprint` use.
 """
 
 from __future__ import annotations

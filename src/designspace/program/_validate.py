@@ -1,14 +1,14 @@
 """Value validation for `.symbolic()`/`.code()` (API.md, "Parameter Types"
 > "Program").
 
-Shared by `validate/_validate.py::_domain_error_reason` and
-`resolve/_pipeline.py::_validate_default` — one reason-string vocabulary
-(`"wrong_type"`/`"out_of_bounds"`), mirroring `CustomDomain`'s own
-convention: a raising validator behaves like a malformed value
-(`"wrong_type"`), a `False`-returning validator is a declared-rule
-violation (`"out_of_bounds"`) — the value has already passed the
-structural AST/shape check by the time a validator runs, so a raise here
-is a genuine defensive catch, not the expected failure mode.
+Shared by `_domain_error_reason` in `validate/_validate.py` and
+`_validate_default` in `resolve/_pipeline.py`, under one reason-string
+vocabulary of `"wrong_type"` and `"out_of_bounds"`. That mirrors
+`CustomDomain`'s convention: a raising validator behaves like a malformed
+value and gives `"wrong_type"`, while a `False`-returning validator is a
+declared-rule violation and gives `"out_of_bounds"`. The value has already
+passed the structural AST and shape check by the time a validator runs, so a
+raise here is a defensive catch rather than the expected failure mode.
 """
 
 from __future__ import annotations

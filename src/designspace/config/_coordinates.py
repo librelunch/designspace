@@ -1,22 +1,28 @@
-"""`Space.coordinate_paths()` (API.md, "Config Utilities" > "The fixed leaf
-layout"; error-table row 33; M10.7).
+"""`Space.coordinate_paths()`: the fixed leaf layout.
 
-The **fixed leaf layout**: the ordered instance paths of a space's leaf
-entries, excluding the lift-length entries `flatten` emits as structural
-bookkeeping — the layout a consumer needs to pack a config into a positional
-container (a solver's parameter vector). Requires every `.repeat()` count to
-be a literal integer and no param to carry a condition; either makes the key
-set config-dependent, so no positional layout exists (row 33).
+See API.md, "Config Utilities" > "The fixed leaf layout", and error-table
+row 33.
 
-The walk below mirrors `config/_flatten.py`'s `_flatten_level`/
-`_flatten_list_element` shape exactly — same `_direct_children`-driven
-descent, same `template_prefix`/`concrete_prefix` pair, same struct/choice/
-list dispatch — but is driven by the space alone (no config, no gate) and
-never writes a list's own bookkeeping count. A payload-bearing choice can
-never reach the walk: `resolve/_pipeline.py` folds the discriminator-equality
-condition into every variant descendant's `.condition`, so the row-33 sweep
-below already raises on it before descent would matter; a bare-variant-only
-choice contributes exactly one coordinate (its discriminator).
+The layout is the ordered instance paths of a space's leaf entries,
+excluding the lift-length entries `flatten` emits as structural
+bookkeeping. It is what a consumer needs to pack a config into a positional
+container, such as a solver's parameter vector.
+
+It requires every `.repeat()` count to be a literal integer and no param to
+carry a condition. Either makes the key set config-dependent, so no
+positional layout exists, which is row 33.
+
+The walk below mirrors `_flatten_level` and `_flatten_list_element` in
+`config/_flatten.py`: the same `_direct_children`-driven descent, the same
+`template_prefix` and `concrete_prefix` pair, and the same struct, choice
+and list dispatch. It differs in being driven by the space alone, with no
+config and no gate, and in never writing a list's own bookkeeping count.
+
+A payload-bearing choice never reaches the walk. `resolve/_pipeline.py`
+folds the discriminator-equality condition into every variant descendant's
+`.condition`, so the row-33 sweep below raises before descent could matter.
+A choice with bare variants only contributes one coordinate, its
+discriminator.
 """
 
 from __future__ import annotations
@@ -73,9 +79,10 @@ def _walk_level(space: Space, template_prefix: str, concrete_prefix: str, out: l
                     out,
                 )
         else:
-            # choice (always bare-variant-only here -- a payload-bearing
-            # variant's descendant already raised above) and every scalar/
-            # subset/permutation/custom leaf: one coordinate.
+            # A choice, always with bare variants only here since a
+            # payload-bearing variant's descendant already raised above, and
+            # every scalar, subset, permutation and custom leaf: one
+            # coordinate each.
             out.append(concrete_path)
 
 
@@ -99,6 +106,6 @@ def _walk_list_element(
                 out,
             )
     else:
-        # choice element (bare-variant-only) and every scalar/subset/
-        # permutation/custom element: one coordinate.
+        # A choice element, with bare variants only, and every scalar,
+        # subset, permutation and custom element: one coordinate each.
         out.append(concrete_path)

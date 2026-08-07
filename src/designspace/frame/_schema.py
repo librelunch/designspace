@@ -1,12 +1,12 @@
 """Polars dtype schema derived from `Space.params` (API.md, "Config
-Representation" -> "DataFrame output" dtype table). No draw data — built
-once per `.sample()` call. Mirrors `config/_flatten.py`'s
-`_direct_children`-driven traversal, dispatching to a polars dtype instead
-of copying a value; see `_rows.py` for the per-draw counterpart.
+Representation" > "DataFrame output" dtype table). It reads no draw data
+and is built once per `.sample()` call. It mirrors `config/_flatten.py`'s
+`_direct_children`-driven traversal, dispatching to a polars dtype rather
+than copying a value; `_rows.py` is the per-draw counterpart.
 
-A `choice` expands into **sibling** schema entries at its own level — a
-`Utf8` discriminator plus one `Struct` per parameterized variant, named
-`<local>` / `<local>.<variant>` — instead of one nested dtype, matching
+A `choice` expands into sibling schema entries at its own level, a `Utf8`
+discriminator plus one `Struct` per parameterized variant, named `<local>`
+and `<local>.<variant>`, rather than into one nested dtype, matching
 the table's "Utf8 discriminator at the param path + one Struct per
 parameterized variant at `param.variant`" literally. A lifted choice
 (the list *element itself* is a choice) has no enclosing sibling scope to

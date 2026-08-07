@@ -1,5 +1,6 @@
-"""AST structural validation for `.symbolic()` (API.md, "Parameter Types"
-> "Program"; DECISIONS.md D-83).
+"""AST structural validation for `.symbolic()`.
+
+See API.md, "Parameter Types" > "Program".
 
 Checks *value* membership of one AST node against a `SymbolicDomain`'s
 declaration:
@@ -8,12 +9,13 @@ declaration:
            | {"var": name}                       # name in signature.args
            | {"const": number}                   # within a declared literal's bounds
 
-— vocabulary (only a name this param declared, D-90), arity (only where a
-`Primitive` declares one, D-89), variable names, literal bounds, and tree
-depth (a leaf is depth 1). Never evaluates a tree — no evaluator ships
-(D-83's second user answer); vocabulary checking here is purely structural
-membership, the value-time counterpart of the (now-open) declaration-time
-vocabulary (D-90's rewritten row 15).
+Five things are checked: vocabulary, admitting only a name this param
+declared; arity, where a `Primitive` declares one; variable names; literal
+bounds; and tree depth, a leaf being depth 1.
+
+A tree is never evaluated, no evaluator shipping. Vocabulary checking here
+is structural membership alone, the value-time counterpart of the open
+declaration-time vocabulary row 15 permits.
 """
 
 from __future__ import annotations

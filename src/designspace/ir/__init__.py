@@ -1,14 +1,14 @@
 """ir: resolved intermediate representation (API.md, "IR").
 
-Mostly internal — users see this shape through introspection
-(`Space.params`, etc.), not by importing these classes directly. M11 is the
-one exception (DECISIONS.md D-52): `Encoding.target()`/`decode()`/`encode()`
-all take or return a `ParamDef`, so `ParamDef`, `Chart`, `Domain` and its
-member classes, `QuantizedSpec`, and the two `RepresentationCheck*` result
-types join `designspace`'s top-level exports — not new surface so much as
-an acknowledgement of surface `map_params`/`param_from_def`/`space_from_ir`
-have exposed since M8 with no way to type-annotate it. Every other name
-here stays unexported.
+Mostly internal: a user sees this shape through introspection, as through
+`Space.params`, rather than by importing these classes.
+
+The representation layer is the exception. `Encoding.target()`, `.decode()`
+and `.encode()` all take or return a `ParamDef`, so `ParamDef`, `Chart`,
+`Domain` and its member classes, `QuantizedSpec`, and the two
+`RepresentationCheck` result types are exported from `designspace`. That
+makes annotatable the surface `map_params`, `param_from_def` and
+`space_from_ir` already expose. Every other name here stays unexported.
 """
 
 from designspace.ir._chart import Chart

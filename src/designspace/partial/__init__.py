@@ -1,6 +1,6 @@
 """partial: Space: Partial Configs (API.md).
 
-Internal machinery invoked by `builder/_space.py`'s partial-config methods —
+Internal machinery invoked by `builder/_space.py`'s partial-config methods,
 not part of the public surface (the public result types, `PartialEval`/
 `RemainingDomain`, live in `ir`).
 """

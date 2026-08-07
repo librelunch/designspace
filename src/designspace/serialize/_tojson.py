@@ -44,7 +44,7 @@ def to_json(space: Space, on_unserializable: OnUnserializable = "raise") -> dict
     if meta_tree is not None:
         doc["meta"] = meta_tree
     if ctx.dropped:
-        # "the reconstructed space is a *different* space by design" — the
-        # manifest names exactly which sites were omitted.
+        # "the reconstructed space is a *different* space by design", so
+        # the manifest names exactly which sites were omitted.
         doc["dropped"] = list(ctx.dropped)
     return doc

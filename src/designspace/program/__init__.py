@@ -1,9 +1,10 @@
-"""program: support types for `.symbolic()`/`.code()` (API.md, "Support
-Types"; "Parameter Types" > "Program"; M12).
+"""program: support types for `.symbolic()` and `.code()`.
 
-`ast_error`/`program_value_error` are internal — reused by
-`validate/_validate.py` and `resolve/_pipeline.py`, never called directly
-by users.
+See API.md, "Support Types" and "Parameter Types" > "Program".
+
+`ast_error` and `program_value_error` are internal, reused by
+`validate/_validate.py` and `resolve/_pipeline.py` and never called by a
+user.
 """
 
 from designspace.program._support import FloatLiteral, IntLiteral, Primitive, Signature

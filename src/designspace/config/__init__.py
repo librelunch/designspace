@@ -1,9 +1,8 @@
-"""config: nested phenotype <-> flat path-keyed dict, and choice-value
-helpers (API.md, "Config Utilities").
+"""config: nested phenotype to flat path-keyed dict, and choice helpers.
 
-`flatten`/`unflatten`/`variant`/`payload`/`destructure` are M3's build
-item; `config_diff` joins at M7 (`config_hash` lives in `identity/`, which
-owns the shared canonical-encoding machinery it's built on).
+See API.md, "Config Utilities". `flatten`, `unflatten`, `variant`, `payload`,
+`destructure` and `config_diff` live here. `config_hash` lives in
+`identity/`, which owns the canonical-encoding machinery it is built on.
 """
 
 from designspace.config._diff import config_diff

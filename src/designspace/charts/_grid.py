@@ -8,8 +8,9 @@ Grid points are `g_k = lo + k*step` (linear) or `g_k = lo * factor**k`
 (geometric), `k = 0..K`. `K` is the greatest index with `g_K <= hi`, except
 the degenerate case `step >= hi - lo` (or its geometric analogue
 `factor >= hi/lo`), which collapses to the single point `{lo}` (K=0) even
-though a literal g_1 might coincide with `hi` — API.md's Degeneracy Table
-states this as a `{lo}`-only outcome, not a coincidental two-point grid.
+though a literal g_1 might coincide with `hi`. API.md's Degeneracy Table
+states this as a `{lo}`-only outcome rather than a coincidental two-point
+grid.
 """
 
 from __future__ import annotations

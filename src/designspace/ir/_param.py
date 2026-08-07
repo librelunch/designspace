@@ -139,7 +139,7 @@ class Constraint:
 
     expr: BoolExpr
     hard: bool
-    # "user" | "bound" | "require" | "discourage" — derived provenance,
+    # "user" | "bound" | "require" | "discourage": derived provenance,
     # excluded from the fingerprint preimage. Storage is an implementation
     # detail; read `kind`/`feasible_when_satisfied` instead. A constraint whose
     # stored predicate is the polarity-opposite of its `origin="user"` baseline

@@ -1,15 +1,15 @@
 """Chart dispatcher: resolve step 6 (API.md, "Resolution").
 
-Only `real` and `integer` params carry a chart — categorical/ordinal/bool
-use weights directly (no unit-interval map is needed for a finite discrete
-choice), matching `ParamDef.chart: Chart | None  # None for non-chart kinds`.
+Only a `real` or `integer` param carries a chart. Categorical, ordinal and
+bool params use weights directly, a finite discrete choice needing no
+unit-interval map, which is why `ParamDef.chart` is `Chart | None`.
 
-Two bound pairs matter throughout: the *declared* envelope (`lo`, `hi`) —
-what chart-family domain requirements (row 9) and external-prior containment
-(row 19) are checked against — and the *math* upper bound actually used to
-build the continuous chart, which is wider than `hi` for integers
-(`[lo, hi + 1)`) and quantized reals (the grid's extension). They coincide
-for a plain real.
+Two bound pairs matter throughout. The declared envelope, `lo` and `hi`, is
+what the chart-family domain requirements of row 9 and the external-prior
+containment of row 19 are checked against. The math upper bound is what
+actually builds the continuous chart, and is wider than `hi` for an integer,
+at `[lo, hi + 1)`, and for a quantized real, at the grid's extension. The
+two coincide for a plain real.
 """
 
 from __future__ import annotations

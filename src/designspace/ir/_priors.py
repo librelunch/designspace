@@ -1,9 +1,9 @@
 """Prior protocol and built-in prior family markers (API.md, "Charts" /
 "Support Types").
 
-`Log`/`Logit`/`Power` are bounds-aware and parameterless-until-resolution:
-data-only in M1 (no `.ppf()`) — charts/ (M2) is what interprets them against
-a param's bounds to build the actual `Chart`.
+`Log`, `Logit` and `Power` are bounds-aware and stay parameterless until
+resolution. They are data only, carrying no `.ppf()`; `charts/` interprets
+them against a param's bounds to build the actual `Chart`.
 """
 
 from __future__ import annotations

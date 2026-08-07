@@ -1,52 +1,46 @@
-"""`ds.unflatten()` (API.md, "Config Utilities"): the inverse of
-`flatten` — flat, path-keyed dict -> nested canonical phenotype.
+"""`ds.unflatten()`: flat, path-keyed dict to nested canonical phenotype.
 
-M4 adds list (lift) values, mirroring `_flatten.py`'s template/concrete
-prefix pair (DECISIONS.md D-18): a lift's realized count lives at its own
-flat key (`flat["dropout"] == 4`, `flat["edges"] == 2`); each instance's
-value(s) live under `"[i]"`-indexed keys, reconstructed from the `"[]"`-
-bracketed descendant *template* in `space.params`.
+The inverse of `flatten`; see API.md, "Config Utilities".
 
-M10.7 adds the **static-count fallback** (API.md, "The fixed leaf layout"):
-when the bookkeeping key is absent and the `ListDomain`'s own count is a
-literal `int`, that count recovers the length instead of silently dropping
-the list — this is what makes `ds.unflatten(dict(zip(space.coordinate_paths(),
-values)), space)` (a flat dict with no bookkeeping keys at all) an inverse of
-`flatten`. A *present* bookkeeping key still wins (it is `flatten`'s own
-realized length); the fallback fires only on absence. A *dynamic* and absent
-count stays exactly as before — unrecoverable, since no `ListDomain` count
-exists to fall back to: the outer level omits the list (as it already did),
-the nested level still raises `KeyError` (as it already did) — noted, not
-changed; the spec addresses only the static case.
+A lift's realized count lives at its own flat key, so `flat["dropout"] == 4`
+and `flat["edges"] == 2`. Each instance's values live under `"[i]"`-indexed
+keys, reconstructed from the `"[]"`-bracketed descendant template in
+`space.params`. This mirrors `_flatten.py`'s template and concrete prefix
+pair.
 
-**Bug fix (post-M10.7):** the static-count fallback originally assumed an
-absent bookkeeping key always meant "a full coordinate vector was supplied,
-recover the length" — but `apply_defaults` also calls this same `unflatten`
-on a `flat` dict where a literal-count list was deliberately left implicit
-(API.md, "Defaults" > "Counts and lifts": "otherwise the lift is left
-implicit") with *no* element ever written, and the fallback then tried to
-reconstruct elements that were never there. For a scalar/custom leaf that
-raised an uncaught `KeyError`; for a struct element (which unflattens
-absence to `{}` rather than raising, mirroring the omission convention just
-above) it instead silently produced `n` empty placeholders — either way,
-not the "omit if nothing present" answer every other absent container
-already gets. The static (non-zero-count) fallback branch now checks for at
-least one real leaf under the list's own instance range before committing
-to reconstruct anything; finding none, it omits the list instead, exactly
-like an absent bookkeeping key on a dynamic count already did. A present
-bookkeeping key skips this check entirely (unaffected, exactly as before),
-and the fully-supplied coordinate-vector round trip (no bookkeeping keys
-anywhere, but every leaf present) always finds its own first leaf and so is
-unaffected too.
+**The static-count fallback** (API.md, "The fixed leaf layout"). When the
+bookkeeping key is absent and the `ListDomain`'s own count is a literal
+`int`, that count recovers the length rather than the list being dropped.
+This is what makes `ds.unflatten(dict(zip(space.coordinate_paths(), values)),
+space)`, a flat dict carrying no bookkeeping keys at all, an inverse of
+`flatten`.
 
-This check is gated to a **fully static** count chain (`_is_fully_static`,
-every nested `.repeat()` level a literal `int` — the identical boundary
-`coordinate_paths()` itself draws for "fixed layout"). A *mixed* chain — a
-static outer count over a dynamic inner one, e.g.
-`.repeat(ds.param("n")).repeat(2)` — is the separate, already-documented
-case just above: unrecoverable regardless of data, because the *inner*
-count is never a literal the fallback can use, so it still raises exactly
-as before this fix.
+A present bookkeeping key wins, being `flatten`'s own realized length, so
+the fallback fires only on absence. A dynamic count that is absent is
+unrecoverable, no `ListDomain` count existing to fall back to: the outer
+level omits the list and a nested level raises `KeyError`. The spec
+addresses the static case only.
+
+**The emptiness check.** An absent bookkeeping key does not by itself
+distinguish a full coordinate vector, every leaf present and no bookkeeping
+key anywhere, from a list deliberately left implicit with no element
+written. `apply_defaults` produces the second shape: API.md, "Defaults" >
+"Counts and lifts" says that "otherwise the lift is left implicit". The
+static fallback therefore requires at least one real leaf under the list's
+own instance range before reconstructing anything, and omits the list when
+it finds none, as an absent bookkeeping key on a dynamic count does.
+
+Without the check, a scalar or custom leaf raises an uncaught `KeyError` and
+a struct element, which unflattens absence to `{}` rather than raising,
+silently yields `n` empty placeholders. Neither is the "omit if nothing
+present" answer every other absent container gets.
+
+The check is gated to a fully static count chain, meaning every nested
+`.repeat()` level carries a literal `int`, which is the boundary
+`coordinate_paths()` draws for a fixed layout. A mixed chain, a static outer
+count over a dynamic inner one such as `.repeat(ds.param("n")).repeat(2)`,
+falls under the unrecoverable case above: the inner count is never a literal
+the fallback can use.
 """
 
 from __future__ import annotations
@@ -63,15 +57,16 @@ if TYPE_CHECKING:
 
 
 def _is_fully_static(domain: ListDomain) -> bool:
-    """`True` iff every level of a (possibly nested-list) lift has a
-    literal `int` count -- the same boundary `coordinate_paths()` itself
-    draws for a "fixed layout" (a struct/choice element is a recursion
-    boundary handled by its own independent `_unflatten_level` call, not
-    inspected here). Gates the static-count-fallback safety check below: a
-    *mixed* chain (a static outer count over a dynamic inner one, e.g.
-    `.repeat(ds.param("n")).repeat(2)`) is a different, already-documented
-    "unrecoverable regardless of data" case (M10.7's own "nested level
-    still raises `KeyError`" note) that this fix must not touch.
+    """Whether every level of a possibly nested lift has a literal `int` count.
+
+    This is the boundary `coordinate_paths()` draws for a fixed layout. A
+    struct or choice element is a recursion boundary, handled by its own
+    `_unflatten_level` call, and is not inspected here.
+
+    It gates the static-count fallback's emptiness check below. A mixed
+    chain, a static outer count over a dynamic inner one such as
+    `.repeat(ds.param("n")).repeat(2)`, is unrecoverable regardless of data
+    and must keep raising.
     """
     if not isinstance(domain.count, int):
         return False
@@ -82,9 +77,12 @@ def _is_fully_static(domain: ListDomain) -> bool:
 
 
 def _resolve_count(flat: dict[str, Any], concrete_path: str, count: int | ArithExpr) -> int | None:
-    """The lift's realized length at `concrete_path`. Prefers the flat
-    bookkeeping key when present; falls back to a literal `ListDomain` count
-    on absence; `None` when neither resolves (a dynamic count, absent)."""
+    """The lift's realized length at `concrete_path`.
+
+    The flat bookkeeping key wins when present. On absence a literal
+    `ListDomain` count is used instead. The result is `None` when neither
+    resolves, meaning a dynamic count that is absent.
+    """
     if concrete_path in flat:
         return cast("int", flat[concrete_path])
     if isinstance(count, int):
@@ -113,7 +111,7 @@ def _unflatten_level(
             )
             if nested:
                 result[local_name] = nested
-            # else: struct is inactive (no descendant present) -- omit.
+            # else the struct is inactive, no descendant being present, so omit it.
         elif pd.type_kind == "choice":
             assert isinstance(pd.domain, ChoiceDomain)
             value = _unflatten_choice(flat, pd.domain, space, template_path, concrete_path)
@@ -126,20 +124,18 @@ def _unflatten_level(
             if n is None:
                 continue
             if not bookkeeping_present and n > 0 and _is_fully_static(pd.domain):
-                # Static-count fallback (D-75): a literal count needs no
-                # bookkeeping key to be "determined", so its absence alone
-                # can't distinguish a full coordinate vector (every leaf
-                # present, no bookkeeping keys anywhere -- the round-trip
-                # this fallback exists for) from a list left implicit with
-                # nothing written at all (`apply_defaults` leaving a
-                # no-default lift unfilled, or an inactive list) -- an
-                # element kind that unflattens absence to `{}` rather than
-                # raising (a struct with nothing present) would otherwise
-                # "reconstruct" `n` empty placeholders instead of omitting
-                # the list, so check for at least one real leaf under this
-                # instance range before committing to any of it. Gated to a
-                # *fully* static chain -- a mixed static/dynamic nested
-                # count is the separate, unchanged "still raises" case.
+                # A literal count needs no bookkeeping key to be
+                # determined, so absence alone cannot distinguish a full
+                # coordinate vector, every leaf present and no bookkeeping
+                # key anywhere, from a list left implicit with nothing
+                # written, as `apply_defaults` leaves a no-default lift or
+                # an inactive list. An element kind that unflattens absence
+                # to `{}` rather than raising, a struct with nothing
+                # present, would then reconstruct `n` empty placeholders
+                # instead of omitting the list. Check for at least one real
+                # leaf under this instance range first. Gated to a fully
+                # static chain; a mixed static and dynamic nested count
+                # still raises.
                 marker = f"{concrete_path}["
                 if not any(k.startswith(marker) for k in flat):
                     continue
@@ -198,7 +194,7 @@ def _unflatten_list_element(
         assert isinstance(domain.element_domain, ListDomain)
         n = _resolve_count(flat, concrete_path, domain.element_domain.count)
         if n is None:
-            raise KeyError(concrete_path)  # dynamic and absent -- unrecoverable, unchanged
+            raise KeyError(concrete_path)  # dynamic and absent: unrecoverable
         return [
             _unflatten_list_element(
                 flat,

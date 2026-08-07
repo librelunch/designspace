@@ -1,23 +1,23 @@
-"""`ds.flatten()` (API.md, "Config Utilities"): nested canonical phenotype
--> flat, path-keyed dict.
+"""`ds.flatten()`: nested canonical phenotype to flat, path-keyed dict.
 
-`flatten` itself is structural and non-validating (spec: "flatten is
-structural and non-validating" — Transforms section, which this shares its
-traversal shape with). `flatten_with_errors` walks the exact same
-space-guided recursion but also collects `ParamError`s for malformed shapes
-(a choice value that's neither a bare variant string nor a single-key
-dict, an unknown variant name, a struct value that isn't a dict) — used by
-validate/, which must catch what `flatten` is allowed to let through (see
-DECISIONS.md). One traversal, two behaviors, so the two can never drift
-apart on what counts as "structurally present."
+See API.md, "Config Utilities". `flatten` is structural and non-validating,
+in the spec's own words.
 
-M4 adds list (lift) values. A lift's *descendant* template (struct/choice
-element fields) lives in `space.params` under a `"[]"`-bracketed prefix
-(`"edges[].src"`, DECISIONS.md D-18) — one definition, shared by every
-instance — so the traversal here carries two prefixes side by side: a
-`template_prefix` used to look up param defs (always `"[]"`-bracketed for
-lift descendants) and a `concrete_prefix` used to write output keys
-(`"[i]"`-indexed). Everywhere prior to M4, the two coincide.
+`flatten_with_errors` walks the same space-guided recursion and additionally
+collects a `ParamError` for each malformed shape: a choice value that is
+neither a bare variant string nor a single-key dict, an unknown variant
+name, or a struct value that is not a dict. `validate/` uses it, having to
+catch what `flatten` is allowed to let through. One traversal with two
+behaviours keeps the two from drifting apart on what counts as structurally
+present.
+
+A lift's descendant template, meaning a struct or choice element's fields,
+lives in `space.params` under a `"[]"`-bracketed prefix such as
+`"edges[].src"`. That is one definition shared by every instance, so the
+traversal carries two prefixes side by side: `template_prefix`, used to look
+up param definitions and always `"[]"`-bracketed for a lift descendant, and
+`concrete_prefix`, used to write output keys and `"[i]"`-indexed. Outside a
+lift the two coincide.
 """
 
 from __future__ import annotations
@@ -151,10 +151,13 @@ def _flatten_list_element(
     out: dict[str, Any],
     errors: list[ParamError] | None,
 ) -> None:
-    """One lift instance's value — `template_prefix`/`concrete_prefix` both
-    end in `"."` (e.g. `"edges[]."` / `"edges[3]."`); `concrete_path` (no
-    trailing dot) is the instance's own leaf key when the element has no
-    descendants of its own (scalar/subset/permutation)."""
+    """Flatten one lift instance's value.
+
+    `template_prefix` and `concrete_prefix` both end in `"."`, as in
+    `"edges[]."` and `"edges[3]."`. `concrete_path`, without the trailing
+    dot, is the instance's own leaf key when the element has no descendants
+    of its own, as a scalar, subset or permutation element does not.
+    """
     concrete_path = concrete_prefix[:-1]
     if domain.element_kind == "space":
         if isinstance(item, dict):

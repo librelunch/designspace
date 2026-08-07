@@ -1,22 +1,23 @@
 """One DataFrame row from a flat sampler draw (API.md, "Config
 Representation" -> "DataFrame output"). Mirrors `config/_unflatten.py`'s
 `(template_prefix, concrete_prefix)`-threaded traversal, with two
-deltas relative to it: an inactive path becomes `None` (a DataFrame
-column always exists; a dict key doesn't — `unflatten` omits, this
-nulls), and a choice becomes a Utf8-discriminator-plus-variant-Struct
-sibling pair (`<name>` / `<name>.<variant>`) instead of a nested
+deltas relative to it. An inactive path becomes `None`, a DataFrame column
+always existing where a dict key need not, so `unflatten` omits and this
+nulls. A choice becomes a Utf8-discriminator-plus-variant-Struct sibling
+pair, `<name>` and `<name>.<variant>`, rather than a nested
 `{variant: payload}` dict, matching `_schema.py`'s column layout.
 
 Every definition path's activity is read from `activity` (`sample_flat`'s
 flat per-draw pair) rather than inferred from `config`-presence: a struct
 path never gets a `config` entry at all (API.md: "a struct... produces no
 value of its own"), so `activity` is the only signal for whether a
-`Struct` column should be `null`. The one path kind that genuinely has no
-`activity` entry of its own — a *nested* lift level (`.repeat().repeat()`
-chaining) — needs none: a lift has no per-position deactivation, so
-reaching a nested instance at all (via its enclosing `range(n)`) already
-means it is present; `_element_row`'s "list" branch reads `config`
-directly for exactly this reason.
+`Struct` column should be `null`.
+
+One path kind has no `activity` entry of its own: a nested lift level, from
+`.repeat().repeat()` chaining. It needs none. A lift has no per-position
+deactivation, so reaching a nested instance at all, through its enclosing
+`range(n)`, already means it is present. `_element_row`'s "list" branch
+reads `config` directly for that reason.
 """
 
 from __future__ import annotations

@@ -1,12 +1,13 @@
-"""Support types for `.symbolic()`/`.code()` (API.md, "Support Types";
-"Parameter Types" > "Program"; DECISIONS.md D-83…D-90).
+"""Support types for `.symbolic()` and `.code()`.
 
-Core defines and checks the `.symbolic()` AST's *structure* — vocabulary
-this param declared, arity where a `Primitive` declares one, variable
-names, literal bounds, tree depth — but ships no evaluator, and a bare
-string primitive carries no arity or meaning of its own (D-83's second and
-third user answers): `Primitive.fn` and a bare string are declared
-metadata a consumer's own interpreter uses, never called by core.
+See API.md, "Support Types" and "Parameter Types" > "Program".
+
+Core defines and checks the `.symbolic()` AST's structure: the vocabulary
+this param declared, arity where a `Primitive` declares one, variable names,
+literal bounds and tree depth. It ships no evaluator, and a bare string
+primitive carries no arity or meaning of its own. `Primitive.fn` and a bare
+string are declared metadata for a consumer's own interpreter, never called
+by core.
 """
 
 from __future__ import annotations

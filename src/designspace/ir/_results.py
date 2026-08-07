@@ -1,15 +1,15 @@
 """Result dataclasses for validation and constraint evaluation (API.md, "IR").
 
-M2 needs (`ConstraintEval`, `ValidationResult`, `ParamError`); M6 adds
-`PartialEval` and the `RemainingDomain` descriptor family; M7 adds
-`ParamDiff`; M8 adds `SubspaceInfo`; M10.6 adds `ConstraintReport`/
-`SamplingReport` (API.md, "Sampling diagnostics"); M11 adds
-`RepresentationCheck`/`RepresentationCheckFailure` (`Representation.check()`
-— API.md, "The Representation Layer"). `capability_report()`/`Capabilities`,
-once slated for this layer, were removed outright before M11 opened
-(DECISIONS.md D-57, folded into API.md's "Staging" section): `rep.target`
-is an ordinary `Space`, so solver negotiation is ordinary introspection —
-there is nothing left for a dedicated report to say.
+`ConstraintEval`, `ValidationResult` and `ParamError` report validation.
+`PartialEval` and the `RemainingDomain` descriptor family report a partial
+config. `ParamDiff` reports a config diff and `SubspaceInfo` a subspace.
+`ConstraintReport` and `SamplingReport` carry sampling diagnostics, and
+`RepresentationCheck` and `RepresentationCheckFailure` carry
+`Representation.check()`'s findings.
+
+There is no capability report. `rep.target` is an ordinary `Space`, so
+solver negotiation is ordinary introspection and a dedicated report would
+have nothing to say.
 """
 
 from __future__ import annotations
@@ -146,9 +146,9 @@ class PartialEval:
     n_remaining: int
 
 
-# -- `remaining_domain`'s per-kind descriptor (API.md, "IR") — a closed
-# union. Sound, not complete: never excludes a still-feasible value (may
-# admit values an unreduced multi-operand coupling would forbid).
+# -- `remaining_domain`'s per-kind descriptor (API.md, "IR"), a closed
+# union. It is sound rather than complete: it never excludes a still-feasible
+# value, and may admit values an unreduced multi-operand coupling forbids.
 
 
 @dataclass(frozen=True)
@@ -317,11 +317,13 @@ class ConstraintReport:
 
     `constraint` is the declared `Constraint`. For a per-element template
     (`ListDomain.element_constraints`), the template itself, never an
-    instantiated per-instance copy. `applicable`/`satisfied` are fractions
-    of all `n` draws (D-73): a per-element constraint folds its k
-    per-draw instance evals into one applicable/satisfied decision per
-    draw before dividing by `n`, so every row shares one denominator and
-    stays comparable to `acceptance_rate`. `satisfied` is conditioned on
+    instantiated per-instance copy.
+
+    `applicable` and `satisfied` are fractions of all `n` draws. A
+    per-element constraint folds its per-draw instance evaluations into one
+    applicable and satisfied decision per draw before dividing by `n`, so
+    every row shares one denominator and stays comparable to
+    `acceptance_rate`. `satisfied` is conditioned on
     `applicable` (fraction of *applicable* draws satisfied), and is `0.0`
     by convention, never `NaN`, when `applicable == 0.0`.
 
@@ -374,8 +376,8 @@ class SamplingReport:
     diagnostics"). Aggregation only, over the **unconditioned** measure,
     drawn before rejection, so both Unknown-swallowing and funnel bias are
     visible. `activity` keys are exactly `set(space.params)`, including
-    `"[]"`-templated definition paths from inside a lifted struct/choice,
-    folded per draw the same way as `constraints` (D-73).
+    `"[]"`-templated definition paths from inside a lifted struct or
+    choice, folded per draw as `constraints` is.
 
     Attributes
     ----------
