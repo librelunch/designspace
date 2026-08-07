@@ -1,7 +1,8 @@
-"""`Space.subspaces` / `Space.dependency_graph` (API.md, "Space —
-Introspection"; DECISIONS.md D-43 — neither's exact shape is otherwise
-specified). Shared with `ops/_structural.py`'s `.select()`: "prefix subtree"
-selection is exactly a lookup into `subspaces()`.
+"""`Space.subspaces` and `Space.dependency_graph` (API.md, "Space:
+Introspection").
+
+Shared with `.select()` in `ops/_structural.py`: selecting a prefix subtree
+is a lookup into `subspaces()`.
 """
 
 from __future__ import annotations
@@ -13,12 +14,14 @@ from designspace.ir import ChoiceDomain, ListDomain, SubspaceInfo
 
 
 def subspaces(space: Space) -> dict[str, SubspaceInfo]:
-    """One entry per struct param and per payload-bearing choice variant,
-    keyed by its relocation prefix — the same prefix
-    `resolve/_relocate.py::relocate_child` reprefixed that payload's
-    descendants under. `condition` reconstructs the activation condition
-    `_relocate_choice_variants` folds into each descendant (own condition
-    AND, for a variant, the discriminator equality) as a single value.
+    """One entry per struct param and per payload-bearing choice variant.
+
+    Each is keyed by its relocation prefix, the prefix `relocate_child` in
+    `resolve/_relocate.py` reprefixed that payload's descendants under.
+
+    `condition` reconstructs, as a single value, the activation condition
+    `_relocate_choice_variants` folds into each descendant: the payload's
+    own condition, conjoined for a variant with the discriminator equality.
     """
     result: dict[str, SubspaceInfo] = {}
     for path, pd in space.params.items():
@@ -51,17 +54,18 @@ def subspaces(space: Space) -> dict[str, SubspaceInfo]:
 
 
 def dependency_graph(space: Space) -> dict[str, frozenset[str]]:
-    """Each definition path's condition + constraint + repeat-count
-    dependencies (API.md, "Space: Introspection"): a param's own
-    condition (if any) contributes its referenced params; every constraint
-    couples all the params it mentions together (added symmetrically, since
-    a plain constraint has no distinguished target — unlike a condition,
-    which does); a `.repeat()`-closed param's (possibly chained) count
-    contributes whatever it references. Every path in `space.params` gets
-    an entry, including lift-descendant templates (`"[]"`), matching
-    `.params`'s own unfiltered transparency — unlike `topological_order`
-    (`partial/_partial.py`), which filters those out for its own,
-    execution-order-specific purpose.
+    """Each definition path's condition, constraint and count dependencies.
+
+    See API.md, "Space: Introspection". A param's own condition contributes
+    its referenced params. Every constraint couples all the params it
+    mentions, added symmetrically because a plain constraint has no
+    distinguished target, whereas a condition does. A `.repeat()`-closed
+    param's possibly chained count contributes whatever it references.
+
+    Every path in `space.params` gets an entry, lift-descendant templates
+    carrying `"[]"` included, matching `.params`' own unfiltered
+    transparency. `topological_order` in `partial/_partial.py` filters those
+    out instead, for its own execution-order purpose.
     """
     deps: dict[str, set[str]] = {path: set() for path in space.params}
     for cond in space.conditions:

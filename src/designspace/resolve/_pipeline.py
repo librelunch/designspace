@@ -1,24 +1,21 @@
 """The resolve pass pipeline (API.md, "Resolution").
 
-Covers steps 1-8: collect, type-check, desugar (`implies`; `log_scale`
-already resolved eagerly at the builder, D-2), resolve references,
-cycle-check, compute bound envelopes (M5, resolve/_bounds.py), validate
-declarations, build charts, emit IR. M3 adds choice/struct/subset/permutation;
-lifts are M4's work.
+Steps 1 through 8: collect, type-check, desugar, resolve references,
+cycle-check, compute bound envelopes (`resolve/_bounds.py`), validate
+declarations, build charts, emit IR. Desugaring covers `implies` alone;
+`log_scale` resolves to a prior at the builder and leaves nothing to do
+here.
 
-Each numbered step is a plain function over the previous step's output,
-per PLAN.md's "each pass a function over an explicit
-intermediate."
+Each numbered step is a plain function over the previous step's output.
 
-Structural expansion (choice/struct) happens in step 8 (`_emit`), not
-earlier: a choice/struct param's own condition is resolved and cycle-
-checked exactly like any other param's `.when()` at *this* level (steps
-4-5 already handle it uniformly, since it's just an ordinary ParamExpr
-entry in `defs`); its payload's *descendant* params were already fully
-resolved (by their own, earlier `resolve_space` call — see
-builder/_paramexpr.py's `.space()`/`.choice()`) and only need reprefixing
-plus one folded-in activation condition (resolve/_relocate.py), never
-re-validation.
+Structural expansion of a choice or struct happens in step 8, in `_emit`,
+rather than earlier. A choice or struct param's own condition is an
+ordinary `ParamExpr` entry in `defs`, so steps 4 and 5 resolve and
+cycle-check it exactly as they do any other param's `.when()` at this
+level. Its payload's descendant params were already fully resolved by their
+own earlier `resolve_space` call, made from `.space()` or `.choice()` in
+`builder/_paramexpr.py`. They need reprefixing and one folded-in activation
+condition, applied by `resolve/_relocate.py`, and never re-validation.
 """
 
 from __future__ import annotations
@@ -119,51 +116,54 @@ _NON_CHART_KINDS = (
 def resolve_space(exprs: tuple[ParamExpr, ...]) -> Space:
     defs = _collect(exprs)  # step 1
     _check_types_and_names(defs)  # step 2
-    defs = _desugar(defs)  # step 3: implies -> ~left | right (D-1); log_scale
-    # already resolves eagerly at the builder. Lift ("repeat") layer folding
-    # already happened at the builder (`.repeat()`, builder/_paramexpr.py) —
-    # this step only rewrites `.when()` conditions.
+    defs = _desugar(defs)  # step 3: implies -> ~left | right. log_scale
+    # resolves to a prior at the builder, and lift layer folding already
+    # happened there too, in `.repeat()` (builder/_paramexpr.py). This step
+    # rewrites `.when()` conditions and nothing else.
     defs_by_path = {d.path: d for d in defs}
     _resolve_condition_refs(defs, defs_by_path)  # step 4
-    check_bound_refs(defs, defs_by_path)  # step 4, bound side (row 6/14; eager
-    # — no up-reference tolerance, DECISIONS.md D-29)
+    check_bound_refs(defs, defs_by_path)  # step 4, bound side (rows 6 and 14;
+    # eager, with no up-reference tolerance)
     _check_condition_cycles(defs)  # step 5 (condition/bound/repeat-count DAG)
     defs, bound_constraints = compute_bound_envelopes(defs, defs_by_path)  # step 6
     defs_by_path = {d.path: d for d in defs}  # bounds are now plain numbers
-    _validate_declarations(defs, defs_by_path)  # step 7 (bounds/weights/etc —
-    # must precede chart-building, which assumes sane bounds)
-    defs = _build_list_domains(defs)  # M4: fold each lift's `_ElementSnapshot`
-    # chain into a resolved, chart-carrying `ListDomain` (DECISIONS.md D-18).
+    _validate_declarations(defs, defs_by_path)  # step 7 (bounds, weights and
+    # the rest). Must precede chart-building, which assumes sane bounds.
+    defs = _build_list_domains(defs)  # fold each lift's `_ElementSnapshot`
+    # chain into a resolved, chart-carrying `ListDomain`.
     charts = _build_charts(defs)  # step 6, chart side
     space = _emit(defs, charts)  # step 8
-    _check_nested_container_lifts(space)  # D-24's boundary, compositional route
+    _check_nested_container_lifts(space)  # the compositional route to a
+    # two-level container-element lift
     if bound_constraints:
         space = replace(space, constraints=space.constraints + tuple(bound_constraints))
-    _validate_list_defaults_deep(space)  # row 21, continued — needs space.params
+    _validate_list_defaults_deep(space)  # row 21, continued; needs space.params
     return space
 
 
 def _check_nested_container_lifts(space: Space) -> None:
-    """DECISIONS.md D-24's boundary, reached *compositionally* rather than
-    by chaining: a struct/choice element under more than one `.repeat()`
-    level is unsupported, and declaring the inner lift inside the outer
-    lift's element `Space` composes to exactly that shape.
+    """Reject a two-level container-element lift reached compositionally.
 
-    `_validate_lift`'s own D-24 guard sees one param's chained
-    `_ElementSnapshot` depth and so catches only `.repeat().repeat()`. The
-    compositional route produces two *separate* lift params whose merged
-    definition path carries the nesting instead (`"row[].spans"`), which is
-    visible only here, after relocation. Left unguarded it fell through
-    into machinery that never instantiates the inner elements: a struct
-    lift sampled empty element dicts, and a lifted choice sampled an empty
-    payload that `validate()` then *accepted*.
+    A struct or choice element under more than one `.repeat()` level is
+    unsupported, and declaring the inner lift inside the outer lift's
+    element `Space` composes to exactly that shape.
 
-    The rule is the merged shape, not the syntax: a param whose own
-    definition path already sits inside a lift element (`"[]"` in the path)
-    and which is itself a struct- or choice-elemented lift. A **scalar**
-    lift nested the same way is explicitly fine (D-24: "scalar/subset/
-    permutation elements support arbitrary nesting"), as is a struct lift
-    inside a plain struct or a choice variant — one lift level, not two.
+    `_validate_lift`'s own guard reads one param's chained
+    `_ElementSnapshot` depth, so it catches only `.repeat().repeat()`. The
+    compositional route instead produces two separate lift params whose
+    merged definition path carries the nesting, as in `"row[].spans"`, which
+    is visible only here, after relocation. Unguarded, it falls through into
+    machinery that never instantiates the inner elements: a struct lift
+    samples empty element dicts, and a lifted choice samples an empty
+    payload that `validate()` then accepts.
+
+    The rule is the merged shape rather than the syntax. It fires for a
+    param whose own definition path already sits inside a lift element,
+    carrying `"[]"`, and which is itself a struct- or choice-elemented lift.
+    A scalar lift nested the same way is fine, since scalar, subset and
+    permutation elements support arbitrary nesting, as is a struct lift
+    inside a plain struct or a choice variant, which is one lift level
+    rather than two.
     """
     for path, pd in space.params.items():
         if "[]" not in path or not isinstance(pd.domain, ListDomain):
@@ -171,40 +171,42 @@ def _check_nested_container_lifts(space: Space) -> None:
         if _innermost_domain_element_kind(pd.domain) in ("space", "choice"):
             raise ResolutionError(
                 f"param {path!r}: a struct/choice element nested under more than one "
-                ".repeat() level is not yet supported (M4 scope boundary, DECISIONS.md "
-                "D-24) — scalar/subset/permutation elements support arbitrary nesting"
+                ".repeat() level is not supported (row 34); scalar/subset/permutation "
+                "elements support arbitrary nesting"
             )
 
 
 def check_fully_resolved(space: Space) -> None:
-    """Re-run the deferred row-6/7/14 condition checks over the fully-merged
-    space (DECISIONS.md D-26, superseding D-12).
+    """Re-run the deferred row 6, 7 and 14 checks over the merged space.
 
-    A `.when()` condition may reference a param bound in an *enclosing* scope
-    (API.md's sole scoping rule — resolve the first segment by walking up).
-    Such an up-reference cannot be resolved while its payload is resolved
-    standalone, so per-scope resolution *tolerates* it (skipping it in
-    `check_refs_declared`/`check_expr_types`/cycle detection). Here — at every
-    terminal entry point (sample/validate/…), once every enclosing scope has
-    contributed its params — the checks re-run strictly over the merged graph:
+    A `.when()` condition may reference a param bound in an enclosing scope,
+    under API.md's sole scoping rule: resolve the first segment by walking
+    up. Such an up-reference cannot be resolved while its payload is
+    resolved standalone, so per-scope resolution tolerates it, skipping it
+    in `check_refs_declared`, `check_expr_types` and cycle detection. This
+    function runs at every terminal entry point, such as sample and
+    validate, once every enclosing scope has contributed its params, and
+    re-runs the checks strictly over the merged graph:
 
-    - row 6: an up-reference that binds nowhere is a genuine typo and raises;
-    - row 14: a comparison/arithmetic over a now-visible up-referenced param
-      is type-checked (it was skipped standalone);
-    - row 7: a *cross-scope* cycle (only formable through an up-reference plus
-      a matching down-reference) is caught here — per-scope cycle detection
-      never sees both edges.
+    - row 6: an up-reference that binds nowhere is a genuine typo and
+      raises;
+    - row 14: a comparison or arithmetic over a now-visible up-referenced
+      param is type-checked, having been skipped standalone;
+    - row 7: a cross-scope cycle, formable only through an up-reference plus
+      a matching down-reference, is caught here, since per-scope cycle
+      detection never sees both edges.
 
-    Also re-checks `space.constraints` (M10.5 — the metaprogramming hole):
-    a builder-built space's constraints are already strict at
-    `add_constraints`, so this is a confirming no-op for it, but a raw-IR
-    constraint arriving through `meta/_meta.py::space_from_ir` was never
-    expression-checked at all otherwise — which would let a row-6/12/14/18/29
-    violation (an out-of-range static index, a lift-valued boolean operand,
-    …) reach `sample`/`validate`/`fingerprint` silently through that path.
+    It also re-checks `space.constraints`, which closes the metaprogramming
+    hole. A builder-built space's constraints are already strict at
+    `add_constraints`, so this is a confirming no-op for one of those. A
+    raw-IR constraint arriving through `space_from_ir` in `meta/_meta.py`
+    would otherwise never be expression-checked at all, letting a row 6, 12,
+    14, 18 or 29 violation, such as an out-of-range static index or a
+    lift-valued boolean operand, reach `sample`, `validate` or `fingerprint`
+    silently.
 
-    A space with only local references reaches this function already fully
-    checked; every clause below is then a confirming no-op.
+    A space with only local references arrives here already fully checked,
+    and every clause below is then a confirming no-op.
     """
     defs_by_path = dict(space.params)
     for cond in space.conditions:
@@ -220,21 +222,22 @@ def check_fully_resolved(space: Space) -> None:
 
 
 def _check_domain_carried_refs(space: Space, defs_by_path: dict[str, ParamDef]) -> None:
-    """Rows 6/12/14 over the two reference stores that live *inside* a
-    `ListDomain` rather than on the `ParamDef`: the lift's `count`
-    expression (D-21) and its per-element constraint templates (D-20).
+    """Rows 6, 12 and 14 over the reference stores a `ListDomain` carries.
 
-    Both were previously audited only per-scope, over the child `Space`'s
-    own paths. That left two silent failures once relocation reprefixed
-    those paths: a dangling count reads as Kleene-Unknown-from-inactivity
-    and materializes `[]`, and a dangling element constraint goes
-    inapplicable under Kleene rule 4 — a hard `.forbid()` that stops
-    deciding feasibility while `validate()` still reports `valid`. Neither
-    is a finding a user could reach any other way, which is why the audit
-    belongs here rather than in a caller.
+    Two of a lift's reference stores live inside the domain rather than on
+    the `ParamDef`: the `count` expression and the per-element constraint
+    templates.
 
-    It is also what makes a count's up-reference deferral safe (D-91): the
-    per-scope check tolerates a reference binding nowhere locally, and
+    Auditing them per-scope, over the child `Space`'s own paths, leaves two
+    silent failures once relocation has reprefixed those paths. A dangling
+    count reads as Kleene Unknown from inactivity and materializes `[]`. A
+    dangling element constraint goes inapplicable under Kleene rule 4, so a
+    hard `.forbid()` stops deciding feasibility while `validate()` still
+    reports `valid`. Neither is reachable any other way, which is why the
+    audit belongs here rather than in a caller.
+
+    This is also what makes deferring a count's up-reference safe. The
+    per-scope check tolerates a reference that binds nowhere locally, and
     this pass is where it must finally bind.
     """
     for path, pd in space.params.items():
@@ -249,9 +252,12 @@ def _check_domain_carried_refs(space: Space, defs_by_path: dict[str, ParamDef]) 
 
 
 def _merged_count_deps(pd: ParamDef) -> frozenset[str]:
-    """Repeat-count references across a (possibly chained) lift, read from
-    the resolved `ListDomain` chain — the finalization-side counterpart of
-    `_count_deps`' builder-side `.lift` walk."""
+    """Repeat-count references across a possibly chained lift.
+
+    Read from the resolved `ListDomain` chain, this is the
+    finalization-side counterpart of `_count_deps`' builder-side `.lift`
+    walk.
+    """
     deps: frozenset[str] = frozenset()
     domain = pd.domain
     while isinstance(domain, ListDomain):
@@ -263,9 +269,9 @@ def _merged_count_deps(pd: ParamDef) -> frozenset[str]:
 
 def _check_merged_cycles(space: Space) -> None:
     deps: dict[str, frozenset[str]] = {c.target: c.params for c in space.conditions}
-    # A count imposes assignment order exactly as a condition does (D-21),
-    # so a cross-scope cycle formed through an up-referencing count — only
-    # ever visible here, over the merged graph — is row 7 (D-91).
+    # A count imposes assignment order exactly as a condition does, so a
+    # cross-scope cycle formed through an up-referencing count is row 7. It
+    # is visible only here, over the merged graph.
     for path, pd in space.params.items():
         count_deps = _merged_count_deps(pd)
         if count_deps:
@@ -292,12 +298,12 @@ def _check_merged_cycles(space: Space) -> None:
         visit(target)
 
 
-# -- M8: ParamDef <-> ParamExpr view inversion, and re-validation of a -------
+# -- ParamDef <-> ParamExpr view inversion, and re-validation of a ------------
 # hand-assembled or rewritten flat IR (API.md, "Space: Metaprogramming":
 # "the IR is bidirectional"; "resolution re-validates whatever comes in").
 # Shared by `meta/_meta.py` (`param_from_def`, `space_from_ir`) and
-# `serialize/_fromjson.py` (chart rebuilding on load) — kept here, next to
-# `_build_list_domain`/`_validate_declarations`, whose exact inverse and
+# `serialize/_fromjson.py` (chart rebuilding on load). Kept here, next to
+# `_build_list_domain` and `_validate_declarations`, whose exact inverse and
 # re-check this is.
 
 _VIEW_BY_KIND: dict[str, type[ParamExpr]] = {
@@ -317,18 +323,20 @@ _VIEW_BY_KIND: dict[str, type[ParamExpr]] = {
 
 
 def param_def_to_view(pd: ParamDef) -> ParamExpr:
-    """Invert a resolved `ParamDef` back into the `ParamExpr` view the
-    fluent builder would have produced for it — the reverse of `_emit`'s
-    per-definition half. Structural relocation (the *other* half of `_emit`,
-    folding a struct/choice payload's descendants into the flat space) has
-    no single-`ParamDef` inverse: a struct/choice view built here is always
-    payload-less (`struct_space=None` / empty `choice_payloads`), since its
-    descendants are separate `ParamDef` entries this function never sees.
-    That is fine for every caller: `validate_param_defs` (below) only needs
-    each definition's *own* declaration, and the public, single-`ParamDef`
-    `meta/_meta.py::param_from_def` rejects the two container kinds before
-    ever reaching this function (DECISIONS.md D-41) rather than returning
-    one silently short of its descendants.
+    """Invert a resolved `ParamDef` into the `ParamExpr` view that built it.
+
+    This reverses `_emit`'s per-definition half. Structural relocation, the
+    other half of `_emit`, folds a struct or choice payload's descendants
+    into the flat space and has no single-`ParamDef` inverse: a struct or
+    choice view built here is always payload-less, with `struct_space=None`
+    or empty `choice_payloads`, because its descendants are separate
+    `ParamDef` entries this function never sees.
+
+    That suits every caller. `validate_param_defs` below needs each
+    definition's own declaration only, and the public, single-`ParamDef`
+    `param_from_def` in `meta/_meta.py` rejects the two container kinds
+    before reaching this function rather than returning a view silently
+    short of its descendants.
     """
     if pd.type_kind == "list":
         assert isinstance(pd.domain, ListDomain)
@@ -354,11 +362,13 @@ def param_def_to_view(pd: ParamDef) -> ParamExpr:
 
 
 def _list_domain_to_snapshot(domain: ListDomain) -> _ElementSnapshot:
-    """Inverse of `_build_list_domain`: rebuild the `_ElementSnapshot` chain
-    `.repeat()` would have produced for this resolved `ListDomain`,
-    recursing once per chained lift level exactly as `_build_list_domain`
-    does in the other direction. A struct/choice element's snapshot is
-    payload-less (see `param_def_to_view`)."""
+    """Inverse of `_build_list_domain`.
+
+    Rebuilds the `_ElementSnapshot` chain `.repeat()` would have produced
+    for this resolved `ListDomain`, recursing once per chained lift level as
+    `_build_list_domain` does in the other direction. A struct or choice
+    element's snapshot is payload-less; see `param_def_to_view`.
+    """
     if domain.element_kind == "list":
         assert isinstance(domain.element_domain, ListDomain)
         inner = _list_domain_to_snapshot(domain.element_domain)
@@ -384,14 +394,17 @@ def _list_domain_to_snapshot(domain: ListDomain) -> _ElementSnapshot:
 
 
 def validate_param_defs(defs_by_path: Mapping[str, ParamDef]) -> None:
-    """Re-validate a flat mapping of already-resolved `ParamDef`s: each
-    one's own domain/prior/quantized/default/tags/meta, plus — for a
-    `.repeat()`-closed ("list") kind — its element and (for a dynamic
-    count) the type of the param the count references. The same
-    per-definition checks `_validate_declarations` runs during ordinary
-    builder resolution (row 2's "more than one type" cannot recur here —
-    a `ParamDef.type_kind` string always names exactly one kind by
-    construction, unlike a hand-built `ParamExpr`). Conditions/cycles are
+    """Re-validate a flat mapping of already-resolved `ParamDef` records.
+
+    Each one's own domain, prior, quantized spec, default, tags and metadata
+    are checked. A `.repeat()`-closed "list" kind additionally has its
+    element checked, and a dynamic count has the type of the param it
+    references checked.
+
+    These are the per-definition checks `_validate_declarations` runs during
+    ordinary builder resolution. Row 2's "more than one type" cannot recur
+    here, since a `ParamDef.type_kind` string names exactly one kind by
+    construction, unlike a hand-built `ParamExpr`. Conditions and cycles are
     `check_fully_resolved`'s separate job, over the merged `Space`.
     """
     views: dict[str, ParamExpr] = {path: param_def_to_view(pd) for path, pd in defs_by_path.items()}
@@ -408,12 +421,14 @@ def validate_param_defs(defs_by_path: Mapping[str, ParamDef]) -> None:
 
 
 def rebuild_charts(pd: ParamDef) -> ParamDef:
-    """Charts are always derived, never trusted from input — rebuild fresh
-    from domain/prior/quantized, discarding whatever `pd.chart` already
-    holds. Shared by `serialize/_fromjson.py` (loading a `to_json`
-    document) and `meta/_meta.py::space_from_ir` (assembling a `Space` from
-    raw `ParamDef`s), both of which start from a chartless or
-    not-to-be-trusted `pd.chart`.
+    """Rebuild every chart from its domain, prior and quantized spec.
+
+    Charts are always derived and never trusted from input, so whatever
+    `pd.chart` already holds is discarded. Shared by
+    `serialize/_fromjson.py`, loading a `to_json` document, and
+    `space_from_ir` in `meta/_meta.py`, assembling a `Space` from raw
+    `ParamDef` records. Both start from a `pd.chart` that is absent or not
+    to be trusted.
     """
     if pd.type_kind == "list":
         assert isinstance(pd.domain, ListDomain)
@@ -443,15 +458,17 @@ def rebuild_list_domain_charts(path: str, domain: ListDomain) -> ListDomain:
 
 
 def revalidate_space(space: Space) -> Space:
-    """Re-run every per-definition and cross-definition check ordinary
-    builder resolution performs, over an already-flat `Space` assembled
-    from raw IR rather than produced by `resolve_space`'s own pipeline
-    (`meta/_meta.py::space_from_ir`). "Resolution re-validates whatever
-    comes in" (API.md, "Space: Metaprogramming"): a `ParamDef` reaching
-    `space_from_ir` may have come from anywhere — a coarsening
-    `map_params` rewrite, a hand-built registry, a foreign document — so it
-    is held to the same standard as one the fluent builder produced.
-    Returns `space` for convenient chaining.
+    """Re-run every resolution check over an already-flat `Space`.
+
+    The space was assembled from raw IR by `space_from_ir` in
+    `meta/_meta.py` rather than produced by `resolve_space`'s own pipeline.
+    "Resolution re-validates whatever comes in" (API.md, "Space:
+    Metaprogramming"): a `ParamDef` reaching `space_from_ir` may have come
+    from a coarsening `map_params` rewrite, a hand-built registry or a
+    foreign document, so it is held to the same standard as one the fluent
+    builder produced.
+
+    Returns `space`, for chaining.
     """
     validate_param_defs(space.params)
     _validate_list_defaults_deep(space)
@@ -467,13 +484,16 @@ def _desugar(defs: tuple[ParamExpr, ...]) -> tuple[ParamExpr, ...]:
 
 
 def _build_list_domains(defs: tuple[ParamExpr, ...]) -> tuple[ParamExpr, ...]:
-    """Fold each `.repeat()`-closed param's `_ElementSnapshot` chain into a
-    resolved `ListDomain` (DECISIONS.md D-18), building the innermost
-    element's chart along the way (`build_chart` is oblivious to lifts —
-    it just needs a path/type_kind/domain/prior/quantized, which the
-    snapshot already carries). Runs after `_validate_lift` has confirmed
-    the element's bounds/priors are sane, mirroring the ordering already
-    used for scalar params (validate before chart-building)."""
+    """Fold each lift's `_ElementSnapshot` chain into a resolved `ListDomain`.
+
+    The innermost element's chart is built along the way. `build_chart` is
+    oblivious to lifts, needing only a path, `type_kind`, domain, prior and
+    quantized spec, all of which the snapshot carries.
+
+    Runs after `_validate_lift` has confirmed the element's bounds and
+    priors are sane, matching the order scalar params already use: validate
+    before chart-building.
+    """
     return tuple(
         replace(d, domain=_build_list_domain(d.path, d.lift)) if d.lift is not None else d
         for d in defs
@@ -552,13 +572,13 @@ def _check_types_and_names(defs: tuple[ParamExpr, ...]) -> None:
             raise ResolutionError(f"duplicate param name {d.path!r} in this scope")
         seen.add(d.path)
 
-        # "More than one type" (row 2's other half) is now structurally
-        # impossible to reach here (DECISIONS.md D-28): type_kind is a
-        # ClassVar fixed by whichever view class built `d`, so there is no
-        # runtime state left to misrepresent it, fluent or hand-built alike
-        # — ParamExpr(type_kind=...) is a TypeError before this function
-        # would ever see the object. Only "no type chosen" (a bare
-        # FreshParamExpr/ParamExpr reaching resolution) remains checkable.
+        # "More than one type", row 2's other half, is structurally
+        # unreachable here: type_kind is a ClassVar fixed by whichever view
+        # class built `d`, so no runtime state is left to misrepresent it,
+        # fluent or hand-built alike. `ParamExpr(type_kind=...)` is a
+        # TypeError before this function would see the object. Only "no type
+        # chosen", a bare FreshParamExpr or ParamExpr reaching resolution,
+        # remains checkable.
         if d.type_kind is None:
             raise ResolutionError(
                 f"param {d.path!r} has no type: call exactly one of "
@@ -575,7 +595,7 @@ def _check_modifier_placement(d: ParamExpr) -> None:
         if d.lift is not None:
             raise ResolutionError(
                 f"param {d.path!r}: prior()/log_scale() written after .repeat() applies "
-                "to the list, not the element — call it before .repeat() (row 11)"
+                "to the list, not the element; call it before .repeat() (row 11)"
             )
         if isinstance(d.prior_spec, Weights) and not weighted:
             raise ResolutionError(
@@ -590,7 +610,7 @@ def _check_modifier_placement(d: ParamExpr) -> None:
         if d.lift is not None:
             raise ResolutionError(
                 f"param {d.path!r}: quantized() written after .repeat() applies to the "
-                "list, not the element — call it before .repeat() (row 11)"
+                "list, not the element; call it before .repeat() (row 11)"
             )
         if not numeric:
             raise ResolutionError(
@@ -608,10 +628,10 @@ def _resolve_condition_refs(
         if d.condition is None:
             continue
         context = f"param {d.path!r}"
-        # Condition up-references to an enclosing scope's params (API.md's
-        # sole scoping rule) are tolerated here and re-checked at finalization
-        # over the merged space, once every enclosing scope has contributed
-        # its params (DECISIONS.md D-26, superseding D-12's eager rejection).
+        # Condition up-references to an enclosing scope's params, under
+        # API.md's sole scoping rule, are tolerated here and re-checked at
+        # finalization over the merged space, once every enclosing scope has
+        # contributed its params.
         check_refs_declared(d.condition, defs_by_path, context=context, tolerate_undeclared=True)
         check_expr_types(d.condition, defs_by_path, context=context, tolerate_undeclared=True)
 
@@ -620,10 +640,12 @@ def _resolve_condition_refs(
 
 
 def _count_deps(lift: _ElementSnapshot | None) -> frozenset[str]:
-    """Repeat-count references, across a (possibly chained) lift, join the
-    same dependency graph as conditions (DECISIONS.md D-21): a count must
-    be known before this param's instances can be materialized, exactly
-    like a condition must be known before activity can be decided."""
+    """Repeat-count references across a possibly chained lift.
+
+    These join the same dependency graph as conditions: a count must be
+    known before this param's instances can be materialized, just as a
+    condition must be known before activity can be decided.
+    """
     deps: frozenset[str] = frozenset()
     while lift is not None and lift.element_class is ListParamExpr:
         if isinstance(lift.count, ArithExpr):
@@ -633,10 +655,13 @@ def _count_deps(lift: _ElementSnapshot | None) -> frozenset[str]:
 
 
 def _check_condition_cycles(defs: tuple[ParamExpr, ...]) -> None:
-    """Row 7: cycle in the condition/bound/repeat-count dependency graph, or
-    a param's condition, bounds, or repeat count referencing itself. Runs
-    before bound envelopes are computed (`compute_bound_envelopes`'s
-    `envelope_of` is a memoized recursion that assumes this already holds)."""
+    """Row 7: a cycle in the condition, bound and repeat-count graph.
+
+    Also fires when a param's condition, bounds or repeat count references
+    itself. Runs before bound envelopes are computed, since
+    `compute_bound_envelopes`' `envelope_of` is a memoized recursion that
+    assumes this already holds.
+    """
     deps: dict[str, frozenset[str]] = {
         d.path: (d.condition.params if d.condition is not None else frozenset())
         | _count_deps(d.lift)
@@ -659,8 +684,8 @@ def _check_condition_cycles(defs: tuple[ParamExpr, ...]) -> None:
             )
         visiting.add(path)
         for dep in deps[path]:
-            # A non-local dep is an up-reference into an enclosing scope
-            # (D-26): it has no node here, so skip it — a cross-scope cycle
+            # A non-local dependency is an up-reference into an enclosing
+            # scope. It has no node here, so skip it; a cross-scope cycle
             # through it is caught at finalization over the merged graph.
             if dep in deps:
                 visit(dep)
@@ -715,18 +740,19 @@ def _validate_domain(d: ParamExpr) -> None:
 
 
 def _check_custom_domain(path: str, domain: CustomDomain) -> None:
-    """Row 2-adjacent construction check, not a numbered error row: the
-    `.custom()` two-form overload itself already rejects a malformed call
-    at the builder (`builder/_views.py::FreshParamExpr.custom`) — this is a
-    final sanity check for a programmatically-built `CustomDomain` reaching
-    resolution some other way (`ds.param_from_def`, `space_from_ir`),
-    mirroring that same check exactly."""
+    """A row-2-adjacent construction check, not a numbered error row.
+
+    `FreshParamExpr.custom` in `builder/_views.py` already rejects a
+    malformed `.custom()` call at the builder. This mirrors that check for a
+    programmatically built `CustomDomain` reaching resolution another way,
+    through `ds.param_from_def` or `space_from_ir`.
+    """
     full = domain.param_type is not None
     shorthand = domain.sampler is not None or domain.validator is not None
     if full and shorthand:
         raise ResolutionError(
             f"param {path!r}: custom domain sets both param_type and "
-            "sampler/validator — exactly one form is allowed"
+            "sampler/validator; exactly one form is allowed"
         )
     if not full and not shorthand:
         raise ResolutionError(
@@ -774,7 +800,7 @@ def _check_primitive_arity(path: str, prim: Primitive) -> None:
     if not valid_shape:
         raise ResolutionError(
             f"param {path!r}: Primitive {prim.name!r} arity must be an int or "
-            "an (lo, hi) tuple (row 15, D-89)"
+            "an (lo, hi) tuple (row 15)"
         )
     lo, hi = arity
     if lo < 0:
@@ -786,10 +812,12 @@ def _check_primitive_arity(path: str, prim: Primitive) -> None:
 
 
 def _check_program_primitives(path: str, primitives: Any) -> None:
-    """The rewritten row 15's declaration checks (DECISIONS.md D-90): no
-    fixed built-in vocabulary exists any more — any non-empty string names
-    a primitive — so the only checks left are shape/duplicate/arity, never
-    membership in a name set."""
+    """Row 15's declaration checks over a primitive set.
+
+    There is no fixed built-in vocabulary: any non-empty string names a
+    primitive. The checks are therefore shape, duplicates and arity, never
+    membership in a name set.
+    """
     seen: set[str] = set()
     for prim in primitives:
         if isinstance(prim, str):
@@ -822,11 +850,13 @@ def _check_program_max_depth(path: str, max_depth: Any) -> None:
 
 
 def _check_symbolic_domain(path: str, domain: SymbolicDomain) -> None:
-    """Row 15, rewritten (DECISIONS.md D-90 — a user-directed change to the
-    stated law: the fixed built-in primitive list is dropped, since core
-    assigns no arity or meaning to a primitive name either way). What
-    survives is shape/declaration hygiene: signature arg names,
-    primitives entries (shape/duplicate/arity), and `max_depth`."""
+    """Row 15: declaration hygiene for a `.symbolic()` grammar.
+
+    Core assigns no arity or meaning to a primitive name, so there is no
+    fixed built-in primitive list to check against. What is checked is the
+    signature's argument names, each primitives entry's shape, duplicates
+    and arity, and `max_depth`.
+    """
     _check_program_signature(path, domain.signature)
     _check_program_primitives(path, domain.primitives)
     _check_program_max_depth(path, domain.max_depth)
@@ -867,16 +897,16 @@ def _check_choice_variants(path: str, domain: ChoiceDomain) -> None:
 
 def _check_bounds(path: str, lo: Any, hi: Any) -> None:
     if isinstance(lo, ArithExpr) or isinstance(hi, ArithExpr):
-        # A top-level (non-lifted) param's bounds are always plain numbers by
-        # the time this runs — `compute_bound_envelopes` (M5, resolve/_bounds.py)
-        # already resolved any expression bound into a numeric envelope before
-        # `_validate_declarations` is called. This branch therefore only ever
-        # fires for a `.repeat()` element's own domain (`_validate_lift` below
-        # reconstructs a synthetic element view and validates it the same way)
-        # — expression bounds there are not yet supported (DECISIONS.md D-29).
+        # A top-level, non-lifted param's bounds are plain numbers by the
+        # time this runs: `compute_bound_envelopes` (resolve/_bounds.py)
+        # resolved any expression bound into a numeric envelope before
+        # `_validate_declarations` was called. This branch therefore fires
+        # only for a `.repeat()` element's own domain, where expression
+        # bounds are unsupported. `_validate_lift` below reconstructs a
+        # synthetic element view and validates it the same way.
         raise ResolutionError(
             f"param {path!r}: expression bounds on a repeated element are not "
-            "yet supported — write literal numeric bounds for the element domain"
+            "yet supported; write literal numeric bounds for the element domain"
         )
     if isinstance(lo, bool) or isinstance(hi, bool):
         raise ResolutionError(f"param {path!r}: bounds must be numeric, not bool")
@@ -990,10 +1020,13 @@ def _default_is_valid_permutation(value: Any, domain: PermutationDomain) -> bool
 
 
 def _on_grid(lo: float, hi: float, quantized: QuantizedSpec, value: float) -> bool:
-    """Grid membership for a real/integer default (row 21: a quantized
-    scalar's *domain* is the grid, not the raw `[lo, hi]` interval — the
-    same recovery `validate()` uses for a submitted value, so a filled
-    default is never off-grid the moment `apply_defaults` emits it)."""
+    """Grid membership for a real or integer default (row 21).
+
+    A quantized scalar's domain is the grid rather than the raw `[lo, hi]`
+    interval. This is the recovery `validate()` uses for a submitted value,
+    so a filled default is never off-grid the moment `apply_defaults` emits
+    it.
+    """
     shape = build_grid_shape(lo, hi, quantized.step, quantized.factor, quantized.include_hi)
     return grid_membership(shape, value) is not None
 
@@ -1004,12 +1037,12 @@ def _validate_default(d: ParamExpr) -> None:
     value = d.default_value
     domain = d.domain
     if isinstance(domain, StructDomain):
-        # Row 21: "no own value — completion is field-wise" — a struct
-        # param (top-level or a lift's own element) never has a default of
-        # its own, whether written before or after `.repeat()`.
+        # Row 21: "no own value; completion is field-wise". A struct param,
+        # top-level or a lift's own element, never has a default of its own,
+        # whether written before or after `.repeat()`.
         raise ResolutionError(
             f"param {d.path!r}: .default() is not valid on a struct param "
-            "(row 21) — its members default individually, field-wise"
+            "(row 21); its members default individually, field-wise"
         )
     ok: bool
     if isinstance(domain, RealDomain):
@@ -1018,9 +1051,9 @@ def _validate_default(d: ParamExpr) -> None:
         # _validate_domain runs before this for the same param.
         assert isinstance(lo, int | float) and isinstance(hi, int | float)
         is_numeric = isinstance(value, int | float) and not isinstance(value, bool)
-        # Periodic reals are half-open ([lo, hi), hi itself invalid) — the
-        # same rule validate() applies to a submitted value (row 21: a
-        # default is a domain member like any other).
+        # Periodic reals are half-open, `[lo, hi)` with `hi` itself invalid.
+        # This is the rule validate() applies to a submitted value; row 21
+        # makes a default a domain member like any other.
         in_bounds = is_numeric and (lo <= value < hi if d.periodic else lo <= value <= hi)
         ok = in_bounds
         if ok and d.quantized_spec is not None:
@@ -1043,9 +1076,9 @@ def _validate_default(d: ParamExpr) -> None:
     elif isinstance(domain, PermutationDomain):
         ok = _default_is_valid_permutation(value, domain)
     elif isinstance(domain, CustomDomain):
-        # `value` is already phenotype form (DECISIONS.md D-46), matching
-        # every other public config-dict-shaped surface; bridge back to
-        # native only to call the type's own validate().
+        # `value` is already phenotype form, matching every other public
+        # config-dict-shaped surface. Bridge back to native only to call the
+        # type's own validate().
         if domain.param_type is not None:
             ok = domain.param_type.validate(domain.param_type.from_json(value))
         else:
@@ -1060,13 +1093,14 @@ def _validate_default(d: ParamExpr) -> None:
 
 
 def _validate_lift(d: ParamExpr, defs_by_path: dict[str, ParamExpr]) -> None:
-    """Validates a `.repeat()`-closed param (DECISIONS.md D-18): each
-    level's count (row 12) and list default (row 21), then the innermost
-    element's own domain/prior/quantized/default via the *existing* scalar
-    validators — reused unchanged against a synthetic element-scoped
-    `ParamExpr` (path `f"{d.path}[]"`, one `"[]"` per nesting level),
-    exactly the definition-path convention the rest of M4 uses for lift
-    descendants.
+    """Validate a `.repeat()`-closed param.
+
+    Each level's count (row 12) and list default (row 21) are checked, then
+    the innermost element's own domain, prior, quantized spec and default.
+    The element checks reuse the scalar validators unchanged, against a
+    synthetic element-scoped `ParamExpr` whose path is `f"{d.path}[]"`, with
+    one `"[]"` per nesting level. That is the definition-path convention
+    lift descendants use throughout.
     """
     assert d.lift is not None
     snap = d.lift
@@ -1076,9 +1110,9 @@ def _validate_lift(d: ParamExpr, defs_by_path: dict[str, ParamExpr]) -> None:
         depth += 1
         assert snap.count is not None
         # A count up-referencing an enclosing scope is tolerated here and
-        # re-checked at finalization, exactly like a condition (D-91):
-        # unlike an expression bound, nothing in *this* scope's resolution
-        # consumes a count — lists are structure, not charts.
+        # re-checked at finalization, exactly like a condition. Unlike an
+        # expression bound, nothing in this scope's resolution consumes a
+        # count: lists are structure rather than charts.
         _check_count_type(d.path, snap.count, defs_by_path, tolerate_undeclared=True)
         _validate_list_default_shape(d.path, snap)
         any_list_default = any_list_default or snap.list_default is not None
@@ -1090,13 +1124,13 @@ def _validate_lift(d: ParamExpr, defs_by_path: dict[str, ParamExpr]) -> None:
     if depth > 1 and inner.element_class in (StructParamExpr, ChoiceParamExpr):
         raise ResolutionError(
             f"param {d.path!r}: a struct/choice element nested under more than one "
-            ".repeat() level is not yet supported (M4 scope boundary, DECISIONS.md "
-            "D-24) — scalar/subset/permutation elements support arbitrary nesting"
+            ".repeat() level is not supported (row 34); scalar/subset/permutation "
+            "elements support arbitrary nesting"
         )
-    # inner.element_class (DECISIONS.md D-28) is the actual view the element
-    # was declared with — reconstructing via that class, not a bare
-    # ParamExpr, is what gives `element` a real (ClassVar-derived) type_kind
-    # at all, since type_kind is no longer a settable field.
+    # inner.element_class is the view class the element was declared with.
+    # Reconstructing through it rather than through a bare ParamExpr is what
+    # gives `element` a type_kind at all, since type_kind is a ClassVar
+    # rather than a settable field.
     element = inner.element_class(
         path=d.path + "[]" * depth,
         domain=inner.domain,
@@ -1118,10 +1152,12 @@ def _validate_lift(d: ParamExpr, defs_by_path: dict[str, ParamExpr]) -> None:
 
 
 def _innermost_domain_element_kind(domain: Domain) -> str | None:
-    """`_innermost_lift_element_kind`'s resolved-IR counterpart: the same
-    descent one representation later, over the `ListDomain` chain the
-    merged space holds instead of the builder's `.lift` snapshots. Used by
-    the finalization re-check (D-91)."""
+    """`_innermost_lift_element_kind`'s resolved-IR counterpart.
+
+    The same descent one representation later, over the `ListDomain` chain
+    the merged space holds instead of the builder's `.lift` snapshots. Used
+    by the finalization re-check.
+    """
     if not isinstance(domain, ListDomain):
         return None
     while isinstance(domain.element_domain, ListDomain):
@@ -1130,21 +1166,22 @@ def _innermost_domain_element_kind(domain: Domain) -> str | None:
 
 
 def _innermost_lift_element_kind(pd: ParamExpr | ParamDef) -> str | None:
-    """The leaf `type_kind` a `Sum`/`Min`/`Max` over `pd` flattens to,
-    read from the builder-time `_ElementSnapshot` chain (`.lift`) rather
-    than `.domain` — `_check_count_type_node` runs before
-    `_build_list_domains` (a later pipeline step), so a sibling param's
-    `ListDomain` may not exist yet, but `.lift` is a build-time artifact,
-    populated the moment `.repeat()` was called, regardless of resolution
-    order. Mirrors `_validate_lift`'s own descent through chained/nested
-    repeat levels. `None` if `pd` is not `.repeat()`-closed at all (a
-    plain scalar `.sum()`'d by mistake — row 12 covers it as "not
-    integer-typed" either way).
+    """The leaf `type_kind` a `Sum`, `Min` or `Max` over `pd` flattens to.
 
-    Accepts a resolved `ParamDef` too, for the finalization re-check
-    (D-91), where the merged space holds `ListDomain`s rather than the
-    builder's `.lift` snapshots — the same descent, one representation
-    later."""
+    Read from the builder-time `_ElementSnapshot` chain on `.lift` rather
+    than from `.domain`. `_check_count_type_node` runs before
+    `_build_list_domains`, so a sibling param's `ListDomain` may not exist
+    yet, whereas `.lift` is a build-time artifact populated the moment
+    `.repeat()` was called, regardless of resolution order. This mirrors
+    `_validate_lift`'s own descent through chained and nested repeat levels.
+
+    `None` when `pd` is not `.repeat()`-closed, as for a plain scalar
+    summed by mistake; row 12 covers that as "not integer-typed" either way.
+
+    Also accepts a resolved `ParamDef`, for the finalization re-check, where
+    the merged space holds `ListDomain` objects rather than the builder's
+    `.lift` snapshots. The descent is the same, one representation later.
+    """
     if isinstance(pd, ParamDef):
         return _innermost_domain_element_kind(pd.domain)
     if pd.lift is None:
@@ -1164,25 +1201,29 @@ def _check_count_type_node(
     *,
     tolerate_undeclared: bool = False,
 ) -> None:
-    """The M10.5/D-72 integer-valued calculus for repeat() counts (row
-    12): int literals, integer params, `Count`/`Size`/`Length`/
-    `PositionOf`/`CountOf` (always int by construction), a declared-int
-    `Prop` or `returns=int` `ds.value` (M10.8), `Sum` over an integer- *or*
-    bool-leaved lift (`sum([True, False])` is `int`), `Min`/`Max` over an
-    *integer*-leaved lift only (`min([True, False])` is `bool`, not `int` —
-    the one deliberate asymmetry), a literal-valued `SumOver` mapping,
-    `+ - * %` over two int-valued operands, `**` with a non-negative literal
-    integer exponent, and `IfInactive` when both branches are int-valued.
-    Division and anything else outside this closed set is row 12 —
-    mirrors the bounds engine's own minimal computable op set (API.md,
-    "Expression bounds are sugar").
+    """The integer-valued calculus for `.repeat()` counts (row 12).
+
+    The closed set is: int literals; integer params; `Count`, `Size`,
+    `Length`, `PositionOf` and `CountOf`, which are int by construction; a
+    declared-int `Prop` or a `returns=int` `ds.value`; `Sum` over an integer-
+    or bool-leaved lift, since `sum([True, False])` is `int`; `Min` and `Max`
+    over an integer-leaved lift only, since `min([True, False])` is `bool`
+    rather than `int`, the one deliberate asymmetry; a literal-valued
+    `SumOver` mapping; `+`, `-`, `*` and `%` over two int-valued operands;
+    `**` with a non-negative literal integer exponent; and `IfInactive` when
+    both branches are int-valued.
+
+    Division and anything else outside the set is row 12. The set mirrors
+    the bounds engine's own minimal computable op set (API.md, "Expression
+    bounds are sugar").
 
     `tolerate_undeclared` skips a node whose references do not all bind
-    locally — an enclosing-scope up-reference, whose type is unknowable
-    until every outer scope has contributed its params (D-91, extending
-    D-26's condition deferral to counts). `check_fully_resolved` re-runs
-    this strictly over the merged space, so the row-12 check is deferred,
-    never dropped. Mirrors `check_expr_types`' own node-level skip."""
+    locally, which means an enclosing-scope up-reference whose type is
+    unknowable until every outer scope has contributed its params.
+    `check_fully_resolved` re-runs this strictly over the merged space, so
+    the row-12 check is deferred rather than dropped. This mirrors
+    `check_expr_types`' own node-level skip.
+    """
     tolerate = tolerate_undeclared
     if tolerate and any(not _is_declared(p, defs_by_path) for p in node.params):
         return
@@ -1200,18 +1241,19 @@ def _check_count_type_node(
             )
         return
     if isinstance(node, Prop):
-        # A `.prop()`-driven count (API.md: `.repeat(ds.param("g").prop("n_edges"))`)
-        # — check the *declared property type* is int, and deliberately do
-        # NOT descend into its operand: the operand is the custom param
-        # itself (type_kind "custom"), which is correctly not integer-typed
-        # — only the extracted prop value needs to be.
+        # A `.prop()`-driven count, as in API.md's
+        # `.repeat(ds.param("g").prop("n_edges"))`. Check that the declared
+        # property type is int, and deliberately do not descend into the
+        # operand: the operand is the custom param itself, of type_kind
+        # "custom", which is correctly not integer-typed. Only the extracted
+        # property value needs to be.
         if prop_type(node, defs_by_path, context=context) is not int:
             raise ResolutionError(f"{context}: prop({node.name!r}) is not integer-typed (row 12)")
         return
     if isinstance(node, Value):
-        # A `ds.value(fn, ..., returns=int)`-driven count — only the
-        # declared *result* type must be integer; deliberately does not
-        # descend into the operands, mirroring the `Prop` branch above.
+        # A `ds.value(fn, ..., returns=int)`-driven count. Only the declared
+        # result type must be integer, so this deliberately does not descend
+        # into the operands, mirroring the `Prop` branch above.
         if node.returns is not int:
             raise ResolutionError(
                 f"{context}: ds.value(returns={node.returns.__name__}) is not "
@@ -1219,7 +1261,7 @@ def _check_count_type_node(
             )
         return
     if isinstance(node, Count | Size | Length | PositionOf | CountOf):
-        return  # always int-valued by construction -- no leaf to check
+        return  # always int-valued by construction; no leaf to check
     if isinstance(node, SumOver):
         if not all(isinstance(v, int) and not isinstance(v, bool) for v in node.mapping.values()):
             raise ResolutionError(f"{context}: sum_over() has a non-integer value (row 12)")
@@ -1302,29 +1344,33 @@ def _validate_list_default_shape(path: str, snap: _ElementSnapshot) -> None:
 
 
 def _validate_list_defaults_deep(space: Space) -> None:
-    """Row 21, continued: a post-`.repeat()` list default (`.repeat(n)
-    .default([...])`) is a literal phenotype value per index — each item
-    must itself be a domain member, recursively for struct/choice elements
-    (a struct/choice list default is `[{"width": 128}, ...]`-shaped, not a
-    flat scalar). `_validate_list_default_shape` (step 7) only checks
-    length/static-count; this reuses `validate()`'s own per-instance domain
-    checks, so it must run here, *after* `_emit` has built `space.params`
-    (struct/choice lift descendants are relocated there under a
-    `"[]"`-bracketed prefix and don't exist any earlier in the pipeline).
+    """Row 21, continued: each item of a post-`.repeat()` list default.
 
-    Recurses through `ListDomain.element_domain` so every level of a chained
-    lift (`.repeat(a).default([...]).repeat(b)`, API.md's "per-level list
-    modifiers between lifts") gets its own `list_default` deep-checked, not
-    just the outermost. A level below the outermost has no single real
-    instance path to hang the check on (the same literal default applies
-    identically to every outer instance — confirmed: `apply_defaults` already
-    fills it correctly per outer row), so a synthetic placeholder outer index
-    (`[0]`) is used at each descent; any index works since every row is
-    identical. D-24 forbids struct/choice elements nested under more than one
-    `.repeat()`, so a level below the outermost is always scalar/subset/
-    permutation — no descendant-template prefix to synthesize, only the
-    index. Each level builds its own independent `flat` dict, so multiple
-    simultaneous `list_default`s at different levels never collide.
+    A `.repeat(n).default([...])` is a literal phenotype value per index, so
+    each item must itself be a domain member, recursively for struct and
+    choice elements: such a list default is shaped like
+    `[{"width": 128}, ...]` rather than as a flat scalar.
+
+    `_validate_list_default_shape` in step 7 checks length and static count
+    only. This reuses `validate()`'s own per-instance domain checks, so it
+    must run after `_emit` has built `space.params`: struct and choice lift
+    descendants are relocated there under a `"[]"`-bracketed prefix and do
+    not exist earlier in the pipeline.
+
+    Recursing through `ListDomain.element_domain` deep-checks the
+    `list_default` at every level of a chained lift, such as
+    `.repeat(a).default([...]).repeat(b)` under API.md's "per-level list
+    modifiers between lifts", rather than the outermost alone. A level below
+    the outermost has no single real instance path to hang the check on,
+    since the same literal default applies identically to every outer
+    instance and `apply_defaults` fills it per outer row. A synthetic outer
+    index of `[0]` is therefore used at each descent; any index works,
+    because every row is identical. A struct or choice element cannot nest
+    under more than one `.repeat()`, so a level below the outermost is
+    always scalar, subset or permutation, with no descendant-template prefix
+    to synthesize and only the index to supply. Each level builds its own
+    `flat` dict, so simultaneous `list_default` values at different levels
+    never collide.
     """
     for path, pd in space.params.items():
         if "[]" in path or pd.type_kind != "list":
@@ -1396,13 +1442,15 @@ def _relocate_choice_variants(
     choice_payloads: Any,
     condition: Any,
 ) -> tuple[dict[str, ParamDef], list[Condition], list[Constraint]]:
-    """Shared by a plain top-level choice and a lifted choice element
-    (`ListDomain.element_kind == "choice"`, DECISIONS.md D-18/D-20):
-    reference `discriminator_path` may be an ordinary definition path
-    (`"algo"`) or a `"[]"`-bracketed lift-element template (`"pipeline[]"`)
-    — either way it is just another `ParamExpr` leaf reference to rewrite,
-    which `relocate_child`'s per-instance sibling (`instantiate_element`)
-    already substitutes uniformly alongside the variant's own descendants.
+    """The discriminator-equality condition folded into a variant payload.
+
+    Shared by a plain top-level choice and a lifted choice element, the
+    latter having `ListDomain.element_kind == "choice"`.
+    `discriminator_path` may be an ordinary definition path such as `"algo"`
+    or a `"[]"`-bracketed lift-element template such as `"pipeline[]"`.
+    Either way it is another `ParamExpr` leaf reference to rewrite, which
+    `instantiate_element`, `relocate_child`'s per-instance sibling,
+    substitutes uniformly alongside the variant's own descendants.
     """
     params: dict[str, ParamDef] = {}
     conditions: list[Condition] = []
@@ -1412,10 +1460,10 @@ def _relocate_choice_variants(
         if payload is None:
             continue
         if not isinstance(payload, Space):
-            # Row 29 (M10.5 item 7): a bare ParamExpr (or anything else that
-            # isn't a Space) as a payload used to reach `relocate_child`
-            # below and raise an opaque AttributeError from `child.params`
-            # (a Space's Mapping vs. an Expr's frozenset).
+            # Row 29 (item 7): a payload that is not a Space. Without this
+            # check a bare ParamExpr reaches `relocate_child` below and
+            # raises an opaque AttributeError from `child.params`, whose
+            # Mapping a Space has and an Expr's frozenset does not.
             raise ResolutionError(
                 f"param {discriminator_path!r}: choice() payload for variant "
                 f"{variant_name!r} must be a Space (from ds.space(...)), got "
@@ -1480,9 +1528,9 @@ def _emit(defs: tuple[ParamExpr, ...], charts: dict[str, Chart | None]) -> Space
                 )
                 params.update(child_params)
                 conditions.extend(child_conditions)
-                # Element-scoped constraints are per-instance templates
-                # (DECISIONS.md D-20) — carried on ListDomain, never
-                # flattened into `space.constraints` directly.
+                # Element-scoped constraints are per-instance templates,
+                # carried on ListDomain and never flattened into
+                # `space.constraints` directly.
                 params[d.path] = replace(
                     params[d.path],
                     domain=replace(d.domain, element_constraints=tuple(child_constraints)),

@@ -1,12 +1,13 @@
-"""RFC 8785 (JCS) canonical digest (API.md, "fingerprint()" /
-"config_hash"; DECISIONS.md D-32).
+"""RFC 8785 (JCS) canonical digest.
 
-A single call site around the `rfc8785` dependency: everywhere else in
-`identity`/`serialize` builds an already-semantically-canonical tree (type
-tags applied, `-0.0 -> 0.0`, unordered collections sorted, bound-origin
-polarity flipped) — `rfc8785.dumps` only replaces the last step, serializing
-that tree to deterministic bytes per RFC 8785 (sorted object keys, the ES6
-number-to-string rule), which are then SHA-256'd.
+See API.md, "fingerprint()" and "config_hash". This is the single call site
+around the `rfc8785` dependency. Everywhere else in `identity` and
+`serialize` builds a tree that is already semantically canonical, with type
+tags applied, `-0.0` folded to `0.0`, unordered collections sorted and
+bound-origin polarity flipped. `rfc8785.dumps` supplies only the last step,
+serializing that tree to deterministic bytes under RFC 8785, meaning sorted
+object keys and the ES6 number-to-string rule. Those bytes are then
+SHA-256'd.
 """
 
 from __future__ import annotations

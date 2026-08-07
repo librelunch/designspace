@@ -1,3 +1,4 @@
-"""ops: structural operations and introspection (API.md, "Space —
-Structural Operations"; "Space: Introspection").
+"""ops: structural operations and introspection.
+
+See API.md, "Space: Structural Operations" and "Space: Introspection".
 """

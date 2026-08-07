@@ -1,7 +1,7 @@
 """`ds.config_hash` (API.md, "config_hash"): SHA-256 over the canonical
-config encoding. Does **not** embed the space fingerprint — "the globally
+config encoding. It does not embed the space fingerprint. "The globally
 unique observation key is the pair `(space.fingerprint(), ds.config_hash
-(config, space))`", so the two are combined by the caller, not here.
+(config, space))`", so the caller combines the two rather than this module.
 """
 
 from __future__ import annotations

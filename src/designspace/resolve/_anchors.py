@@ -1,23 +1,24 @@
-"""`.anchor()` / `.meta()`: space-level anchors and metadata (API.md,
-"Constraints and Feasibility"; deferred past M2 to M8 — see
-builder/_space.py, DECISIONS.md D-40).
+"""`.anchor()` and `Space.meta()`: space-level anchors and metadata (API.md,
+"Constraints and Feasibility").
 
-Anchors are named whole reference configs — the same nested-phenotype
-shape `.validate()`/`.sample_dicts()` use — validated against the space
-immediately: unlike a param's own `.meta()` (checked later, at resolution,
-by `resolve/_pipeline.py::_validate_tags_meta`), `.anchor()`/`Space.meta()`
-are post-hoc methods on an *already-resolved* `Space` with no later pass to
-defer to, exactly like `.forbid()`/`.require()` validate their conditions
-immediately in `resolve/_constraints.py::add_constraints`. An anchor invalid
-against the space is error row 22; its message names the anchor key. Row 22
-also covers "anchor conflicting with a frozen/sliced value" — raised by
-`ops/_structural.py`'s `freeze`/`slice` re-validation, not here.
+An anchor is a named whole reference configuration, in the same nested
+phenotype shape `.validate()` and `.sample_dicts()` use. Both methods act on
+an already-resolved `Space` and so validate immediately: there is no later
+pass to defer to, which is how `add_constraints` in
+`resolve/_constraints.py` treats a `.forbid()` or `.require()` condition. A
+param's own `.meta()` is checked later, at resolution, by
+`_validate_tags_meta` in `resolve/_pipeline.py`.
 
-Anchor *values* are domain-typed configs, not free-form JSON like `.meta()`
-values: `space.validate(config)` already enforces every value is a
-legitimate (and therefore JSON-representable) domain member, so no separate
-`check_meta_json_serializable` pass is needed the way constraint/param meta
-needs one.
+An anchor invalid against the space is error row 22, and the message names
+the anchor key. Row 22 also covers an anchor conflicting with a frozen or
+sliced value, which `ops/_structural.py` raises from its `freeze`/`slice`
+re-validation rather than here.
+
+Anchor values are domain-typed configurations rather than free-form JSON.
+`space.validate(config)` already requires every value to be a domain member,
+and therefore JSON-representable, so anchors need no separate
+`check_meta_json_serializable` pass of the kind constraint and param
+metadata need.
 """
 
 from __future__ import annotations

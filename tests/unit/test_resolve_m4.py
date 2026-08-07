@@ -162,7 +162,7 @@ class TestD24NestedStructChoiceLiftBoundary:
     one `.repeat()` level is rejected at resolution, not silently wrong."""
 
     def test_double_nested_struct_element_raises(self):
-        with pytest.raises(ResolutionError, match="D-24"):
+        with pytest.raises(ResolutionError, match="nested under more than one"):
             ds.space(ds.param("grid").space(ds.param("w").integer(0, 5)).repeat(3).repeat(2))
 
     def test_double_nested_scalar_element_is_fine(self):
@@ -179,19 +179,19 @@ class TestD24NestedStructChoiceLiftBoundary:
 
     def test_struct_lift_inside_a_struct_lift_element_raises(self):
         inner = ds.space(ds.param("spans").space(ds.space(ds.param("v").integer(0, 5))).repeat(2))
-        with pytest.raises(ResolutionError, match="D-24"):
+        with pytest.raises(ResolutionError, match="nested under more than one"):
             ds.space(ds.param("row").space(inner).repeat(2))
 
     def test_choice_lift_inside_a_struct_lift_element_raises(self):
         inner = ds.space(
             ds.param("pipe").choice("a", b=ds.space(ds.param("w").real(0.0, 1.0))).repeat(2),
         )
-        with pytest.raises(ResolutionError, match="D-24"):
+        with pytest.raises(ResolutionError, match="nested under more than one"):
             ds.space(ds.param("row").space(inner).repeat(2))
 
     def test_struct_lift_inside_a_choice_lift_variant_raises(self):
         payload = ds.space(ds.param("spans").space(ds.space(ds.param("v").integer(0, 5))).repeat(2))
-        with pytest.raises(ResolutionError, match="D-24"):
+        with pytest.raises(ResolutionError, match="nested under more than one"):
             ds.space(ds.param("row").choice("x", y=payload).repeat(2))
 
     def test_the_error_names_the_offending_param(self):

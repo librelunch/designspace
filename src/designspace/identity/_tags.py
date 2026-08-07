@@ -1,19 +1,19 @@
-"""Type tags for `Any`-typed leaf data, and the expression-AST codec
-(API.md, "Identity and Serialization" > "Normalization pipeline", steps
-4-6).
+"""Type tags for `Any`-typed leaf data, and the expression-AST codec.
 
-Every position that holds application data of otherwise-unknown type (a
-categorical/ordinal declared value, a default, a literal expression operand,
-...) is wrapped `{"$t": "int"|"float"|"str"|"bool"|"null", "v": ...}` so that
-`categorical(1, 2) != categorical(1.0, 2.0)` and friends survive JSON's
-native int/float blurring (RFC 8785 canonicalizes `1.0` to `1`). Positions
-that are never `Any`-typed (a `RealDomain` bound, a `type_kind` string, an
-`ArithOp.op`) are encoded as bare JSON values instead — see DECISIONS.md D-34
-for the exact boundary and the tuple-preserves-order / frozenset-and-mapping-
-sort rule that goes with it.
+See API.md, "Identity and Serialization" > "Normalization pipeline", steps 4
+through 6.
 
-Shared by `identity/_fingerprint.py` and `serialize/_tojson.py` /
-`serialize/_fromjson.py` — one codec, so the two documents can never drift
+Every position holding application data of otherwise-unknown type, such as a
+categorical or ordinal declared value, a default or a literal expression
+operand, is wrapped as `{"$t": "int"|"float"|"str"|"bool"|"null", "v": ...}`.
+That is what makes `categorical(1, 2)` differ from `categorical(1.0, 2.0)`
+across JSON's native int/float blurring, RFC 8785 canonicalizing `1.0` to
+`1`. Positions that are never `Any`-typed, such as a `RealDomain` bound, a
+`type_kind` string or an `ArithOp.op`, are encoded as bare JSON values.
+Tuples preserve order; frozensets and mappings sort.
+
+Shared by `identity/_fingerprint.py`, `serialize/_tojson.py` and
+`serialize/_fromjson.py`. One codec means the two documents can never drift
 on how a leaf value or an expression node is spelled.
 """
 
@@ -69,13 +69,12 @@ _TAG_STR = "str"
 
 # -- Non-serializable-site handling --------------------------------------
 #
-# Moved here from identity/_ir_codec.py at M10.8: `ds.value`'s `fn` is the
-# first non-serializable site *inside an expression tree* (an external
-# Prior/`.custom` shorthand are whole-domain sites), so `encode_expr` itself
-# now needs this context — and `_ir_codec` already imports from `_tags`,
-# never the reverse, so the shared type has to live on this side of that
-# edge. Re-exported from `_ir_codec` so every pre-existing import of
-# `EncodeContext`/`OnUnserializable` from that module keeps working verbatim.
+# `ds.value`'s `fn` is a non-serializable site inside an expression tree,
+# where an external Prior and the `.custom` shorthand are whole-domain sites.
+# `encode_expr` therefore needs this context, and `_ir_codec` imports from
+# `_tags` rather than the reverse, so the shared type lives on this side of
+# that edge. It is re-exported from `_ir_codec`, so an import of
+# `EncodeContext` or `OnUnserializable` from that module keeps working.
 
 OnUnserializable = TypingLiteral["raise", "mark", "drop"]
 """What `to_json` does when the space holds something it cannot serialize.
@@ -96,15 +95,16 @@ _OPAQUE_MARKER = {"kind": "opaque", "$opaque": True}
 
 @dataclass
 class EncodeContext:
-    """Threaded through every encoder that might hit a non-serializable
-    site. Through M7 the only such site was an external `Prior` (DECISIONS.md
-    D-31); M9 adds the `.custom(sampler, validator)` shorthand; M10.8 adds
-    `ds.value`'s `fn`, encountered by `encode_expr` rather than
-    `encode_domain`/`encode_prior`; M12 adds the last three the spec
-    enumerates — `code`/`symbolic` `validators`, `symbolic` `sampler`,
-    `Primitive.fn` — each opaque *per field* rather than poisoning the
-    whole domain (DECISIONS.md D-88), encountered by
-    `identity/_ir_codec.py`'s `_encode_symbolic_domain`/`_encode_code_domain`."""
+    """The context threaded through every encoder that may hit an opaque site.
+
+    The spec enumerates six non-serializable sites. An external `Prior` and
+    the `.custom(sampler, validator)` shorthand are whole-domain sites, met
+    by `encode_domain` and `encode_prior`. `ds.value`'s `fn` is met by
+    `encode_expr`. The `code` and `symbolic` `validators`, the `symbolic`
+    `sampler` and `Primitive.fn` are each opaque per field rather than
+    poisoning the whole domain, and are met by `_encode_symbolic_domain` and
+    `_encode_code_domain` in `identity/_ir_codec.py`.
+    """
 
     mode: OnUnserializable
     dropped: list[str] = field(default_factory=list)
@@ -114,8 +114,8 @@ def _tag_float(value: float) -> float:
     if math.isnan(value) or math.isinf(value):
         raise SerializationError(
             f"cannot serialize non-finite float {value!r} "
-            "(NaN/Inf are resolution errors wherever floats occur in the IR — "
-            "this indicates a value that should never have reached serialization)"
+            "(NaN and Inf are resolution errors wherever floats occur in the "
+            "IR, so this value should never have reached serialization)"
         )
     return 0.0 if value == 0.0 else value  # step 4: -0.0 -> 0.0
 
@@ -150,43 +150,48 @@ def untag_value(tree: dict[str, Any]) -> Any:
 
 
 def sort_key(tagged: dict[str, Any]) -> tuple[str, str]:
-    """A deterministic total order over tagged values, for canonicalizing
-    otherwise-unordered collections (a `SumOver` mapping's keys; a config's
-    subset value). Not a "natural" order — just stable and total."""
+    """A deterministic total order over tagged values.
+
+    Used to canonicalize otherwise-unordered collections, such as a
+    `SumOver` mapping's keys or a config's subset value. The order is stable
+    and total rather than natural.
+    """
     return (tagged[TAG_KEY], repr(tagged[VAL_KEY]))
 
 
 def encode_default_value(value: Any) -> Any:
-    """A `ParamDef.default` / `ListDomain.element_default` / `list_default`
-    value, generically. Unlike a domain's own declared values (where the
-    param's `type_kind` already fixes the leaf type, so real/integer/bool
-    stay untagged — DECISIONS.md D-34), a default's shape is only known by
-    walking it: a lift's `list_default` is "a literal phenotype value per
-    index — any element shape: scalar, struct, choice, nested list"
-    (`defaults/_defaults.py::_fill_list`), so a struct-element default is a
-    plain dict and a choice-element default is a bare string or a
-    single-key dict, exactly like an ordinary config value. Rather than
-    thread the enclosing `Space` through the domain codec to resolve
-    struct-field types the way `identity/_config_encode.py` does for actual
-    configs, this walks the value generically and tags every scalar leaf
-    uniformly (including real/integer/bool, which the domain/config codecs
-    otherwise leave bare) — a deliberate, documented simplification: dict
-    key order is JCS's job (object keys are canonicalized on serialization
-    regardless of this tree's own key order), so no `Space`-driven
-    declaration-order lookup is needed either.
+    """Encode a default value generically, tagging every scalar leaf.
+
+    This covers `ParamDef.default`, `ListDomain.element_default` and
+    `list_default`. A domain's own declared values have their leaf type
+    fixed by the param's `type_kind`, so real, integer and bool stay
+    untagged there. A default's shape is known only by walking it: a lift's
+    `list_default` is "a literal phenotype value per index", of any element
+    shape, whether scalar, struct, choice or nested list, as `_fill_list` in
+    `defaults/_defaults.py` treats it. A struct-element default is therefore
+    a plain dict and a choice-element default a bare string or single-key
+    dict, exactly like an ordinary config value.
+
+    Rather than thread the enclosing `Space` through the domain codec to
+    resolve struct-field types, as `identity/_config_encode.py` does for
+    actual configs, this walks the value generically and tags every scalar
+    leaf, real, integer and bool included, which the domain and config
+    codecs leave bare. The simplification costs nothing: dict key order is
+    JCS's job, object keys being canonicalized on serialization whatever
+    this tree's own key order, so no `Space`-driven declaration-order lookup
+    is needed.
 
     A dict key of exactly `"$t"` would be misread as a tagged-scalar marker
-    on decode. For a struct/choice-shaped `default`, this is an accepted,
-    undocumented gap: the path grammar doesn't reserve `$`, but no corpus
-    fixture or spec example uses it as a struct field name, and the
-    tagged-value micro-format already reserves `$`-prefixed keys elsewhere
-    (`$opaque`). For `meta` (which shares this codec, DECISIONS.md D-36),
-    the same collision is *not* merely accepted — `builder/_names.py
-    ::check_meta_json_serializable` rejects any `"$"`-prefixed meta key at
-    construction, because meta keys are unconstrained user input (unlike a
-    default's struct field names, which are already limited to declared
-    struct fields) and a collision there is a real `KeyError` on `from_json`,
-    not a hypothetical one.
+    on decode. For a struct- or choice-shaped `default` this is an accepted
+    gap: the path grammar does not reserve `$`, no corpus fixture or spec
+    example uses it as a struct field name, and the tagged-value
+    micro-format already reserves `$`-prefixed keys elsewhere, as with
+    `$opaque`. For `meta`, which shares this codec, the same collision is
+    rejected outright: `check_meta_json_serializable` in
+    `builder/_names.py` refuses any `"$"`-prefixed meta key at construction.
+    Meta keys are unconstrained user input, unlike a default's struct field
+    names, which are limited to declared struct fields, so a collision there
+    is a real `KeyError` on `from_json` rather than a hypothetical one.
     """
     if isinstance(value, dict):
         return {k: encode_default_value(v) for k, v in value.items()}
@@ -207,21 +212,21 @@ def decode_default_value(tree: Any) -> Any:
 
 # -- Expression AST codec -----------------------------------------------
 #
-# One node per `expr/_ast.py` class (+ `ParamExpr`, the "ref" leaf that
-# appears inside resolved `Condition`/`Constraint` expression trees). Encode
-# always emits `{"kind": node.kind, ...}` per the spec's stated preimage
-# shape ("node kind, children in operand order..."); decode dispatches
-# purely on "kind" (a single node kind never appears in two structurally
-# different shapes) via one universal `decode_expr`, since several operand
-# slots are typed as the generic `Expr` (`IsActive.operand`, and every
-# `VectorExpr` aggregate's `operand`) and so cannot be decoded through a
-# narrower, statically-typed entry point.
+# One node per `expr/_ast.py` class, plus `ParamExpr`, the "ref" leaf that
+# appears inside resolved `Condition` and `Constraint` expression trees.
+# Encoding always emits `{"kind": node.kind, ...}`, the spec's stated
+# preimage shape of "node kind, children in operand order". Decoding
+# dispatches on "kind" alone, a single node kind never appearing in two
+# structurally different shapes, through one universal `decode_expr`.
+# Several operand slots are typed as the generic `Expr`, namely
+# `IsActive.operand` and every `VectorExpr` aggregate's `operand`, and so
+# cannot be decoded through a narrower, statically typed entry point.
 #
-# One genuine collision: `Literal` and `BoolLiteral` both report
+# `Literal` and `BoolLiteral` collide, both reporting
 # `.kind == "literal"`. They are disambiguated by which key carries the
-# payload — `"value"` (tagged) for `Literal`, `"bool"` (bare, since
-# `BoolLiteral.value` is always exactly `bool`, never `Any`-typed) for
-# `BoolLiteral` — rather than by kind alone.
+# payload rather than by kind: `"value"`, tagged, for `Literal`, and
+# `"bool"`, bare because `BoolLiteral.value` is always exactly `bool` and
+# never `Any`-typed, for `BoolLiteral`.
 
 
 def _enc_children(children: tuple[Expr, ...], ctx: EncodeContext | None, site: str) -> list[Any]:
@@ -231,18 +236,21 @@ def _enc_children(children: tuple[Expr, ...], ctx: EncodeContext | None, site: s
 def encode_expr(
     node: Expr, ctx: EncodeContext | None = None, *, site: str = "expression"
 ) -> dict[str, Any]:
-    """`ctx`/`site` exist only for the one opaque leaf (`Value`, below) —
-    every other node is fully structural and ignores them, so every
-    pre-M10.8 call site (a direct `encode_expr(node)`, e.g.
-    `builder/_space.py`'s structural-equality check) is unaffected. `ctx=None`
-    behaves as `"raise"` — the same safe default `on_unserializable` has
-    everywhere else — so a caller that never threads a context still fails
-    loudly on an opaque node rather than silently. `site` is a
-    pre-formatted description of where this expression tree came from
-    (`"constraint 3"`, `"param 'x' condition"`), prefixed onto the opaque
-    leaf's message; it does not vary with tree depth, since the message
-    only needs to name the site an author would recognize, not the exact
-    node."""
+    """Encode an expression tree to its canonical form.
+
+    `ctx` and `site` serve the one opaque leaf, `Value` below. Every other
+    node is fully structural and ignores them, so a caller passing neither,
+    such as `builder/_space.py`'s structural-equality check, is unaffected.
+
+    `ctx=None` behaves as `"raise"`, the safe default `on_unserializable`
+    has everywhere else, so a caller that threads no context still fails
+    loudly on an opaque node rather than silently.
+
+    `site` is a pre-formatted description of where the expression tree came
+    from, such as `"constraint 3"` or `"param 'x' condition"`, prefixed onto
+    the opaque leaf's message. It does not vary with tree depth: the message
+    needs to name a site an author would recognize, not the exact node.
+    """
     if isinstance(node, ParamExpr):  # ref leaf; check before Literal/BoolLiteral
         # (ParamExpr is not one of those, but check first defensively since
         # it is also an ArithExpr/BoolExpr and could shadow a future subclass)
@@ -250,11 +258,11 @@ def encode_expr(
     if isinstance(node, BoolLiteral):
         return {"kind": "literal", "bool": node.value}
     if isinstance(node, Literal):
-        # `encode_default_value`, not the scalar-only `tag_value`: every
-        # prior literal is scalar, so this is byte-identical for them, but
-        # it also supports a custom param's phenotype value (a JSON-shaped
-        # nested dict/list, e.g. a `.freeze()` pin's embedded literal —
-        # DECISIONS.md D-47) without a dedicated codec.
+        # `encode_default_value` rather than the scalar-only `tag_value`.
+        # Every prior literal is scalar, so the two agree byte for byte on
+        # those, but this also supports a custom param's phenotype value, a
+        # JSON-shaped nested dict or list such as a `.freeze()` pin's
+        # embedded literal, without a dedicated codec.
         return {"kind": "literal", "value": encode_default_value(node.value)}
     if isinstance(node, ArithOp | Compare | BoolOp):
         return {"kind": node.kind, "children": _enc_children(node.children, ctx, site)}
@@ -307,14 +315,14 @@ def encode_expr(
     if isinstance(node, Value):
         # The one opaque expression leaf (API.md, "Identity and
         # Serialization": `ds.value`'s `fn` joins the non-serializable set).
-        # A leaf marker only — operands are never encoded, matching how
+        # A leaf marker only; operands are never encoded, matching how
         # `_encode_custom_domain` erases a whole opaque domain rather than
         # partially encoding it.
         mode = "raise" if ctx is None else ctx.mode
         if mode == "raise":
             raise SerializationError(
-                f"{site}: ds.value()'s fn has no structural encoding (it is "
-                "opaque — API.md's non-serializable set) — pass "
+                f"{site}: ds.value()'s fn has no structural encoding, being "
+                "opaque under API.md's non-serializable set; pass "
                 "on_unserializable='mark' or 'drop'"
             )
         if mode == "mark":
@@ -323,18 +331,20 @@ def encode_expr(
         ctx.dropped.append(f"{site}: ds.value fn (opaque)")
         return dict(_OPAQUE_MARKER)
     if isinstance(node, ChartApply):
-        # Opaque-free, unlike `Value` above: `chart_apply`'s `fn` is always
-        # `chart.from_unit`, a pure function of `type_kind`/`domain`/
-        # `prior`/`quantized`/`periodic` — the same declaration facts
-        # `encode_param` already encodes for an ordinary `ParamDef`, reused
-        # here via `identity/_ir_codec.py` through a function-local import
-        # (a module-level one would cycle: `_ir_codec` imports `_tags` for
-        # `encode_expr` itself). `scope="document"` is fixed rather than
-        # threaded through: real/integer domain encoding — the only two
-        # kinds a chart-bearing param ever has — never branches on scope
-        # (only `list`/`custom` domains do), so any literal scope is
-        # equivalent here. An external `Prior` still rides the existing
-        # raise/mark/drop path (`encode_prior`), keyed off the same `ctx`.
+        # Opaque-free, unlike `Value` above. `chart_apply`'s `fn` is always
+        # `chart.from_unit`, a pure function of `type_kind`, `domain`,
+        # `prior`, `quantized` and `periodic`, the declaration facts
+        # `encode_param` already encodes for an ordinary `ParamDef`. Those
+        # are reused here through a function-local import of
+        # `identity/_ir_codec.py`; a module-level one would cycle, since
+        # `_ir_codec` imports `_tags` for `encode_expr` itself.
+        #
+        # `scope="document"` is fixed rather than threaded through. Real and
+        # integer domain encoding, the only two kinds a chart-bearing param
+        # ever has, never branches on scope; only `list` and `custom`
+        # domains do. Any literal scope is therefore equivalent here. An
+        # external `Prior` still rides the raise, mark and drop path in
+        # `encode_prior`, keyed off the same `ctx`.
         from designspace.identity._ir_codec import (
             encode_domain,
             encode_prior,
@@ -401,7 +411,7 @@ def decode_expr(tree: dict[str, Any]) -> Expr:
     if kind == "opaque":
         raise SerializationError(
             "cannot reconstruct a ds.value() node from a mark-sentinel "
-            "document (its fn is opaque) — from_json only round-trips "
+            "document (its fn is opaque); from_json only round-trips "
             "fully serializable spaces"
         )
     children = [decode_expr(c) for c in tree.get("children", ())]
@@ -494,11 +504,11 @@ def decode_expr(tree: dict[str, Any]) -> Expr:
         domain = decode_domain(type_kind, tree["domain"], "<chart_apply>")
         prior = decode_prior(tree.get("prior"))
         quantized = decode_quantized(tree.get("quantized"))
-        # Rebuilt fresh, never trusted from input — the same "charts are
-        # always derived" rule `resolve.rebuild_charts` applies to
-        # `ParamDef.chart` (identity/_ir_codec.py's module docstring); the
-        # source facts just decoded were already valid once (the original
-        # param resolved successfully), so this cannot raise.
+        # Rebuilt fresh and never trusted from input, under the same
+        # "charts are always derived" rule `resolve.rebuild_charts` applies
+        # to `ParamDef.chart`. The source facts just decoded were valid once
+        # already, the original param having resolved successfully, so this
+        # cannot raise.
         chart = build_chart("<chart_apply>", type_kind, domain, prior, quantized)
         assert chart is not None  # type_kind is always "real"/"integer" here
         return ChartApply(

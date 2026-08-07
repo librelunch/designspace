@@ -1,15 +1,15 @@
 """Resolution step 3: desugar (API.md, "Resolution").
 
-Only `implies` needs a rewrite pass in the flat-scalar/Kleene world M2 adds:
-`expr.implies(other)` was preserved as a distinct `Implies` node through
-construction (DECISIONS.md D-1) and is rewritten here to `~expr | other` so
-the Kleene evaluator (eval/) only ever sees `BoolOp`/`Not`. `log_scale`
-already resolved eagerly at the builder (D-2); layer folding arrives with
-`.repeat()` (M4).
+`implies` is the only construct this step rewrites. `expr.implies(other)`
+builds a distinct `Implies` node and keeps it through construction, so that
+`.kind` reports what the author wrote. This pass rewrites it to
+`~expr | other`, after which the Kleene evaluator sees only `BoolOp` and
+`Not`. `log_scale` leaves nothing to desugar, being applied as a prior at
+the builder.
 
-`Implies` can only nest inside other `BoolExpr` trees (`BoolOp`, `Not`,
-`Count`'s operands) — `ArithExpr` trees (`Compare`/`IsIn` operands, `ArithOp`)
-can never contain a `BoolExpr` subterm, so only `BoolExpr` trees need walking.
+`Implies` nests only inside another `BoolExpr`, that is inside `BoolOp`,
+`Not`, or an operand of `Count`. An `ArithExpr` tree never contains a
+`BoolExpr` subterm, so walking the boolean trees reaches every occurrence.
 """
 
 from __future__ import annotations

@@ -1,37 +1,38 @@
 """Expression bounds are sugar (API.md, "Constraints and Feasibility" >
 "Expression bounds are sugar"; resolution step 6).
 
-`ds.param("x").integer(1, ds.param("y"))` desugars to `ds.param("x").integer(1,
-env_hi)` plus the implicit hard constraint `ds.param("x") <= ds.param("y")`.
-`env_hi` is the interval-arithmetic **hull** of the bound expression, computed
-over the referenced params' own (already-enveloped) domains along the
-dependency DAG — not the expression's value for any one config, since charts
-are static and built once, independent of any assignment (API.md, "All
-charts are static").
+`ds.param("x").integer(1, ds.param("y"))` desugars to
+`ds.param("x").integer(1, env_hi)` plus the implicit hard constraint
+`ds.param("x") <= ds.param("y")`. `env_hi` is the interval-arithmetic hull of
+the bound expression, computed over the referenced params' own already
+enveloped domains along the dependency DAG. It is not the expression's value
+for any one config, because charts are static and built once, independent of
+any assignment (API.md, "All charts are static").
 
 **Which side of the hull.** A hi-bound expression's envelope is the hull's
-*supremum* — the widest value the expression could ever take, since `x` must
-be able to reach that value for *some* legal assignment of its dependencies,
-and the generated `x <= expr` constraint is what narrows the domain back down
-per-config. Symmetrically, a lo-bound expression's envelope is the hull's
-*infimum*. This is a genuine spec-silent design choice — see DECISIONS.md D-29.
+supremum, the widest value the expression could ever take, since `x` must be
+able to reach that value under some legal assignment of its dependencies. The
+generated `x <= expr` constraint is what narrows the domain back down per
+config. A lo-bound expression's envelope is the hull's infimum,
+symmetrically.
 
 **Minimal op set.** Only `+`, `-`, and `*` by a literal constant are
-interval-computable without a general (and out-of-scope, "no algebraic
-expression normalization") symbolic engine. `*` requires one operand to be a
-`Literal` node syntactically — not merely a sub-expression that happens to
-evaluate to a constant. Anything else (division, power, modulo, two
-non-constant operands multiplied, any vector/count/field operator) is row 20:
-an uncomputable hull, with the stated workaround being the manual expansion.
+interval-computable without a general symbolic engine, which the spec's
+out-of-scope list rules out under "no algebraic expression normalization".
+`*` requires one operand to be a `Literal` node syntactically, not merely a
+sub-expression that happens to evaluate to a constant. Everything else is row
+20, an uncomputable hull: division, power, modulo, two non-constant operands
+multiplied, and any vector, count or field operator. The stated workaround is
+to expand the bound manually.
 
-**Scope.** Bound expressions are resolved *eagerly*, tolerating no
-enclosing-scope up-reference (unlike `.when()` conditions) — a chart must be
-built now, in this scope's own `resolve_space` call, and an up-reference
-couldn't be resolved until a later finalization pass that runs after charts
-already exist. See DECISIONS.md D-29. Bound expressions on a `.repeat()`
-element's own domain are not yet supported (D-29) — rejected with a clear
-message rather than silently mishandled by the lift machinery, which never
-sees this pass at all (only top-level `ParamExpr.domain` is examined below).
+**Scope.** Bound expressions resolve eagerly and tolerate no enclosing-scope
+up-reference, unlike a `.when()` condition. A chart must be built now, in
+this scope's own `resolve_space` call, and an up-reference could not be
+resolved until a finalization pass that runs after charts already exist.
+Bound expressions on a `.repeat()` element's own domain are unsupported, and
+are rejected with a message saying so rather than left to the lift
+machinery, which never reaches this pass: only a top-level
+`ParamExpr.domain` is examined below.
 """
 
 from __future__ import annotations
@@ -63,8 +64,11 @@ def bound_exprs(d: ParamExpr) -> tuple[ArithExpr, ...]:
 
 
 def bound_deps(d: ParamExpr) -> frozenset[str]:
-    """Params referenced by `d`'s own bound expression(s) — joins the
-    condition/repeat-count dependency graph for cycle detection (row 7)."""
+    """Params referenced by `d`'s own bound expressions.
+
+    These join the condition and repeat-count dependency graph, so that
+    cycle detection covers them (row 7).
+    """
     deps: frozenset[str] = frozenset()
     for expr in bound_exprs(d):
         deps = deps | expr.params
@@ -72,11 +76,14 @@ def bound_deps(d: ParamExpr) -> frozenset[str]:
 
 
 def check_bound_refs(defs: tuple[ParamExpr, ...], defs_by_path: dict[str, ParamExpr]) -> None:
-    """Row 6 (undeclared ref) / row 14 (arithmetic on categorical/ordinal,
-    ordering on categorical, ordinal-sequence mismatch) over each bound
-    expression — the same checks `.when()` conditions get, but eager: a
-    bound expression does not tolerate an enclosing-scope up-reference (see
-    module docstring / DECISIONS.md D-29)."""
+    """Check each bound expression for row 6 and row 14 violations.
+
+    Row 6 is an undeclared reference. Row 14 covers arithmetic on a
+    categorical or ordinal, ordering on a categorical, and an
+    ordinal-sequence mismatch. These are the checks a `.when()` condition
+    gets, applied eagerly: a bound expression tolerates no enclosing-scope
+    up-reference, as the module docstring states.
+    """
     for d in defs:
         for expr in bound_exprs(d):
             context = f"param {d.path!r} bound"
@@ -88,8 +95,8 @@ def _require_numeric_literal(node: Literal, path: str) -> float:
     value = node.value
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise ResolutionError(
-            f"param {path!r}: bound expression literal {value!r} is not numeric "
-            "— no computable interval hull (row 20)"
+            f"param {path!r}: bound expression literal {value!r} is not numeric, "
+            "so it has no computable interval hull (row 20)"
         )
     return value
 
@@ -111,8 +118,8 @@ def _hull_mul(
         lo, hi = hull(right, envelope_of, path=path)
         return _scale(c, lo, hi)
     raise ResolutionError(
-        f"param {path!r}: bound expression multiplies two non-constant operands "
-        "— interval multiplication is only computable by a literal constant "
+        f"param {path!r}: bound expression multiplies two non-constant operands; "
+        "interval multiplication is only computable by a literal constant "
         "(row 20); write the desugared literal bound and an explicit .forbid() "
         "constraint by hand"
     )
@@ -137,7 +144,7 @@ def hull(expr: ArithExpr, envelope_of: Callable[[str], Interval], *, path: str) 
             return _hull_mul(expr.left, expr.right, envelope_of, path=path)
     raise ResolutionError(
         f"param {path!r}: bound expression has no computable interval hull "
-        f"(unsupported {expr.kind!r} — only +, -, and * by a literal constant "
+        f"(unsupported {expr.kind!r}; only +, -, and * by a literal constant "
         "over enveloped params are supported); write the desugared literal "
         "bound and an explicit .forbid() constraint by hand (row 20)"
     )
@@ -158,12 +165,16 @@ def _bound_constraint(target_path: str, op: str, other: ArithExpr) -> Constraint
 def compute_bound_envelopes(
     defs: tuple[ParamExpr, ...], defs_by_path: dict[str, ParamExpr]
 ) -> tuple[tuple[ParamExpr, ...], list[Constraint]]:
-    """Resolution step 6: replace every expression bound with its
-    interval-arithmetic envelope (a plain number), collecting the
-    bound-origin `Constraint` each expression bound sugars for. Must run
-    after `check_bound_refs` (row 6/14) and after cycle detection (row 7)
-    has confirmed the bound-dependency graph is acyclic — `envelope_of`
-    below is a memoized recursion that assumes no cycle, not a fresh check.
+    """Resolution step 6: replace every expression bound with its envelope.
+
+    The envelope is a plain number, the interval-arithmetic hull of the
+    bound expression. This also collects the bound-origin `Constraint` that
+    each expression bound sugars for.
+
+    Must run after `check_bound_refs` (rows 6 and 14) and after cycle
+    detection (row 7) has confirmed the bound-dependency graph is acyclic.
+    `envelope_of` below is a memoized recursion that assumes no cycle rather
+    than checking for one.
     """
     envelopes: dict[str, Interval] = {}
 
@@ -174,8 +185,8 @@ def compute_bound_envelopes(
         if d is None or not isinstance(d.domain, _NumericDomain):
             raise ResolutionError(
                 f"bound expression references {path!r}, which is not a real or "
-                "integer param — no computable interval hull (row 20); write "
-                "the desugared literal bound and an explicit .forbid() "
+                "integer param, so it has no computable interval hull (row 20); "
+                "write the desugared literal bound and an explicit .forbid() "
                 "constraint by hand"
             )
         lo, hi = d.domain.lo, d.domain.hi
@@ -214,23 +225,24 @@ def compute_bound_envelopes(
 def bound_origin_targets(
     space: Any,  # designspace.builder._space.Space; Any avoids an import cycle
 ) -> dict[str, tuple[ArithExpr | None, ArithExpr | None]]:
-    """path -> (lo_expr, hi_expr) recovered from `space.constraints`'
-    bound-origin entries. `origin` is derived provenance (API.md, "IR") —
-    this reconstructs the dependency/tightening information from it rather
-    than a dedicated IR field, relying on `_bound_constraint`'s invariant
-    that the target param is always the `Compare`'s *left* operand.
+    """Recover `path -> (lo_expr, hi_expr)` from the bound-origin constraints.
 
-    Shared by `eval/_kleene.py::topological_order` (dependency ordering) and
-    `sample/_sample.py` (tighten-not-reject).
+    `origin` is derived provenance (API.md, "IR"), so this reconstructs the
+    dependency and tightening information from it rather than from a
+    dedicated IR field. It relies on `_bound_constraint`'s invariant that
+    the target param is the `Compare`'s left operand.
 
-    A `represent()` target can break that invariant on purpose: transport
-    (M11) rewrites a bound-origin constraint's operands like any other
-    (leaf substitution wraps a chart-bearing target in `ChartApply`, or —
-    rarer — the whole comparison goes opaque, a `Value` node). Either way
-    the constraint still enforces the bound correctly through ordinary
-    rejection sampling; only the tighten-not-reject *optimization* and the
-    dependency-ordering hint this function feeds are unavailable for that
-    target, so such an entry is skipped rather than asserted against.
+    Shared by `topological_order` in `eval/_kleene.py`, for dependency
+    ordering, and by `sample/_sample.py`, for tighten-not-reject.
+
+    A `represent()` target can break that invariant deliberately: transport
+    rewrites a bound-origin constraint's operands like any other, wrapping a
+    chart-bearing target in `ChartApply` or, more rarely, taking the whole
+    comparison opaque as a `Value` node. The constraint still enforces the
+    bound correctly through ordinary rejection sampling. Only the
+    tighten-not-reject optimization and the dependency-ordering hint this
+    function feeds are unavailable for such a target, so the entry is
+    skipped rather than asserted against.
     """
     result: dict[str, tuple[ArithExpr | None, ArithExpr | None]] = {}
     for c in space.constraints:

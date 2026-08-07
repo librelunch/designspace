@@ -1,19 +1,20 @@
-"""`.fingerprint()` (API.md, "fingerprint()"): a stable identifier of the
-resolved space — post-resolution IR, never builder expressions.
+"""`.fingerprint()`: a stable identifier of the resolved space.
 
-Output: `"{version}:{scope}:{64 hex chars}"`. The format version and the
-scope string are both part of the hashed preimage (not just the human-
-readable prefix) — the scope table lists "Format version" as a preimage row
-in both scopes, and folding `scope` in too is free, extra-safe hygiene (it
-already disambiguates `full` vs `sampling` digests that would otherwise only
-differ by coincidence of content).
+See API.md, "fingerprint()". The identifier is computed over the
+post-resolution IR and never over builder expressions.
 
-Only `"raise"`/`"mark"` are offered for `on_unserializable` here — unlike
-`to_json`, whose "drop" mode returns a document plus a manifest the caller
-can inspect, `fingerprint` returns nothing but a hash: a silently-dropped
-site would vanish from the digest with no visible trace, which is strictly
-worse than "mark"'s explicit, distinguishing sentinel. The spec's own
-"Callables" paragraph under `fingerprint()` only ever mentions raise/mark.
+The output is `"{version}:{scope}:{64 hex chars}"`. Both the format version
+and the scope string belong to the hashed preimage rather than to the
+human-readable prefix alone. The scope table lists "Format version" as a
+preimage row in both scopes, and folding `scope` in as well costs nothing
+and disambiguates `full` from `sampling` digests that would otherwise differ
+only by coincidence of content.
+
+`on_unserializable` accepts `"raise"` and `"mark"` here, not `"drop"`.
+`to_json`'s drop mode returns a document plus a manifest the caller can
+inspect, whereas `fingerprint` returns a hash alone, so a silently dropped
+site would vanish from the digest with no visible trace. The spec's
+"Callables" paragraph under `fingerprint()` mentions raise and mark only.
 """
 
 from __future__ import annotations

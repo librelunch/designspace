@@ -1,15 +1,16 @@
-"""`.forbid()` / `.require()` / `.encourage()` / `.discourage()`: adding
+"""`.forbid()`, `.require()`, `.encourage()` and `.discourage()`: adding
 constraints to an already-resolved `Space` (API.md, "Constraints and
-Feasibility"). Two polarity pairs: hard `forbid`/`require` (affect
-feasibility), soft `encourage`/`discourage` (declared, reported, never
-affect feasibility).
+Feasibility").
 
-Each positional condition becomes its own `Constraint` entry (sharing the
-call's `tags`/`meta`) so `evaluate_constraints` reports a margin per
-declared predicate rather than one folded blob. Validation reuses the same
-row-6/row-14 checks conditions get (resolve/_expr_checks.py), against the
-space's resolved `ParamDef`s rather than builder-time `ParamExpr`s, and
-desugars `implies` (D-1) the same way step 3 does.
+Two polarity pairs. Hard `forbid` and `require` affect feasibility; soft
+`encourage` and `discourage` are declared and reported but never affect it.
+
+Each positional condition becomes its own `Constraint` entry, sharing the
+call's `tags` and `meta`, so that `evaluate_constraints` reports one margin
+per declared predicate rather than one folded blob. Validation reuses the
+row-6 and row-14 checks conditions get (`resolve/_expr_checks.py`), applied
+to the space's resolved `ParamDef` records rather than to builder-time
+`ParamExpr` objects, and desugars `implies` as resolution step 3 does.
 """
 
 from __future__ import annotations
@@ -39,12 +40,12 @@ def add_constraints(
     meta: dict[str, Any] | None,
     origin: str = "user",
 ) -> Space:
-    # The four builder verbs are two polarity pairs — hard `forbid`/`require`
-    # and soft `discourage`/`encourage` — distinguished by `(origin, hard)`.
-    # `require`/`discourage` store the polarity-opposite predicate from their
-    # sibling and carry a non-`user` origin; the feasibility flip and the
-    # fingerprint canonicalization to forbidden-state form live downstream
-    # (eval/_constraint_eval.py, identity/_ir_codec.py).
+    # The four builder verbs are two polarity pairs, hard `forbid`/`require`
+    # and soft `discourage`/`encourage`, distinguished by `(origin, hard)`.
+    # `require` and `discourage` store the polarity-opposite predicate from
+    # their sibling and carry a non-`user` origin. The feasibility flip and
+    # the fingerprint canonicalization to forbidden-state form live
+    # downstream, in eval/_constraint_eval.py and identity/_ir_codec.py.
     call = {"require": "require()", "discourage": "discourage()"}.get(
         origin, "forbid()" if hard else "encourage()"
     )
@@ -90,10 +91,11 @@ def _references_unquantized_real(node: Any, defs_by_path: Mapping[str, ParamDef]
 
 
 def _warn_if_continuous_equality(expr: BoolExpr, defs_by_path: Mapping[str, ParamDef]) -> None:
-    """Row 25 (warning): `==` over purely continuous, unquantized operands is
-    measure-zero under sampling. "Purely continuous" is read as: no operand
-    of a discrete type (categorical/ordinal/bool/integer) participates, and
-    at least one unquantized real does (see DECISIONS.md).
+    """Warn on `==` over purely continuous, unquantized operands (row 25).
+
+    Such a constraint is measure-zero under sampling. "Purely continuous"
+    means that no operand of a discrete type (categorical, ordinal, bool,
+    integer) participates and at least one unquantized real does.
     """
     for node in iter_nodes(expr):
         if not (isinstance(node, Compare) and node.op == "eq"):

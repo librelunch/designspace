@@ -1,28 +1,31 @@
-"""Shared IR codec: `ParamDef`/`Domain`/`Prior`/`QuantizedSpec`/`Constraint`/
-`Condition` <-> canonical tree (API.md, "Identity and Serialization";
-"IR"). One encoder, three call shapes selected by `scope`:
+"""The shared IR codec, between IR objects and the canonical tree.
 
-- `"document"` — `to_json`'s full-fidelity shape: every field, `origin` kept,
-  every constraint (hard and declared) present, expression as stored
-  (never polarity-canonicalized — that canonicalization is preimage-only).
-- `"full"` — the fingerprint `full` scope: `origin` excluded, polarity-opposite
-  constraints (`origin` `"bound"`, `"require"`, or `"discourage"`) canonicalized
-  to their baseline-polarity form (D-29(4)/D-38/D-39), default/tags/meta kept,
-  both hard and declared constraints kept.
-- `"sampling"` — the fingerprint `sampling` scope: as `full` but declared
-  (`hard=False`) constraints and per-param default/tags/meta dropped
-  (API.md's scope table; DECISIONS.md D-33 additionally puts `quantized`/
-  `periodic` in both fingerprint scopes despite the table's "domain, prior"
-  shorthand).
+It covers `ParamDef`, `Domain`, `Prior`, `QuantizedSpec`, `Constraint` and
+`Condition`. See API.md, "Identity and Serialization" and "IR". One encoder
+serves three call shapes, selected by `scope`:
 
-`decode_*` only ever reconstructs the `"document"` shape — a fingerprint
-preimage is one-way (hash only, never fed back through `from_json`).
+- `"document"` is `to_json`'s full-fidelity shape: every field, `origin`
+  kept, every constraint present whether hard or declared, and the
+  expression as stored. It is never polarity-canonicalized; that
+  canonicalization is preimage-only.
+- `"full"` is the fingerprint `full` scope: `origin` excluded, and the
+  polarity-opposite constraints, those with `origin` of `"bound"`,
+  `"require"` or `"discourage"`, canonicalized to their baseline-polarity
+  form. Default, tags and metadata are kept, as are hard and declared
+  constraints alike.
+- `"sampling"` is the fingerprint `sampling` scope: as `full`, but with
+  declared constraints, those with `hard=False`, and per-param default, tags
+  and metadata dropped. `quantized` and `periodic` are in both fingerprint
+  scopes, which API.md's scope table abbreviates as "domain, prior".
 
-Optional/auxiliary fields (`condition`, `default`, `tags`, `meta`) are
-omitted from the tree entirely when absent/empty, never emitted as `null`/
-`[]`/`{}` — so a future milestone's *additive* field (M8's anchors) costs
-nothing for spaces that don't use it: an anchor-free space's `full` preimage
-is byte-identical before and after anchors exist as a concept.
+`decode_*` reconstructs the `"document"` shape only. A fingerprint preimage
+is one-way: it is hashed, never fed back through `from_json`.
+
+The optional fields `condition`, `default`, `tags` and `meta` are omitted
+from the tree when absent or empty, rather than emitted as `null`, `[]` or
+`{}`. An additive field therefore costs nothing for a space that does not
+use it, which is what keeps an anchor-free space's `full` preimage
+byte-identical to what it was before anchors existed.
 """
 
 from __future__ import annotations
@@ -77,11 +80,12 @@ CustomTypeRegistry = Mapping[str, Any]  # type_key -> factory(describe_dict) -> 
 
 Scope = Literal["document", "full", "sampling"]
 
-# `EncodeContext`/`OnUnserializable`/`_OPAQUE_MARKER` now live in
-# identity/_tags.py (M10.8: `encode_expr` needs them too, and `_tags` is
-# imported *by* this module, never the reverse) — re-imported here (not just
-# re-exported) so every pre-existing `from designspace.identity._ir_codec
-# import EncodeContext, ...` site keeps working verbatim.
+# `EncodeContext`, `OnUnserializable` and `_OPAQUE_MARKER` live in
+# identity/_tags.py, because `encode_expr` needs them too and `_tags` is
+# imported by this module rather than the reverse. They are re-imported
+# here, not merely re-exported, so that every
+# `from designspace.identity._ir_codec import EncodeContext, ...` site keeps
+# working verbatim.
 
 
 # -- QuantizedSpec --------------------------------------------------------
@@ -113,11 +117,12 @@ def encode_prior(path: str, prior: PriorSpec | None, ctx: EncodeContext) -> Any:
         return {"kind": "power", "p": float(prior.p)}
     if isinstance(prior, Weights):
         return {"kind": "weights", "values": [float(v) for v in prior.values]}
-    # External `Prior` protocol object (ppf/cdf duck type): opaque (D-31).
+    # An external `Prior` protocol object, duck-typed on ppf and cdf, has
+    # no structural encoding and is therefore opaque.
     if ctx.mode == "raise":
         raise SerializationError(
-            f"param {path!r}: external prior {prior!r} has no structural encoding "
-            "(DECISIONS.md D-31) — pass on_unserializable='mark' or 'drop'"
+            f"param {path!r}: external prior {prior!r} has no structural "
+            "encoding; pass on_unserializable='mark' or 'drop'"
         )
     if ctx.mode == "mark":
         return dict(_OPAQUE_MARKER)
@@ -140,8 +145,8 @@ def decode_prior(tree: Any) -> PriorSpec | None:
         return Weights(tuple(tree["values"]))
     if kind == "opaque":
         raise SerializationError(
-            "cannot reconstruct an external prior from a mark-sentinel document "
-            "— from_json only round-trips fully serializable spaces"
+            "cannot reconstruct an external prior from a mark-sentinel "
+            "document; from_json only round-trips fully serializable spaces"
         )
     raise SerializationError(f"unknown prior kind {kind!r}")
 
@@ -217,16 +222,19 @@ def encode_domain(kind: str, domain: Domain, scope: Scope, ctx: EncodeContext, p
 
 
 def _encode_custom_domain(domain: CustomDomain, ctx: EncodeContext, path: str) -> Any:
-    """Custom params serialize as `type_key` + the `describe()` output
-    (API.md, "to_json / from_json"). The `.custom(sampler, validator)`
-    shorthand is in the enumerated non-serializable set (API.md:606) — it
-    rides the same raise / mark (`{"$opaque": true}`) / drop-plus-manifest
-    path as an external prior (`encode_prior`, above), since a whole custom
-    param has no serializable substance without its type (DECISIONS.md
-    D-47: "drop" degrades to the same opaque marker as "mark" here, rather
-    than removing the whole param — a document produced this way is not
-    meant to round-trip through `from_json`, "a different space by
-    design")."""
+    """Encode a custom domain as its `type_key` plus `describe()` output.
+
+    See API.md, "to_json / from_json". The `.custom(sampler, validator)`
+    shorthand belongs to the enumerated non-serializable set, so it takes
+    the same raise, mark and drop-plus-manifest path as an external prior in
+    `encode_prior` above: a whole custom param has no serializable substance
+    without its type.
+
+    Under "drop" the domain degrades to the same `{"$opaque": true}` marker
+    "mark" produces, rather than the whole param being removed. A document
+    produced this way is not meant to round-trip through `from_json`, being
+    "a different space by design".
+    """
     if domain.param_type is not None:
         pt = domain.param_type
         try:
@@ -240,7 +248,7 @@ def _encode_custom_domain(domain: CustomDomain, ctx: EncodeContext, path: str) -
     if ctx.mode == "raise":
         raise SerializationError(
             f"param {path!r}: .custom(sampler, validator) shorthand has no "
-            "structural encoding — pass on_unserializable='mark' or 'drop'"
+            "structural encoding; pass on_unserializable='mark' or 'drop'"
         )
     if ctx.mode == "mark":
         return dict(_OPAQUE_MARKER)
@@ -249,23 +257,23 @@ def _encode_custom_domain(domain: CustomDomain, ctx: EncodeContext, path: str) -
     return dict(_OPAQUE_MARKER)
 
 
-# -- SymbolicDomain / CodeDomain (M12) -------------------------------------
+# -- SymbolicDomain / CodeDomain --------------------------------------------
 #
-# Unlike a whole opaque custom, these two kinds are *mostly* structural —
-# `signature`/`primitives`/`max_depth`/`description`/`constraints`/`examples`
-# all serialize plainly. Only three fields are genuinely opaque
-# (DECISIONS.md D-88, the enumerated non-serializable set: "`code`/
-# `symbolic` validators, `symbolic` sampler, `Primitive.fn`"), and each
-# rides raise/mark/drop *in place* rather than poisoning the whole domain —
-# the same in-place-degradation precedent D-77 set for a `ds.value` site,
-# generalized from "one opaque leaf inside an expression tree" to "one
-# opaque field inside an otherwise-structural domain."
+# Unlike a wholly opaque custom, these two kinds are mostly structural:
+# `signature`, `primitives`, `max_depth`, `description`, `constraints` and
+# `examples` all serialize plainly. Three fields are genuinely opaque, being
+# the enumerated non-serializable set's "`code`/`symbolic` validators,
+# `symbolic` sampler, `Primitive.fn`". Each rides raise, mark or drop in
+# place rather than poisoning the whole domain, generalizing the in-place
+# degradation a `ds.value` site already uses from one opaque leaf inside an
+# expression tree to one opaque field inside an otherwise-structural
+# domain.
 
 
 def _encode_opaque_field(ctx: EncodeContext, site: str) -> Any:
     if ctx.mode == "raise":
         raise SerializationError(
-            f"{site} has no structural encoding — pass on_unserializable='mark' or 'drop'"
+            f"{site} has no structural encoding; pass on_unserializable='mark' or 'drop'"
         )
     if ctx.mode == "mark":
         return dict(_OPAQUE_MARKER)
@@ -277,7 +285,7 @@ def _encode_opaque_field(ctx: EncodeContext, site: str) -> Any:
 def _decode_opaque_field(tree: Any, key: str, site: str) -> None:
     if key in tree:
         raise SerializationError(
-            f"{site}: cannot reconstruct from a mark-sentinel document — "
+            f"{site}: cannot reconstruct from a mark-sentinel document; "
             "from_json only round-trips fully serializable spaces"
         )
 
@@ -461,7 +469,7 @@ def _decode_custom_domain(
         raise SerializationError(
             f"param {path!r}: cannot reconstruct a custom param from a "
             "mark-sentinel document (the .custom(sampler, validator) "
-            "shorthand is not serializable) — from_json only round-trips "
+            "shorthand is not serializable); from_json only round-trips "
             "fully serializable spaces"
         )
     type_key = tree["type_key"]
@@ -503,30 +511,34 @@ def _decode_list_domain(
 
 
 def _canonicalize_polarity(c: Constraint) -> Constraint:
-    """D-29(4)/D-38/D-39: normalize a constraint's stored predicate to its
-    baseline polarity before hashing, so `origin` (excluded from the preimage)
-    is never semantics-load-bearing. A verb that stores the polarity-opposite
-    predicate from its `origin="user"` sibling — `require` vs `forbid`,
-    `discourage` vs `encourage` — or a `bound` sugar is negated back:
+    """Normalize a constraint's predicate to its baseline polarity.
 
-    - `origin="bound"` (M5) is always a single top-level
-      `Compare(op, ParamExpr(target), other)` (resolve/_bounds.py
-      `_bound_constraint`), so its negation is an **operator flip**
-      (`x <= y` → `x > y`) — byte-identical to a user `.forbid(x > y)`.
-      Element-level constraints are never bound-origin (repeat-element bound
-      expressions aren't supported yet, D-29).
-    - `origin="require"` (M7.5) and `origin="discourage"` (M7.6) store an
-      arbitrary `BoolExpr`, so the negation is a **whole-expression** `Not(...)`.
-      `require(e)` is thus fingerprint-equal to `.forbid(~e)`, and
-      `discourage(e)` to `.encourage(~e)`. (D-38: `require(x<=y)` is *not*
-      fingerprint-equal to the operator-flipped `.forbid(x>y)`, even though both
-      name the same feasible set — a semantic equivalence, not a syntactic one.
-      "Equal fingerprints ⇒ equal feasible sets" is one-way, so distinct
-      fingerprints for identical feasibility are allowed.)
+    This runs before hashing, so that `origin`, which the preimage excludes,
+    is never semantics-load-bearing. A verb storing the polarity-opposite
+    predicate from its `origin="user"` sibling, meaning `require` against
+    `forbid` and `discourage` against `encourage`, is negated back, as is a
+    `bound` sugar:
 
-    Without this, `discourage(e)` and `encourage(e)` — same `(expr, hard)`, only
-    `origin` differing, opposite polarity — would share a preimage, making the
-    excluded `origin` load-bearing.
+    - `origin="bound"` is always a single top-level
+      `Compare(op, ParamExpr(target), other)`, built by `_bound_constraint`
+      in `resolve/_bounds.py`, so its negation is an operator flip from
+      `x <= y` to `x > y`, byte-identical to a user's `.forbid(x > y)`.
+      Element-level constraints are never bound-origin, repeat-element bound
+      expressions being unsupported.
+    - `origin="require"` and `origin="discourage"` store an arbitrary
+      `BoolExpr`, so the negation wraps the whole expression in `Not(...)`.
+      `require(e)` is therefore fingerprint-equal to `.forbid(~e)`, and
+      `discourage(e)` to `.encourage(~e)`.
+
+    `require(x <= y)` is not fingerprint-equal to the operator-flipped
+    `.forbid(x > y)`, though both name the same feasible set. That is a
+    semantic equivalence rather than a syntactic one. "Equal fingerprints
+    imply equal feasible sets" is one-way, so distinct fingerprints for
+    identical feasibility are permitted.
+
+    Without this normalization, `discourage(e)` and `encourage(e)` would
+    share a preimage, having the same `(expr, hard)` and differing only in
+    the excluded `origin` while carrying opposite polarity.
     """
     if c.origin == "bound":
         expr = c.expr
@@ -540,11 +552,14 @@ def _canonicalize_polarity(c: Constraint) -> Constraint:
 
 
 def encode_constraint(c: Constraint, scope: Scope, ctx: EncodeContext, *, site: str) -> Any:
-    """Returns `None` when `c` is excluded at this scope (a declared/soft
-    constraint at `sampling`). `site` (M10.8) names this constraint for a
-    `ds.value` opacity error/manifest entry — caller-supplied since a
-    `Constraint` carries no name/path of its own, only a position in
-    `space.constraints`/`ListDomain.element_constraints`."""
+    """Encode one constraint, or `None` when this scope excludes it.
+
+    The `sampling` scope excludes a declared, soft constraint. `site` names
+    this constraint in a `ds.value` opacity error or manifest entry. It is
+    caller-supplied, because a `Constraint` carries no name or path of its
+    own, only a position in `space.constraints` or
+    `ListDomain.element_constraints`.
+    """
     if scope == "sampling" and not c.hard:
         return None
     expr = c.expr if scope == "document" else _canonicalize_polarity(c).expr
@@ -555,9 +570,10 @@ def encode_constraint(c: Constraint, scope: Scope, ctx: EncodeContext, *, site: 
         if c.tags:
             tree["tags"] = sorted(c.tags)
         if c.meta:
-            # Meta values are JSON-serializable, not necessarily scalar (row
-            # 23 gates "JSON-serializable"; a list/dict value passes) — the
-            # same generic recursive codec `default`/`list_default` use.
+            # Meta values are JSON-serializable rather than necessarily
+            # scalar: row 23 gates "JSON-serializable", so a list or dict
+            # value passes. This is the generic recursive codec `default`
+            # and `list_default` use.
             tree["meta"] = {k: encode_default_value(v) for k, v in sorted(c.meta.items())}
     return tree
 
@@ -606,29 +622,30 @@ def encode_param(pd: ParamDef, scope: Scope, ctx: EncodeContext) -> dict[str, An
         tree["condition"] = encode_expr(pd.condition, ctx, site=f"param {pd.path!r} condition")
     if scope != "sampling":
         if pd.default is not None:
-            # A default can be subset/permutation-shaped (a list of items),
-            # not only scalar — `encode_default_value` (not the scalar-only
-            # `tag_value`) handles that generically.
+            # A default can be subset- or permutation-shaped, a list of
+            # items, rather than only scalar. `encode_default_value` handles
+            # that generically, where the scalar-only `tag_value` would not.
             tree["default"] = encode_default_value(pd.default)
         if pd.tags:
             tree["tags"] = sorted(pd.tags)
         if pd.meta:
-            # Meta values are JSON-serializable, not necessarily scalar (row
-            # 23 gates "JSON-serializable"; a list/dict value passes) — the
-            # same generic recursive codec `default`/`list_default` use.
+            # Meta values are JSON-serializable rather than necessarily
+            # scalar: row 23 gates "JSON-serializable", so a list or dict
+            # value passes. This is the generic recursive codec `default`
+            # and `list_default` use.
             tree["meta"] = {k: encode_default_value(v) for k, v in sorted(pd.meta.items())}
     return tree
 
 
-# -- Space-level anchors / meta (M8) --------------------------------------
+# -- Space-level anchors and metadata ---------------------------------------
 #
-# Both are `Mapping[str, Any]` keyed by an untagged string (an anchor name;
-# a meta key) whose *value* is `Any`-typed application data — tagged
-# recursively via the same generic codec `default`/`ParamDef.meta`/
-# `Constraint.meta` use (normalization step 5). Keys sort (step 3). Omitted
-# entirely when empty, never emitted as `{}` (identity/_ir_codec.py's
-# module docstring: an anchor/meta-free space's preimage must be
-# byte-identical to a pre-M8 one).
+# Both are `Mapping[str, Any]`, keyed by an untagged string, an anchor name
+# or a metadata key, whose value is `Any`-typed application data. Values are
+# tagged recursively by the generic codec `default`, `ParamDef.meta` and
+# `Constraint.meta` use, which is normalization step 5. Keys sort, which is
+# step 3. Both are omitted entirely when empty rather than emitted as `{}`,
+# so that an anchor-free and metadata-free space's preimage stays
+# byte-identical, as the module docstring requires.
 
 
 def encode_anchors(anchors: Any) -> Any:

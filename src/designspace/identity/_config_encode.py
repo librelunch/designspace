@@ -8,15 +8,15 @@ along the way. "Inactive stripped" needs no extra code: the dict-config
 representation already omits inactive params (they are simply absent keys),
 and this walker only ever visits keys present in the input.
 
-Non-validating, like `flatten()` — a malformed config passes through
-best-effort rather than raising a `ParamError` list; `config_hash` is not a
-validator.
+Non-validating, like `flatten()`. A malformed config passes through
+best-effort rather than raising a list of `ParamError` records, since
+`config_hash` is not a validator.
 
 Whether a leaf value needs a `$t` type tag follows the same boundary as the
-domain codec (`identity/_ir_codec.py`, DECISIONS.md D-34): categorical/
-ordinal values and subset/permutation items are `Any`-typed declared data and
-get tagged; real/integer/bool values are never ambiguous given the param's
-own `type_kind` and stay bare.
+domain codec in `identity/_ir_codec.py`. Categorical and ordinal values, and
+subset and permutation items, are `Any`-typed declared data and get tagged.
+Real, integer and bool values are unambiguous given the param's own
+`type_kind` and stay bare.
 """
 
 from __future__ import annotations
@@ -65,15 +65,15 @@ def _encode_scalar_value(
         return bool(value)
     if kind == "subset":
         return sorted((tag_value(v) for v in value), key=sort_key)
-    if kind == "permutation":  # order is the payload — never sorted
+    if kind == "permutation":  # order is the payload, so never sorted
         return [tag_value(v) for v in value]
     if kind in ("custom", "symbolic", "code"):
-        # A custom/symbolic/code config leaf is already phenotype form —
-        # for custom, D-46's to_json'd form; for symbolic/code, the plain
-        # JSON dict `.validate()`/`.default()` already hold (D-84) — the
-        # same JSON-shaped dict/list/scalar tree every other Any-typed leaf
-        # value uses, so the generic recursive tagging codec applies
-        # uniformly with no per-type hook.
+        # A custom, symbolic or code config leaf is already phenotype
+        # form: the `to_json()`ed form for custom, and for symbolic and code
+        # the plain JSON dict `.validate()` and `.default()` already hold.
+        # That is the JSON-shaped dict, list and scalar tree every other
+        # Any-typed leaf value uses, so the generic recursive tagging codec
+        # applies with no per-type hook.
         return encode_default_value(value)
     raise SerializationError(f"config encoding: unsupported scalar kind {kind!r}")
 

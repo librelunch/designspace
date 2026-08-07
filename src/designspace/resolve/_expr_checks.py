@@ -1,16 +1,19 @@
-"""Shared expression checks: row 6 (undeclared refs) and row 14 (arithmetic /
-ordering type errors) — API.md's error table.
+"""Shared expression checks for rows 6 and 14 of API.md's error table.
 
-Used both for `.when()` conditions (resolve/_pipeline.py, M1) and for
-`.forbid()`/`.encourage()` expressions (resolve/_constraints.py, M2): both
-walk a `BoolExpr`/`Expr` tree against a `path -> definition` mapping, where
-the mapping may hold either builder-time `ParamExpr`s (fresh `ds.space()`)
-or resolved `ParamDef`s (a constraint added to an already-resolved `Space`)
-— both expose `.type_kind`/`.domain`, so the checks are identical either way.
+Row 6 is an undeclared reference; row 14 covers arithmetic and ordering type
+errors.
+
+Both `.when()` conditions (`resolve/_pipeline.py`) and `.forbid()` and
+`.encourage()` expressions (`resolve/_constraints.py`) use these checks.
+Each walks an `Expr` tree against a `path -> definition` mapping. That
+mapping holds builder-time `ParamExpr` objects for a fresh `ds.space()` and
+resolved `ParamDef` records for a constraint added to an already-resolved
+`Space`. Both expose `.type_kind` and `.domain`, so the checks are identical
+either way.
 
 `context` is a pre-formatted, already-quoted description of where the
-expression came from — `"param 'x'"` for a condition, `"forbid()"` for a
-feasibility constraint — prefixed onto each message.
+expression came from, prefixed onto each message: `"param 'x'"` for a
+condition, `"forbid()"` for a feasibility constraint.
 """
 
 from __future__ import annotations
@@ -57,17 +60,20 @@ def iter_nodes(node: Expr) -> Iterator[Expr]:
 
 
 def _is_declared(path: str, defs_by_path: Mapping[str, Any]) -> bool:
-    """`path` may be an ordinary definition path, an instance path into a
-    struct/choice lift element (`"stops[0].dwell"` — its `"[]"`-bracketed
-    *template* is a declared def), a direct scalar/choice lift element
-    (`"dropout[3]"` — no template of its own, but its owning list param is
-    declared), or any deeper/mixed nesting the grammar admits (`g[0][1]`,
-    `layers[2].act[1]`) — see `paths._grammar.split_instance_path`. API.md,
-    "Expressions": "Instance paths are legal in expressions... An
-    out-of-range index makes the leaf inactive" — the out-of-range half is
-    an evaluation-time concern (`_leaf_value` already handles it for free,
-    M10.5); this is the resolution-time half (row 6): the *lift itself*
-    still has to be a declared param.
+    """Whether `path` names something declared.
+
+    `path` may be an ordinary definition path; an instance path into a
+    struct or choice lift element, such as `"stops[0].dwell"`, whose
+    `"[]"`-bracketed template is a declared definition; a direct scalar or
+    choice lift element such as `"dropout[3]"`, which has no template of its
+    own but whose owning list param is declared; or any deeper or mixed
+    nesting the grammar admits, such as `g[0][1]` or `layers[2].act[1]`. See
+    `paths._grammar.split_instance_path`.
+
+    API.md, "Expressions" says "Instance paths are legal in expressions...
+    An out-of-range index makes the leaf inactive". The out-of-range half is
+    an evaluation-time concern that `_leaf_value` handles. This is the
+    resolution-time half (row 6): the lift itself must be a declared param.
     """
     if path in defs_by_path:
         return True
@@ -81,19 +87,23 @@ def _is_declared(path: str, defs_by_path: Mapping[str, Any]) -> bool:
 
 
 def _resolve_entry(path: str, defs_by_path: Mapping[str, Any]) -> Any:
-    """The declared shape backing `path` (see `_is_declared`) — a direct
-    scalar/choice lift element resolves to a synthetic element view
-    (`resolve/_relocate.py`'s `element_paramdef`), consumed one bracket at a
-    time so a chained/nested scalar lift (`g[0][1]`) resolves all the way to
-    its leaf, so type checks see the *element's* type_kind/domain, not the
-    enclosing list's. Only possible once `ListDomain` is actually built (the
-    constraint-on-resolved-Space path), so a `.when()` condition's instance
+    """The declared shape backing `path`, in the sense `_is_declared` uses.
+
+    A direct scalar or choice lift element resolves to a synthetic element
+    view, `element_paramdef` in `resolve/_relocate.py`, consumed one bracket
+    at a time so that a chained or nested scalar lift such as `g[0][1]`
+    resolves all the way to its leaf. Type checks then see the element's
+    `type_kind` and domain rather than the enclosing list's.
+
+    This is possible only once the `ListDomain` is built, which is the
+    constraint-on-resolved-Space path. A `.when()` condition's instance
     reference to a not-yet-lifted element falls back to the outer entry
-    unchanged (best effort) — the finalization pass (`check_fully_resolved`)
-    re-checks once every lift is built. Callers that tolerate up-references
-    (D-26) never reach here for a non-local path — they skip it before
-    resolving — so this only ever sees a path already known to be declared
-    somewhere in `defs_by_path`.
+    unchanged, and the finalization pass `check_fully_resolved` re-checks it
+    once every lift is built.
+
+    Callers that tolerate an enclosing-scope up-reference skip a non-local
+    path before resolving it, so this only ever sees a path already known to
+    be declared somewhere in `defs_by_path`.
     """
     if path in defs_by_path:
         return defs_by_path[path]
@@ -104,7 +114,7 @@ def _resolve_entry(path: str, defs_by_path: Mapping[str, Any]) -> Any:
     for _ in brackets:
         domain = getattr(entry, "domain", None)
         if not isinstance(domain, ListDomain):
-            return entry  # not yet built (per-scope timing, D-26) -- best effort
+            return entry  # not yet built, per-scope timing; best effort
         from designspace.resolve._relocate import element_paramdef
 
         entry = element_paramdef(path, domain)
@@ -112,14 +122,15 @@ def _resolve_entry(path: str, defs_by_path: Mapping[str, Any]) -> Any:
 
 
 def _check_static_index_range(path: str, defs_by_path: Mapping[str, Any], *, context: str) -> None:
-    """Row 29: a bracket index against a *static* (literal-int) count is a
-    resolution error — API.md, "Expressions": "against a static count the
-    length is known at resolution, so an out-of-range index... is a
-    resolution error." A *dynamic* count keeps the runtime Unknown rule
-    (this no-ops for it, deferring to `eval/_kleene.py`'s evaluation-time
-    handling); so does a not-yet-built `ListDomain` (per-scope timing,
-    D-26) — `check_fully_resolved`'s finalization pass re-runs this once
-    every lift is built."""
+    """Row 29: an out-of-range bracket index against a static count.
+
+    API.md, "Expressions" says "against a static count the length is known
+    at resolution, so an out-of-range index... is a resolution error." A
+    dynamic count keeps the runtime Unknown rule, so this no-ops for it and
+    defers to the evaluation-time handling in `eval/_kleene.py`. So does a
+    not-yet-built `ListDomain`; the finalization pass `check_fully_resolved`
+    re-runs this once every lift is built.
+    """
     if "[" not in path:
         return
     split = split_instance_path(path)
@@ -135,7 +146,7 @@ def _check_static_index_range(path: str, defs_by_path: Mapping[str, Any], *, con
             return
         count = domain.count
         if (
-            idx is not None  # a bare "[]" virtual template marker (D-18) -- nothing to range-check
+            idx is not None  # a bare "[]" virtual template marker: nothing to range-check
             and isinstance(count, int)
             and not isinstance(count, bool)
             and not (-count <= idx < count)
@@ -152,15 +163,18 @@ def _check_static_index_range(path: str, defs_by_path: Mapping[str, Any], *, con
 def _reject_lift_valued_bool_operand(
     operand: Expr, defs_by_path: Mapping[str, Any], *, context: str
 ) -> None:
-    """Row 29: a boolean operator (`~`, `&`, `|`, or a bare condition/
-    constraint) applied to an operand that is still list-typed — e.g.
-    `~ds.param("g[0]")` on a `repeat(4, 4)` bool lift, where `g[0]` is the
-    *inner* list, not yet a scalar bool. Silently coerced by truthiness
-    (a `bool()` of the inner list's own count) before this check existed."""
+    """Row 29: a boolean operator applied to a still-list-typed operand.
+
+    The operators are `~`, `&`, `|`, and a bare condition or constraint. An
+    example is `~ds.param("g[0]")` on a `repeat(4, 4)` bool lift, where
+    `g[0]` is the inner list rather than a scalar bool. Without this check
+    the operand is silently coerced by truthiness, taking `bool()` of the
+    inner list's own count.
+    """
     if not isinstance(operand, ParamExpr):
         return
     if not _is_declared(operand.path, defs_by_path):
-        return  # an up-reference (D-26) or genuinely undeclared -- other checks own this
+        return  # an up-reference or genuinely undeclared; other checks own this
     if _resolve_entry(operand.path, defs_by_path).type_kind == "list":
         raise ResolutionError(
             f"{context}: boolean operator applied to {operand.path!r}, which is "
@@ -204,15 +218,18 @@ def _lift_depth(domain: ListDomain) -> int:
 
 
 def _vector_base(node: Any) -> Any:
-    """Unwraps a `.field()` chain — and a representation's `ChartApply`
+    """Unwrap to the lift-referencing `ParamExpr` under a vector expression.
+
+    This strips a `.field()` chain and a representation's `ChartApply`
     wrapper, which a transported expression may have inserted around either
-    a bare lift reference or a `.field()` projection (M11) — down to the
-    underlying lift-referencing `ParamExpr` (a scalar lift *is* a vector
-    expression; `.field()` projects a struct lift into one — the base
-    reference is what actually carries the `ListDomain`). Required, not
-    cosmetic: without unwrapping `ChartApply` too, a transported aggregate
-    (`Sum(ChartApply(Field(...)))`) fails `_referenced_domain`'s bare-
-    param-reference check on its own decode."""
+    a bare lift reference or a `.field()` projection. A scalar lift is
+    itself a vector expression, and `.field()` projects a struct lift into
+    one; the base reference is what carries the `ListDomain`.
+
+    Unwrapping `ChartApply` is required rather than cosmetic. Without it a
+    transported aggregate such as `Sum(ChartApply(Field(...)))` fails
+    `_referenced_domain`'s bare-param-reference check on its own decode.
+    """
     while isinstance(node, Field | ChartApply):
         node = node.operand
     return node
@@ -231,12 +248,14 @@ def _require_lift_domain(
 
 
 def prop_type(node: Prop, defs_by_path: Mapping[str, Any], *, context: str) -> type:
-    """Row 16: `.prop()` on undeclared property; non-scalar property type.
-    Queried live off the referenced param's `ParamType` instance (`core...
-    derive[s] all domain facts from it (describe, validate, extract) rather
-    than re-declaring", API.md "Solver Integration") — `properties()` is
-    itself an optional capability (DECISIONS.md D-45), absent iff a
-    shorthand custom or a full-protocol type that declares none."""
+    """Row 16: `.prop()` on an undeclared property or a non-scalar type.
+
+    The property set is queried live off the referenced param's `ParamType`
+    instance, since core "derive[s] all domain facts from it (describe,
+    validate, extract) rather than re-declaring" (API.md, "Solver
+    Integration"). `properties()` is an optional capability, absent exactly
+    for a shorthand custom and for a full-protocol type that declares none.
+    """
     domain = _referenced_domain(node.operand, defs_by_path, context=context)
     if not isinstance(domain, CustomDomain):
         operand_path = cast(ParamExpr, node.operand).path
@@ -257,17 +276,19 @@ def prop_type(node: Prop, defs_by_path: Mapping[str, Any], *, context: str) -> t
         operand_path = cast(ParamExpr, node.operand).path
         raise ResolutionError(
             f"{context}: prop({node.name!r}) on {operand_path!r} declares "
-            f"non-scalar type {declared_type!r} — only int/float/bool/str "
+            f"non-scalar type {declared_type!r}; only int/float/bool/str "
             "properties are expression-visible (row 16)"
         )
     return declared_type
 
 
 def _opaque_scalar_type(node: Any, defs_by_path: Mapping[str, Any], *, context: str) -> type | None:
-    """The declared/returned scalar type of an opaque leaf (`Prop` or
-    `Value`), or `None` for anything else — the two dual-typed leaves API.md
-    says are checked "identically" (row 16's scalar restriction "applies
-    identically" to `ds.value`)."""
+    """The scalar type an opaque leaf declares or returns, else `None`.
+
+    The opaque leaves are `Prop` and `Value`, the two dual-typed leaves
+    API.md checks alike: row 16's scalar restriction "applies identically"
+    to `ds.value`.
+    """
     if isinstance(node, Prop):
         return prop_type(node, defs_by_path, context=context)
     if isinstance(node, Value):
@@ -289,14 +310,18 @@ def _opaque_row(node: Prop | Value) -> str:
 def _check_opaque_compare_types(
     node: Compare, defs_by_path: Mapping[str, Any], *, context: str
 ) -> None:
-    """Row 16's third clause (`.prop()`) and row 30's comparison clause
-    (`ds.value`): type mismatch in comparison — an opaque leaf compared
-    against a literal of a different Python type, or against a second
-    opaque leaf of a different declared/returned type. Strict type match, no
-    int/float leniency (DECISIONS.md D-34 precedent: type-tagged equality
-    throughout). The cited row follows whichever side is being checked, so a
-    mixed `.prop()`-vs-`ds.value()` mismatch still names a real error-table
-    row on either side."""
+    """A comparison type mismatch on an opaque leaf.
+
+    This is row 16's third clause for `.prop()` and row 30's comparison
+    clause for `ds.value`. It fires when an opaque leaf is compared against
+    a literal of a different Python type, or against a second opaque leaf of
+    a different declared or returned type.
+
+    The match is strict, with no int/float leniency, following the
+    type-tagged equality used throughout the library. The cited row follows
+    whichever side is being checked, so a mismatch between a `.prop()` and a
+    `ds.value()` names a real error-table row from either side.
+    """
     for this_side, other_side in ((node.left, node.right), (node.right, node.left)):
         if not isinstance(this_side, Prop | Value):
             continue
@@ -321,12 +346,13 @@ def _check_opaque_compare_types(
 
 
 def _check_field_declared(node: Field, defs_by_path: Mapping[str, Any], *, context: str) -> None:
-    """Row 6: `.field(name)` requires a struct lift whose element declares
-    `name`. `node.operand` is checked only when it is itself a direct lift
-    reference — a chained `.field().field()` would need to trace through an
-    intermediate (non-lift) struct field, which nested-lift depth already
-    rejects elsewhere (resolve/_pipeline.py's `_validate_lift`), so no valid
-    space can reach that case today.
+    """Row 6: `.field(name)` requires a struct lift whose element declares `name`.
+
+    `node.operand` is checked only when it is itself a direct lift
+    reference. A chained `.field().field()` would have to trace through an
+    intermediate, non-lift struct field, and `_validate_lift` in
+    `resolve/_pipeline.py` already rejects that nesting depth, so no valid
+    space reaches the case.
     """
     base = node.operand
     if not isinstance(base, ParamExpr):
@@ -357,7 +383,7 @@ def check_refs_declared(
                 # An up-reference to a param bound in an enclosing scope
                 # (API.md's sole scoping rule): unresolvable while this
                 # payload resolves standalone, re-checked at finalization once
-                # every enclosing scope has contributed its params (D-26).
+                # every enclosing scope has contributed its params.
                 continue
             raise ResolutionError(f"{context}: references undeclared param {path!r}")
 
@@ -370,18 +396,18 @@ def check_expr_types(
     tolerate_undeclared: bool = False,
 ) -> None:
     if isinstance(expr, ParamExpr):
-        # Row 29 (item 6): a bare bool leaf used directly as the *whole*
-        # condition/constraint (no wrapping `Not`/`BoolOp`) -- the third
-        # named boolean position, checked once here since `iter_nodes`
-        # yielding it as an ordinary node would otherwise conflate it with
-        # a bare ParamExpr in a vector-aggregate operand position (which
-        # is fine list-typed and must not raise).
+        # Row 29 (item 6): a bare bool leaf used directly as the whole
+        # condition or constraint, with no wrapping `Not` or `BoolOp`. This
+        # is the third named boolean position, checked once here because
+        # `iter_nodes` yielding it as an ordinary node would conflate it
+        # with a bare ParamExpr in a vector-aggregate operand position,
+        # which is legitimately list-typed and must not raise.
         _reject_lift_valued_bool_operand(expr, defs_by_path, context=context)
     for node in iter_nodes(expr):
         if tolerate_undeclared and any(not _is_declared(p, defs_by_path) for p in node.params):
             # A node touching an enclosing-scope up-reference cannot be typed
             # standalone (its referenced def is not in this scope); deferred to
-            # finalization over the merged space (D-26).
+            # finalization over the merged space.
             continue
         if isinstance(node, ArithOp):
             for path in node.params:
@@ -471,16 +497,16 @@ def check_expr_types(
                 operand_path = _vector_base(node.operand).path
                 raise ResolutionError(
                     f"{context}: is_sorted() on {operand_path!r} is restricted to a "
-                    "single repeat() level (row 24) — a nested lift has no canonical order"
+                    "single repeat() level (row 24); a nested lift has no canonical order"
                 )
         elif isinstance(node, Sum | Min | Max | CountOf | Distinct):
             _require_lift_domain(node.operand, defs_by_path, context=context, what=f"{node.kind}()")
         elif isinstance(node, ParamExpr):
-            # Row 29: a static out-of-range instance index (item 2, M10.5).
-            # Runs for *every* bare ParamExpr regardless of its surrounding
-            # node -- an out-of-range index is wrong wherever it appears,
-            # unlike the lift-valued-bool check below, which only applies at
-            # specific boolean-operator positions.
+            # Row 29: a static out-of-range instance index (item 2). Runs
+            # for every bare ParamExpr regardless of its surrounding node,
+            # since an out-of-range index is wrong wherever it appears. The
+            # lift-valued-bool check below applies only at specific
+            # boolean-operator positions.
             _check_static_index_range(node.path, defs_by_path, context=context)
         elif isinstance(node, Not):
             # Row 29: `~` applied to a still-list-typed operand (item 6).

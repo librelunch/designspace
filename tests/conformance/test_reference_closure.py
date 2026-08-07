@@ -219,7 +219,7 @@ class TestNestingGrid:
     @pytest.mark.parametrize("fact", sorted(FACTS))
     def test_cell(self, fact: str, route: str) -> None:
         if (fact, route) in EXPECTED_D24:
-            with pytest.raises(ResolutionError, match="D-24"):
+            with pytest.raises(ResolutionError, match="nested under more than one"):
                 _at_route(FACTS[fact](), route)
             return
         space = _at_route(FACTS[fact](), route)
