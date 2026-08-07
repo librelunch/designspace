@@ -1,29 +1,30 @@
 """ParamExpr: `ds.param(name)`, dual reference/definition (API.md, "Construction").
 
 Type methods and modifiers are pure recorders: each returns a new, immutable
-ParamExpr with pending state updated. No validation happens here — that is
-resolve/'s job (the pass pipeline decides what is an error, not the builder).
+`ParamExpr` with its pending state updated. Nothing is validated here. The
+pass pipeline in `resolve/` decides what is an error, not the builder.
 
-Internal storage fields are named with a trailing `_spec`/`_value` where the
-public modifier method shares the field's natural name (`prior`, `default`,
-`quantized`, `meta`) — a dataclass field and a same-named method in one class
-body collide (the `def` statement overwrites the field's class-level default),
-so the method needs its own name for the state it reads and writes.
+An internal storage field takes a trailing `_spec` or `_value` where the
+public modifier method shares the field's natural name, as with `prior`,
+`default`, `quantized` and `meta`. A dataclass field and a same-named method
+collide in one class body, the `def` statement overwriting the field's
+class-level default, so the method needs its own name for the state it reads
+and writes.
 
-The type methods and `.repeat()` live in `builder/_views.py`, not here — see
-API.md, "Builder view types" and DECISIONS.md D-27/D-28. `ParamExpr` is
-the base type: no type methods, no `.repeat()`, but every modifier that stays
-universal across param types (`.prior()`, `.default()`, `.when()`, `.tag()`,
-`.meta()`), the combinatorial queries, and the `VectorExpr` aggregates
-(reference-position usage needs these regardless of which type, if any, the
-referenced param turns out to declare).
+The type methods and `.repeat()` live in `builder/_views.py`; see API.md,
+"Builder view types". `ParamExpr` is the base type, with no type methods and
+no `.repeat()`, but with every modifier that stays universal across param
+types, namely `.prior()`, `.default()`, `.when()`, `.tag()` and `.meta()`,
+along with the combinatorial queries and the `VectorExpr` aggregates.
+Reference-position usage needs those regardless of which type, if any, the
+referenced param turns out to declare.
 
-`type_kind` is a `ClassVar`, not a field (DECISIONS.md D-28): each view in
-`builder/_views.py` declares its own fixed `type_kind`
-(`RealParamExpr.type_kind = "real"`, …), so it is excluded from `__init__`
-entirely — `ParamExpr(path="x", type_kind="integer")` is a `TypeError`, not
-a value resolution can misread. A bare `ParamExpr`/`FreshParamExpr` (no type
-chosen) inherits the base's `None`.
+`type_kind` is a `ClassVar` rather than a field. Each view in
+`builder/_views.py` declares its own fixed `type_kind`, as with
+`RealParamExpr.type_kind = "real"`, so it is excluded from `__init__`
+entirely: `ParamExpr(path="x", type_kind="integer")` is a `TypeError` rather
+than a value resolution could misread. A bare `ParamExpr` or
+`FreshParamExpr`, with no type chosen, inherits the base's `None`.
 """
 
 from __future__ import annotations
@@ -54,12 +55,13 @@ if TYPE_CHECKING:
 
 _ViewT = TypeVar("_ViewT", bound="ParamExpr")
 
-# Names `__getattr__` recognizes as *meaningful* misses (DECISIONS.md D-28):
-# a second type method (row 2) or a numeric-only modifier misapplied to a
-# non-numeric view / written after `.repeat()` (row 11). Both are frozen
-# error-table rows (tag R, ResolutionError) and must not degrade to a bare
-# AttributeError just because the view narrowing hid the method. Any other
-# attribute miss is a genuine typo and stays a plain AttributeError.
+# The names `__getattr__` recognizes as meaningful misses: a second type
+# method, which is row 2, and a numeric-only modifier misapplied to a
+# non-numeric view or written after `.repeat()`, which is row 11. Both are
+# frozen error-table rows, tagged R for ResolutionError, and must not
+# degrade to a bare AttributeError merely because the view narrowing hid the
+# method. Any other attribute miss is a genuine typo and stays a plain
+# AttributeError.
 _TYPE_METHOD_NAMES = frozenset(
     {
         "real",
@@ -81,23 +83,24 @@ _NUMERIC_ONLY_MODIFIERS = frozenset({"log_scale", "quantized"})
 
 @dataclass(frozen=True)
 class _ElementSnapshot:
-    """Builder-time closure of "everything left of `.repeat()`" (API.md,
-    "Modifiers and Layering" — "The lift"; DECISIONS.md D-18).
+    """Builder-time closure of everything left of `.repeat()`.
 
-    When `element_class is ListParamExpr`, this snapshot describes one
-    `.repeat()` level: `element`/`count`/`list_default` are populated and the
-    leaf fields below are unused — `element` recurses for a chained/variadic
-    `.repeat().repeat()`. Otherwise it describes the element itself (a
-    scalar/subset/permutation/choice/struct type), mirroring the same-named
-    `ParamExpr` fields it was snapshotted from.
+    See API.md, "Modifiers and Layering" > "The lift".
 
-    `element_class` (DECISIONS.md D-28) is the actual view class the element
-    was declared with (`type(self)` at `.repeat()`-time — always a concrete
-    leaf, since `.repeat()` only exists on typed views) rather than a
-    `type_kind` string: resolve/_pipeline.py reconstructs the element by
-    calling `element_class(...)` directly, and reads `element_class.type_kind`
-    (the view's `ClassVar`) wherever the IR still needs the plain string
-    (`ListDomain.element_kind`).
+    When `element_class is ListParamExpr`, the snapshot describes one
+    `.repeat()` level: `element`, `count` and `list_default` are populated,
+    the leaf fields below are unused, and `element` recurses for a chained
+    or variadic `.repeat().repeat()`. Otherwise it describes the element
+    itself, of a scalar, subset, permutation, choice or struct type,
+    mirroring the same-named `ParamExpr` fields it was snapshotted from.
+
+    `element_class` is the view class the element was declared with,
+    `type(self)` at the time `.repeat()` was called, rather than a
+    `type_kind` string. It is always a concrete leaf, `.repeat()` existing
+    only on typed views. `resolve/_pipeline.py` reconstructs the element by
+    calling `element_class(...)` directly, and reads the view's
+    `element_class.type_kind` `ClassVar` wherever the IR needs the plain
+    string, as `ListDomain.element_kind` does.
     """
 
     element_class: type[ParamExpr]
@@ -186,7 +189,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     """
 
     path: str
-    # ClassVar, not a field (DECISIONS.md D-28): excluded from __init__, so
+    # A ClassVar rather than a field, excluded from __init__, so that
     # ParamExpr(path="x", type_kind="integer") is a TypeError, not a value
     # resolution has to police. Each view in builder/_views.py overrides this
     # with its own fixed string; a bare ParamExpr/FreshParamExpr (no type
@@ -200,21 +203,20 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     condition: BoolExpr | None = None
     tags: frozenset[str] = frozenset()
     meta_map: MappingProxyType[str, Any] = field(default_factory=lambda: MappingProxyType({}))
-    # -- structural payloads (M3): raw builder-time state for .choice()/.space(),
-    # merged into the flat IR during resolution (resolve/_relocate.py). Not part
-    # of `domain` because the domain only needs variant names/has_payload, not
-    # the child Spaces themselves.
+    # -- structural payloads: raw builder-time state for .choice() and
+    # .space(), merged into the flat IR during resolution by
+    # resolve/_relocate.py. They are not part of `domain`, which needs only
+    # the variant names and has_payload rather than the child Spaces.
     choice_payloads: MappingProxyType[str, Any] = field(
         default_factory=lambda: MappingProxyType({})
     )
     struct_space: Any = None  # Space | None; typed Any to avoid an import cycle
-    # -- the lift (M4): set once `.repeat()` has been called at least once;
-    # `domain`/`prior_spec`/etc above are then reset (the fields this
-    # dataclass would otherwise be reusing to mean two different things at
-    # once — the class itself, a `ListParamExpr`, already carries the "this
-    # is a list" fact via its `type_kind` ClassVar) and every
-    # element-describing fact lives in `lift` instead — see
-    # `_ElementSnapshot` and DECISIONS.md D-18/D-28.
+    # -- the lift: set once `.repeat()` has been called at least once.
+    # `domain`, `prior_spec` and the rest above are then reset, since the
+    # dataclass would otherwise reuse them to mean two things at once, and
+    # every element-describing fact lives in `lift` instead; see
+    # `_ElementSnapshot`. The class itself, a `ListParamExpr`, already
+    # carries the "this is a list" fact through its `type_kind` ClassVar.
     lift: _ElementSnapshot | None = None
 
     @property
@@ -262,24 +264,24 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
         return frozenset({self.path})
 
     def _as(self, cls: type[_ViewT], **changes: Any) -> _ViewT:
-        """Build a *different* concrete view from `self`'s current field
-        values (DECISIONS.md D-28) — `dataclasses.replace()` always returns
-        `type(self)`, which is right for ordinary modifiers (they must
-        preserve the caller's view) but wrong for the type methods and
-        `.repeat()`, which narrow to a specific new view.
+        """Build a different concrete view from `self`'s current field values.
+
+        `dataclasses.replace()` always returns `type(self)`, which is right
+        for an ordinary modifier, since those must preserve the caller's
+        view, and wrong for the type methods and `.repeat()`, which narrow
+        to a specific new view.
         """
         kwargs: dict[str, Any] = {f.name: getattr(self, f.name) for f in fields(self)}
         kwargs.update(changes)
         return cls(**kwargs)
 
-    # `__getattr__` must be invisible to mypy (DECISIONS.md D-28): a class
-    # with a *statically visible* `__getattr__` is treated by mypy as
-    # accepting any attribute name, which would silently defeat the M4.6
-    # gate's static-typing check (`.categorical(...).log_scale()` must be a
-    # real `attr-defined` error). `if not TYPE_CHECKING:` makes mypy skip
-    # this definition entirely while it still runs normally at import time —
-    # confirmed empirically: `attr-defined` fires under mypy, the runtime
-    # exception still raises under CPython.
+    # `__getattr__` must be invisible to mypy. A class with a statically
+    # visible `__getattr__` is treated by mypy as accepting any attribute
+    # name, which would defeat the static-typing check that
+    # `.categorical(...).log_scale()` is a real `attr-defined` error.
+    # `if not TYPE_CHECKING:` makes mypy skip this definition entirely while
+    # it still runs normally at import time: `attr-defined` fires under
+    # mypy, and the runtime exception still raises under CPython.
     if not TYPE_CHECKING:
 
         def __getattr__(self, name: str) -> Any:
@@ -292,19 +294,19 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
                 if self.lift is not None:
                     raise ResolutionError(
                         f"param {self.path!r}: {name}() written after .repeat() applies "
-                        "to the list, not the element — call it before .repeat() (row 11)"
+                        "to the list, not the element; call it before .repeat() (row 11)"
                     )
                 raise ResolutionError(
                     f"param {self.path!r}: {name}() only applies to real or integer params (row 11)"
                 )
             raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
 
-    # `.field()` and the aggregate methods (`.sum()`, `.min()`, `.max()`,
-    # `.count_of()`, `.is_sorted()`, `.distinct()`) are inherited from
-    # VectorExpr — universal (DECISIONS.md D-28): API.md requires the
-    # base to *be* a VectorExpr, and a bare reference (`ds.param("layers")`,
-    # before any type is known at the reference site) needs them regardless
-    # of what the referenced param turns out to declare.
+    # `.field()` and the aggregate methods `.sum()`, `.min()`, `.max()`,
+    # `.count_of()`, `.is_sorted()` and `.distinct()` are inherited from
+    # VectorExpr and stay universal. API.md requires the base to be a
+    # VectorExpr, and a bare reference such as `ds.param("layers")`, written
+    # before any type is known at the reference site, needs them whatever
+    # the referenced param turns out to declare.
 
     def length(self) -> ArithExpr:
         """How many elements a `.repeat()` list holds, as an expression.
@@ -330,12 +332,12 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
         """
         return Length(self)
 
-    # -- combinatorial expression methods: kept universal, not narrowed to
-    # SubsetParamExpr/PermutationParamExpr (DECISIONS.md D-28) — validity is
-    # a resolution-time check (row 18: `.contains()` on permutation, etc.),
-    # not a construction-time one, per M0's "no evaluation, no resolution
-    # happens here" and the existing `_require_subset_domain`/
-    # `_require_permutation_domain` split in resolve/_expr_checks.py -------
+    # -- combinatorial expression methods: kept universal rather than
+    # narrowed to SubsetParamExpr and PermutationParamExpr. Validity is a
+    # resolution-time check, row 18 covering `.contains()` on a permutation
+    # and the like, rather than a construction-time one; no evaluation and
+    # no resolution happen here. `resolve/_expr_checks.py` already splits
+    # `_require_subset_domain` from `_require_permutation_domain`. --------
 
     def contains(self, item: Any) -> BoolExpr:
         """Whether a subset parameter includes `item`, as an expression.

@@ -1,13 +1,19 @@
-"""`space.represent(*rules)` (API.md, "The Representation Layer"; error
-rows 31-32; DECISIONS.md D-52…D-63).
+"""`space.represent(*rules)` (API.md, "The Representation Layer").
 
-Pipeline: dispatch rules over every param (first non-`None` wins per
-param; the induced chart rule alone when no rules are given — never as a
-fallback *behind* user rules, which would break the identity law) → row
-31/32 eligibility → per-param `target()` → transport (all four expression
-stores, `represent/_transport.py`) → settle defaults (encode-and-validate,
-or drop) → assemble the target `Space` → settle anchors the same way →
-build the whole-config `decode`/`encode` closures → `Representation`.
+Error rows 31 and 32 govern eligibility. The pipeline runs in order:
+
+1. Dispatch the rules over every param, the first non-`None` result winning
+   per param. When the caller gives no rules, the induced chart rule is the
+   whole set, never a fallback behind user rules, which would break the
+   identity law.
+2. Check row 31 and row 32 eligibility.
+3. Build each param's `target()`.
+4. Transport all four expression stores, in `represent/_transport.py`.
+5. Settle defaults, by encoding and validating, or by dropping.
+6. Assemble the target `Space`.
+7. Settle anchors the same way.
+8. Build the whole-config `decode` and `encode` closures, and return a
+   `Representation`.
 """
 
 from __future__ import annotations
@@ -43,15 +49,17 @@ def _dispatch(
     count_read: frozenset[str],
     prop_read: frozenset[str],
 ) -> dict[str, Encoding]:
-    """First non-`None` rule wins per param. The induced chart rule — used
-    only as the sole fallback when the caller passes no rules — silently
-    declines a count/prop-excluded param instead of matching it (D-58: its
-    *own* matching criterion already excludes them), exactly as if it had
-    returned `None` for that path; nobody explicitly asked for that param,
-    so declining is the right default. A **user-supplied** rule that
-    matches such a path is a different case — the user *did* ask, so
-    `_build_targets`'s eligibility check raises row 32 for it instead of
-    silently dropping the match.
+    """Dispatch the rules over one param; the first non-`None` result wins.
+
+    The induced chart rule, used only when the caller passes no rules,
+    silently declines a count-read or prop-excluded param rather than
+    matching it, exactly as if it had returned `None` for that path. Its own
+    matching criterion already excludes those params, and nobody explicitly
+    asked for them, so declining is the right default.
+
+    A user-supplied rule matching such a path is a different case. The user
+    did ask, so `_build_targets`' eligibility check raises row 32 rather
+    than dropping the match silently.
     """
     using_induced_fallback = not rules
     effective_rules = rules if rules else (induced_rule,)
@@ -62,20 +70,23 @@ def _dispatch(
             if candidate is None:
                 continue
             if using_induced_fallback and path in count_read:
-                break  # decline silently -- D-58's own exclusion criterion
+                break  # decline silently: the rule's own exclusion criterion
             if using_induced_fallback and path in prop_read and not has_prop_expr(candidate):
-                break  # likewise -- the induced chart encoding never has prop_expr anyway
+                break  # likewise; the induced chart encoding has no prop_expr
             matched[path] = candidate
             break
     return matched
 
 
 def _is_encodable_path(path: str, source: Space) -> bool:
-    """Row 32: no other key of `source.params` begins `f"{p}."` or
-    `f"{p}[]."` — an encoding owns its whole subtree; a struct, a
-    payload-bearing choice discriminator, and a struct/choice lift have
-    descendants relocated elsewhere that nothing reconnects. A *bare*
-    choice has no descendants and is encodable (D-53)."""
+    """Row 32: whether `p` owns its whole subtree.
+
+    No other key of `source.params` may begin `f"{p}."` or `f"{p}[]."`,
+    because an encoding owns its whole subtree. A struct, a payload-bearing
+    choice discriminator and a struct or choice lift each have descendants
+    relocated elsewhere that nothing reconnects. A bare choice has no
+    descendants and is encodable.
+    """
     dotted, bracketed = f"{path}.", f"{path}[]."
     return not any(
         other != path and (other.startswith(dotted) or other.startswith(bracketed))
@@ -99,7 +110,7 @@ def _check_eligibility(
     if path in count_read:
         raise ResolutionError(
             f"represent(): {path!r} is read by a .repeat() count and cannot "
-            "be encoded (row 32) — transport rewrites conditions, ParamDef."
+            "be encoded (row 32); transport rewrites conditions, ParamDef."
             "condition, constraints, and element_constraints, but never a "
             "count expression, so encoding it would silently change what "
             "the count means"
@@ -107,7 +118,7 @@ def _check_eligibility(
     if path in prop_read and not has_prop_expr(encoding):
         raise ResolutionError(
             f"represent(): {path!r} is read by .prop() and its Encoding "
-            "supplies no prop_expr() to repair the reference — either "
+            "supplies no prop_expr() to repair the reference; either "
             "supply one, or the param cannot be encoded (row 32)"
         )
 
@@ -139,10 +150,13 @@ def _build_targets(
 
 
 def _bottom_probe_paramdef(target_pd: ParamDef) -> ParamDef:
-    """A `ParamDef` shaped like `target_pd`'s own scalar domain — itself
-    for a plain scalar, or `element_paramdef` at the bottom `ListDomain`
-    level for a lift — used only to probe a candidate default/anchor value
-    for domain membership (`_domain_error_reason`), never stored."""
+    """A `ParamDef` shaped like `target_pd`'s own scalar domain.
+
+    That is `target_pd` itself for a plain scalar, or `element_paramdef` at
+    the bottom `ListDomain` level for a lift. It is used only to probe a
+    candidate default or anchor value for domain membership through
+    `_domain_error_reason`, and is never stored.
+    """
     if target_pd.type_kind != "list":
         return target_pd
     domain = target_pd.domain
@@ -154,8 +168,10 @@ def _bottom_probe_paramdef(target_pd: ParamDef) -> ParamDef:
 
 
 def _encoded_value_is_domain_valid(value: Any, domain: Any, probe_pd: ParamDef) -> bool:
-    """Recurses through a `ListDomain` chain (a list default is a list of
-    element values, not a count) down to `probe_pd`'s scalar shape."""
+    """Recurse through a `ListDomain` chain down to `probe_pd`'s scalar shape.
+
+    A list default is a list of element values rather than a count.
+    """
     if isinstance(domain, ListDomain):
         if not isinstance(value, list):
             return False
@@ -166,11 +182,14 @@ def _encoded_value_is_domain_valid(value: Any, domain: Any, probe_pd: ParamDef) 
 
 
 def _try_encode(encoding: Encoding, source_pd: ParamDef, value: Any) -> tuple[bool, Any]:
-    """`(ok, encoded)` — `ok` is `False` when the encoding cannot encode at
-    all, or its own `encode()` raises. Callers still owe the domain-
-    membership check afterward — an encoding is never trusted blindly
-    (API.md: "`represent()` ... validates the result itself rather than
-    trusting the assembler")."""
+    """`(ok, encoded)` for one candidate value.
+
+    `ok` is `False` when the encoding cannot encode at all, or when its own
+    `encode()` raises. Callers still owe the domain-membership check
+    afterward, an encoding never being trusted blindly: API.md says
+    "`represent()` ... validates the result itself rather than trusting the
+    assembler".
+    """
     if not can_encode(encoding):
         return False, None
     try:
@@ -248,11 +267,12 @@ def _transcode_level(
         value = nested[local_name]
         encoding = matched.get(template_path)
         if encoding is not None:
-            # `encode` is an optional capability (never part of `Encoding`'s
-            # static Protocol shape) -- reached via `getattr` rather than a
-            # direct attribute access mypy --strict would reject. Callers of
-            # this "encode" direction (`build_encode`) already gate on every
-            # matched encoding supplying it, so this is always safe here.
+            # `encode` is an optional capability, never part of
+            # `Encoding`'s static Protocol shape, so it is reached through
+            # `getattr` rather than the direct attribute access
+            # mypy --strict would reject. `build_encode`, the only caller of
+            # this direction, already gates on every matched encoding
+            # supplying it.
             fn = encoding.decode if direction == "decode" else getattr(encoding, "encode")  # noqa: B009
             out[local_name] = fn(pd, value)
             continue
@@ -282,7 +302,7 @@ def _transcode_choice_value(
     if isinstance(value, str):
         return value  # bare variant, no payload
     if not (isinstance(value, dict) and len(value) == 1):
-        return value  # malformed -- validate()'s job to catch, not this transcoder's
+        return value  # malformed; validate() catches this, not the transcoder
     ((variant_name, payload),) = value.items()
     if not isinstance(payload, dict):
         return value
@@ -330,11 +350,11 @@ def _transcode_list_element(
         return _transcode_list_value(
             item, domain.element_domain, space, matched, direction, template_prefix[:-1]
         )
-    # A direct scalar/subset/permutation/bool/categorical/custom element:
-    # reached only when the *enclosing* list param is itself unmatched (a
-    # matched direct lift is handled wholesale by _transcode_level, above,
-    # since its own governing key IS the enclosing list's path) -- nothing
-    # further to recurse into.
+    # A direct scalar, subset, permutation, bool, categorical or custom
+    # element. It is reached only when the enclosing list param is itself
+    # unmatched; _transcode_level above handles a matched direct lift
+    # wholesale, its governing key being the enclosing list's path. There is
+    # nothing further to recurse into.
     return item
 
 
@@ -360,8 +380,11 @@ def build_encode(
 def _settle_anchors(
     source: Space, matched: Mapping[str, Encoding], target_probe: Space
 ) -> tuple[dict[str, Config], list[str]]:
-    """An anchor drops *whole* (never field-wise) — a config missing an
-    active param is not a valid anchor (API.md, "Obligations")."""
+    """Whether this anchor survives; an anchor drops whole, never field-wise.
+
+    A config missing an active param is not a valid anchor (API.md,
+    "Obligations").
+    """
     surviving: dict[str, Config] = {}
     dropped: list[str] = []
     for name, config in source.anchors.items():
@@ -391,11 +414,11 @@ def represent(source: Space, *rules: EncodingRule) -> Representation:
 
     dropped_defaults = _settle_defaults(source, target_params, matched)
 
-    # A probe build (no anchors yet) so surviving anchors can be validated
-    # against the real target structure before the final, anchor-bearing
-    # build below -- `space_from_ir`'s own anchor pass would otherwise hard
-    # -raise (row 22) on exactly the anchors this function means to drop
-    # softly instead.
+    # A probe build, without anchors, so that surviving anchors can be
+    # validated against the real target structure before the final,
+    # anchor-bearing build below. `space_from_ir`'s own anchor pass would
+    # otherwise raise row 22 on exactly the anchors this function means to
+    # drop softly.
     target_probe = _build_space_from_ir(
         target_params, transported.target_conditions, transported.target_constraints
     )

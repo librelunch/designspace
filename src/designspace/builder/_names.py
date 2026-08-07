@@ -4,16 +4,14 @@
 Error-table row 5: names may not contain the path grammar's reserved
 characters, regardless of syntactic route.
 
-`check_meta_json_serializable` backs row 23 (`.meta()`/`.forbid()`/
-`.encourage()` tags and meta): the error table's own wording is
-"non-JSON-serializable meta value" — a list/dict value passes that bar. The
-Identity normalization pipeline's step 5 ("meta values encode as {"$t": ...,
-"v": ...}") describes how a *scalar* leaf gets tagged, not a ceiling on
-meta's shape — a nested list/dict meta value recurses through the same
-generic codec used for `default`/`list_default`
-(`identity/_tags.py::encode_default_value`), tagging each scalar leaf.
-(DECISIONS.md D-36, corrected: an earlier draft tightened this to
-scalar-only, which row 23's literal text does not support.)
+`check_meta_json_serializable` backs row 23, over the tags and metadata
+`.meta()`, `.forbid()` and `.encourage()` accept. The error table's wording
+is "non-JSON-serializable meta value", which a list or dict value clears.
+The Identity normalization pipeline's step 5, "meta values encode as
+{"$t": ..., "v": ...}", describes how a scalar leaf is tagged rather than
+capping meta's shape: a nested list or dict meta value recurses through the
+generic codec `default` and `list_default` use,
+`encode_default_value` in `identity/_tags.py`, which tags each scalar leaf.
 
 This check walks the value itself rather than delegating to `json.dumps`:
 `json.dumps` is *more* lenient than `encode_default_value` in ways that
@@ -25,17 +23,17 @@ silently mis-round-trip later:
 - a non-string dict key (`json.dumps` coerces `1` to `"1"`; the encoded
   tree keeps the original key type, which then round-trips as a different
   value, or is rejected outright once handed to the JCS canonicalizer);
-- a dict key starting with `"$"` (the tag micro-format's own key, `"$t"`)
-  nested inside a meta value — `decode_default_value` treats *any* dict
-  containing a `"$t"` key as a tagged scalar and looks for a sibling
-  `"v"` key, so `{"cfg": {"$t": "oops"}}` encodes without error but raises
-  a bare `KeyError` on decode. (A `"$"`-prefixed key at the *top level* of
-  `meta` itself doesn't collide — only values are decoded through
-  `decode_default_value`, never the enclosing dict's own keys — but the
-  prefix is reserved everywhere in a meta key for a uniform, easier-to-state
-  rule; unlike a `default`'s struct field names, which are already
-  constrained by declared struct fields, meta keys are unconstrained user
-  input, so the stricter rule collects nothing back later.)
+- a dict key starting with `"$"`, the tag micro-format's own key being
+  `"$t"`, nested inside a meta value. `decode_default_value` treats any dict
+  containing a `"$t"` key as a tagged scalar and looks for a sibling `"v"`
+  key, so `{"cfg": {"$t": "oops"}}` encodes without error and raises a bare
+  `KeyError` on decode. A `"$"`-prefixed key at the top level of `meta`
+  itself does not collide, only values being decoded through
+  `decode_default_value` and never the enclosing dict's own keys, but the
+  prefix is reserved everywhere in a meta key for a uniform rule. Meta keys
+  are unconstrained user input, unlike a `default`'s struct field names,
+  which declared struct fields already constrain, so the stricter rule costs
+  nothing.
 
 This check therefore accepts exactly the shapes `encode_default_value`
 round-trips faithfully: `None`/`bool`/`int`/finite `float`/`str`, or
@@ -92,7 +90,7 @@ def _check_meta_value(value: Any, *, what: str) -> None:
             raise ResolutionError(f"{what} = {value!r} must be finite (no NaN/Inf)")
         return
     raise ResolutionError(
-        f"{what} = {value!r} is not JSON-serializable — expected bool/int/"
+        f"{what} = {value!r} is not JSON-serializable; expected bool/int/"
         "float/str/None, or a list/dict (string keys) thereof, got "
         f"{type(value).__name__}"
     )

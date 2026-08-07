@@ -1,32 +1,31 @@
 """Kleene evaluation (API.md, "Expressions" > "Three-valued semantics").
 
-`Unknown` carries a **provenance** (rule 5, M10.5/D-71): `"inactive"` (rule
-1 — the only one `.if_inactive()` coalesces), `"pending"` (an operand not
-yet present in a *partial* config — never coalesced, since eating it would
-make a driver loop conclude a constraint is satisfied while the value that
-will violate it is still unassigned), or `"permanent"` (rule 6 emptiness —
-`min`/`max` of an active empty lift — or a structurally malformed leaf;
-never coalesced either, since the method's own name disclaims an *active*
-empty lift). `_leaf_value`'s "active but missing from config" branch used
-to be a defensive M2-era catch-all (no partial-config API existed yet to
-give it meaning); it is now exactly the "pending" case Partial Configs (M6)
-defines. Three singletons — `UNKNOWN_INACTIVE`/`UNKNOWN_PENDING`/
-`UNKNOWN_PERMANENT` — are joined by `_join_unknown` (max over
-`INACTIVE < PENDING < PERMANENT`) wherever a node combines more than one
-Unknown-valued operand, so a mixed node never under-reports how resolvable
-it is. `UNKNOWN` stays bound to the `"permanent"` singleton for sites that
-only ever produce that provenance (rule-6 emptiness, a malformed value);
-`isinstance(x, Unknown)` still matches all three, unchanged for every
-existing caller outside this module.
+`Unknown` carries a provenance, under rule 5, and there is one singleton per
+provenance:
 
-Every evaluator here takes `space` (not just `config`/`activity`), because
-ordinal ordering compares by *declaration position*, not by the raw value
-("Ordered by declaration position. Comparison yes, arithmetic no.") — a
-leaf's domain has to be looked up to translate its value to an index before
-`>`/`<`/`>=`/`<=` mean anything.
+- `"inactive"`, from rule 1, is the only provenance `.if_inactive()`
+  coalesces.
+- `"pending"` marks an operand not yet present in a partial config. It is
+  never coalesced: eating it would let a driver loop conclude a constraint
+  is satisfied while the value that will violate it is still unassigned.
+- `"permanent"` marks rule 6 emptiness, the `min` or `max` of an active
+  empty lift, or a structurally malformed leaf. It is never coalesced
+  either, `.if_inactive()`'s own name disclaiming an active empty lift.
 
-Internal to the library: not part of the public surface (mirrors how
-`resolve_space` isn't re-exported either).
+`_join_unknown` takes the maximum over `INACTIVE < PENDING < PERMANENT`
+wherever a node combines more than one Unknown-valued operand, so a mixed
+node never under-reports how resolvable it is. `UNKNOWN` is bound to the
+`"permanent"` singleton, for the sites that only ever produce that
+provenance, and `isinstance(x, Unknown)` matches all three.
+
+Every evaluator here takes `space`, not `config` and `activity` alone,
+because ordinal ordering compares by declaration position rather than by raw
+value: "Ordered by declaration position. Comparison yes, arithmetic no." A
+leaf's domain must be looked up to translate its value into an index before
+`>`, `<`, `>=` and `<=` mean anything.
+
+Internal to the library, and not part of the public surface, as
+`resolve_space` is not.
 """
 
 from __future__ import annotations
@@ -81,10 +80,12 @@ _PROVENANCE_RANK = {"inactive": 0, "pending": 1, "permanent": 2}
 
 
 class Unknown:
-    """Kleene's third truth value, carrying a provenance (rule 5). One
-    singleton per provenance — compare with `isinstance`, or `is
-    UNKNOWN_INACTIVE` where the provenance itself matters (as
-    `IfInactive` does)."""
+    """Kleene's third truth value, carrying a provenance under rule 5.
+
+    There is one singleton per provenance. Compare with `isinstance`, or
+    with `is UNKNOWN_INACTIVE` where the provenance itself matters, as
+    `IfInactive` does.
+    """
 
     _instances: ClassVar[dict[str, Unknown]] = {}
 
@@ -112,12 +113,14 @@ Kleene = bool | Unknown
 
 
 def _join_unknown(*values: Any) -> Unknown:
-    """The strongest (least-resolvable) provenance among the Unknown-valued
-    arguments — rule 5's max-join, `INACTIVE < PENDING < PERMANENT`. A node
-    with one coalescible operand and one pending/permanent one must still
-    block `.if_inactive()` from coalescing, so the join always keeps the
-    stronger side. Callers only invoke this once they already know at least
-    one argument is `Unknown`."""
+    """The strongest, least resolvable provenance among Unknown arguments.
+
+    This is rule 5's max-join over `INACTIVE < PENDING < PERMANENT`. A node
+    with one coalescible operand and one pending or permanent operand must
+    still block `.if_inactive()` from coalescing, so the join keeps the
+    stronger side. Callers invoke this only once they know at least one
+    argument is `Unknown`.
+    """
     best: Unknown | None = None
     best_rank = -1
     for v in values:
@@ -131,24 +134,27 @@ def _join_unknown(*values: Any) -> Unknown:
 
 
 def _resolve_negative_indices(path: str, config: dict[str, Any]) -> str | Unknown:
-    """Resolves every negative bracket index in `path` against its lift's
-    realized length, read progressively from `config` (API.md,
-    "Expressions": negative indices are "resolved against the lift's own
-    realized length"). Each nesting level's own count is already a flat
-    `config` key at exactly the prefix built so far — `config["g"]` (outer
-    count), `config["g[0]"]` (inner count for outer-instance 0), etc.,
-    mirroring `_gather_instance_paths`'s own key convention — so no
-    `space`/`ListDomain` lookup is needed here, just the flat config.
+    """Resolve every negative bracket index in `path` against its lift.
 
-    Returns the fully-resolved (all-positive) concrete path, or an
-    `Unknown`: `UNKNOWN_PENDING` if a governing count is not yet present
-    in `config` (partial eval — the count itself is still unassigned);
-    `UNKNOWN_INACTIVE` if a (positive or resolved-negative) index is out
-    of range against an already-known count — the *dynamic* out-of-range
-    rule (item 2's static case is rejected at resolution, row 29, and
-    never reaches evaluation). A path with no brackets at all resolves to
-    itself unchanged (the common scalar case, checked first to skip the
-    parse)."""
+    API.md, "Expressions" says a negative index is "resolved against the
+    lift's own realized length", which is read progressively from `config`.
+    Each nesting level's own count is a flat `config` key at exactly the
+    prefix built so far: `config["g"]` for the outer count,
+    `config["g[0]"]` for the inner count of outer instance 0, and so on,
+    matching `_gather_instance_paths`' key convention. No `space` or
+    `ListDomain` lookup is needed, only the flat config.
+
+    Returns the fully resolved, all-positive concrete path, or an `Unknown`.
+    `UNKNOWN_PENDING` means a governing count is not yet present in
+    `config`, so the count itself is still unassigned under partial
+    evaluation. `UNKNOWN_INACTIVE` means an index, positive or resolved from
+    a negative, is out of range against an already-known count. That is the
+    dynamic out-of-range rule; the static case is rejected at resolution
+    under row 29 and never reaches evaluation.
+
+    A path with no brackets resolves to itself unchanged. That is the common
+    scalar case, checked first to skip the parse.
+    """
     if "[" not in path:
         return path
     segments = parse_path(path)
@@ -157,12 +163,12 @@ def _resolve_negative_indices(path: str, config: dict[str, Any]) -> str | Unknow
         prefix = f"{prefix}.{seg.name}" if prefix else seg.name
         for idx in seg.brackets:
             if idx is None:
-                # A bare "[]" virtual template marker (D-18) evaluated
-                # unsubstituted -- e.g. a lifted choice's own discriminator
-                # condition, checked generically (not per real instance) by
-                # list-default validation. Never a literal `config` key
-                # (that branch below would have caught it too); matches
-                # this path's pre-M10.5 undifferentiated Unknown.
+                # A bare "[]" virtual template marker evaluated
+                # unsubstituted, as in a lifted choice's own discriminator
+                # condition, which list-default validation checks
+                # generically rather than per real instance. It is never a
+                # literal `config` key; the branch below would have caught
+                # it if it were.
                 return UNKNOWN_PENDING
             count = config.get(prefix)
             if not isinstance(count, int) or isinstance(count, bool) or count < 0:
@@ -185,17 +191,19 @@ def _leaf_value(path: str, config: dict[str, Any], activity: dict[str, bool]) ->
     return config[resolved]
 
 
-# -- vector expressions and aggregates (M4; DECISIONS.md D-18/D-19) ----------
+# -- vector expressions and aggregates --------------------------------------
 #
-# A vector expression (a lift-referencing `ParamExpr`, or a `.field()`
-# projection of one) resolves to `UNKNOWN` if the lift itself is inactive
-# (rule 1 — mechanically identical to a scalar inactive leaf) or to a
-# (possibly nested, for chained `.repeat()`) list of per-instance leaves,
-# each itself possibly `UNKNOWN` (an *interior* Unknown — only reachable
-# via `.field()` on a struct element whose field carries a sibling
-# `.when()`). `_vector_paths` builds the nested structure of *instance
-# paths* rather than values so `.field()` can chain onto it; `_vector_values`
-# is the thin values-view aggregates consume.
+# A vector expression is a lift-referencing `ParamExpr`, or a `.field()`
+# projection of one. It resolves to `UNKNOWN` when the lift itself is
+# inactive, under rule 1 and mechanically identically to a scalar inactive
+# leaf, or to a list of per-instance leaves, nested for a chained
+# `.repeat()`. A leaf may itself be `UNKNOWN`, an interior Unknown reachable
+# only through `.field()` on a struct element whose field carries a sibling
+# `.when()`.
+#
+# `_vector_paths` builds the nested structure of instance paths rather than
+# of values, so that `.field()` can chain onto it. `_vector_values` is the
+# thin values view aggregates consume.
 
 
 def _gather_instance_paths(path: str, domain: Any, config: dict[str, Any]) -> Any:
@@ -239,12 +247,13 @@ def _vector_paths(
         return UNKNOWN_INACTIVE
     if path not in config:
         return UNKNOWN_PENDING  # the lift's own count is still unset (partial eval)
-    # `path` is usually already a `space.params` key, but a per-element
-    # constraint's own nested lift reaches here concrete-instance-renamed
-    # (`instantiate_constraints`: "rows[].cells" -> "rows[0].cells" for row
-    # 0) — never itself a declared key, only its template is. `config`'s
-    # count/leaf entries are keyed by the concrete form (`_gather_instance_
-    # paths` needs that), so only the *domain lookup* falls back to it.
+    # `path` is usually already a `space.params` key. A per-element
+    # constraint's own nested lift reaches here renamed to a concrete
+    # instance instead, `instantiate_constraints` turning "rows[].cells"
+    # into "rows[0].cells" for row 0, and that form is never a declared key;
+    # only its template is. `config`'s count and leaf entries are keyed by
+    # the concrete form, which `_gather_instance_paths` requires, so only
+    # the domain lookup falls back to the template.
     domain_path = path if path in space.params else _INDEX_RE.sub("[]", path)
     return _gather_instance_paths(path, space.params[domain_path].domain, config)
 
@@ -252,13 +261,17 @@ def _vector_paths(
 def _vector_values(
     expr: Expr, config: dict[str, Any], activity: dict[str, bool], space: Space
 ) -> Any | Unknown:
-    """`ChartApply` (a representation's decode, substituted by transport) is
-    vector-polymorphic: wrapping a lift or a `.field()` projection, it maps
-    `chart.from_unit` element-wise over that operand's own vector values
-    rather than gathering instance paths itself — the wrapped operand's
-    shape is untouched by a decode, only its leaves' values are (API.md,
-    "Expressions" — "Chart application" is "vector-polymorphic: applied to
-    a lift or a projection it maps element-wise")."""
+    """Evaluate a `ChartApply` over a vector operand.
+
+    `ChartApply` is a representation's decode, substituted by transport, and
+    it is vector-polymorphic. Wrapping a lift or a `.field()` projection, it
+    maps `chart.from_unit` element-wise over that operand's own vector
+    values rather than gathering instance paths itself: a decode leaves the
+    wrapped operand's shape untouched and changes only its leaves' values.
+    API.md, "Expressions" states that chart application is
+    "vector-polymorphic: applied to a lift or a projection it maps
+    element-wise".
+    """
     if isinstance(expr, ChartApply):
         inner = _vector_values(expr.operand, config, activity, space)
         if isinstance(inner, Unknown):
@@ -276,10 +289,13 @@ def _aggregate_leaves(
     activity: dict[str, bool],
     space: Space,
 ) -> list[Any] | Unknown:
-    """The flat leaf list an aggregate consumes, or `UNKNOWN` if the base
-    lift itself is inactive (rule 1). Callers still need to check for `[]`
-    (rule 6, empty) and interior `Unknown` entries (D-19) themselves, since
-    the empty/non-empty/Unknown-element handling differs per aggregate."""
+    """The flat leaf list an aggregate consumes.
+
+    Returns `UNKNOWN` when the base lift itself is inactive, under rule 1.
+    Callers must still check for `[]`, rule 6's empty case, and for interior
+    `Unknown` entries, since the empty, non-empty and Unknown-element
+    handling differs per aggregate.
+    """
     values = _vector_values(expr.operand, config, activity, space)
     if isinstance(values, Unknown):
         return values
@@ -316,11 +332,13 @@ def _values_equal(a: Any, b: Any) -> bool:
 
     Bool is type-tagged (Python's `True == 1` would otherwise leak through);
     int/float compare numerically (`5 == 5.0`), matching real/integer domains
-    where the distinction is never meaningful — everything else (str, and
-    any other `Any`-typed categorical/ordinal value) requires an exact type
-    match, matching declaration-time type-tagged distinctness (rows 3/4).
-    See DECISIONS.md for the one gap this leaves: a categorical/ordinal
-    domain that deliberately declares both `1` and `1.0` as distinct variants
+    where the distinction is never meaningful. Everything else, meaning
+    `str` and any other `Any`-typed categorical or ordinal value, requires
+    an exact type match, matching the type-tagged distinctness declaration
+    time applies under rows 3 and 4.
+
+    One gap remains: a categorical or ordinal domain that deliberately
+    declares both `1` and `1.0` as distinct variants
     cannot be told apart by `==` at evaluation time.
     """
     if isinstance(a, bool) or isinstance(b, bool):
@@ -334,15 +352,17 @@ def _values_equal(a: Any, b: Any) -> bool:
 
 def _resolve_param_domain(path: str, space: Space) -> Any:
     """`path` may be an ordinary definition path, a struct/choice lift
-    instance path (`"stops[0].dwell"` — its `"[]"`-bracketed template
-    carries the real domain), or a direct scalar/choice lift element
-    nested to any depth (`"dropout[3]"`, `"g[0][1]"` — no template of its
-    own, but the element domain lives on the owning list's chained
-    `ListDomain`). Mirrors resolve/_expr_checks.py's `_resolve_entry` via
-    the shared `paths._grammar.split_instance_path` walk, at evaluation
-    time (`space.params` is always the resolved `ParamDef` dict here,
-    never a builder-time one, so there is no "not yet built" fallback to
-    preserve)."""
+    instance path (`"stops[0].dwell"`, whose `"[]"`-bracketed template
+    carries the real domain), or a direct scalar or choice lift element
+    nested to any depth, such as `"dropout[3]"` or `"g[0][1]"`, which has no
+    template of its own but whose element domain lives on the owning list's
+    chained `ListDomain`.
+
+    This mirrors `_resolve_entry` in `resolve/_expr_checks.py` through the
+    shared `split_instance_path` walk in `paths._grammar`, at evaluation
+    time. `space.params` is always the resolved `ParamDef` dict here, never
+    a builder-time one, so there is no "not yet built" fallback to preserve.
+    """
     if path in space.params:
         return space.params[path].domain
     if "[" not in path:
@@ -370,8 +390,11 @@ def _ordinal_domain_of(node: Expr, space: Space) -> OrdinalDomain | None:
 
 
 def _ordinal_index(domain: OrdinalDomain, value: Any) -> int | Unknown:
-    """`value`'s declaration-position index, or Unknown if it isn't a member
-    (a malformed config — `validate()` is what reports that, not this)."""
+    """`value`'s declaration-position index, or Unknown if it is not a member.
+
+    A non-member value means a malformed config, which `validate()` reports
+    rather than this function.
+    """
     for i, v in enumerate(domain.values):
         if type(v) is type(value) and v == value:
             return i
@@ -386,14 +409,17 @@ def _evaluate_prop(
     *,
     status: Mapping[str, str] | None = None,
 ) -> Any | Unknown:
-    """`.prop()`: the operand's own (phenotype-form, DECISIONS.md D-46)
-    value, bridged back to native via `from_json` and extracted. Contract
-    law (API.md, "Protocols"): `extract` is called only on a value that
-    passed `validate` — an invalid config value degrades to a *permanent*
-    Unknown here (never a crash; distinct from the operand's own
-    inactive/pending state propagated just above, which is coalescible or
-    resolvable respectively); `validate()` itself is what must still report
-    it as a `ParamError`."""
+    """Evaluate `.prop()`: bridge the operand to native, then extract.
+
+    The operand's value is in phenotype form and is bridged back to native
+    through `from_json`. API.md, "Protocols" states the contract law that
+    `extract` is called only on a value that passed `validate`, so an
+    invalid config value degrades to a permanent Unknown here rather than
+    crashing. That is distinct from the operand's own inactive or pending
+    state, propagated just above, which is coalescible and resolvable
+    respectively. `validate()` must still report the value as a
+    `ParamError`.
+    """
     value = evaluate_arith(expr.operand, config, activity, space, status=status)
     if isinstance(value, Unknown):
         return value  # propagate the custom param's own inactive/pending state
@@ -408,10 +434,10 @@ def _evaluate_prop(
             return UNKNOWN_PERMANENT
         return pt.extract(native, expr.name)
     except Exception:
-        # A structurally-malformed config value: `from_json`/`validate`
-        # themselves may raise on it (core cannot type-check an opaque
-        # value in advance) — degrades to a permanent Unknown, same as any
-        # other malformed leaf; `validate()` is what must still report it
+        # A structurally malformed config value. `from_json` and `validate`
+        # may themselves raise on it, core being unable to type-check an
+        # opaque value in advance, so it degrades to a permanent Unknown
+        # like any other malformed leaf. `validate()` must still report it
         # as a `ParamError`.
         return UNKNOWN_PERMANENT
 
@@ -425,10 +451,13 @@ def _evaluate_operand(
     status: Mapping[str, str] | None,
     value_cache: dict[Value, Any] | None,
 ) -> Any | Unknown:
-    """A `ds.value`/future-opaque-leaf operand: an ordinary `ArithExpr` or
-    `BoolExpr` (row 30 checks at construction only that it is *some*
-    expression; a bare vector expression like an unaggregated `.field()` is
-    neither and has no scalar value to hand `fn`)."""
+    """Evaluate one operand of an opaque leaf such as `ds.value`.
+
+    An operand is an ordinary `ArithExpr` or `BoolExpr`. Row 30 checks at
+    construction only that it is some expression. A bare vector expression,
+    such as an unaggregated `.field()`, is neither and has no scalar value
+    to hand to `fn`.
+    """
     if isinstance(operand, ArithExpr):
         return evaluate_arith(
             operand, config, activity, space, status=status, value_cache=value_cache
@@ -452,25 +481,29 @@ def _evaluate_value(
     status: Mapping[str, str] | None = None,
     value_cache: dict[Value, Any] | None = None,
 ) -> Any | Unknown:
-    """`ds.value(fn, *operands, returns=type)`: Unknown iff some *operand
-    evaluates* Unknown (D-76) — not a literal scan of `expr.params` — so
-    `.if_inactive()` and any other coercion inside an operand actually
-    compose, as API.md's "Expressions" promises ("`.if_inactive()` and any
-    other coercion compose inside them"). `fn` is called with exactly the
-    operand values, positionally, never the config; an exception `fn` raises
-    propagates uncaught (D-76) — deliberately unlike `_evaluate_prop`'s
-    defensive swallow, which is licensed by the custom-type contract law
-    ("extract is called only on a value that passed validate") that `fn` has
-    no equivalent of.
+    """Evaluate `ds.value(fn, *operands, returns=type)`.
 
-    `value_cache` (optional, identity-keyed on the `Value` node itself) lets
-    a caller that evaluates the same expression tree twice for two purposes
-    — `eval/_constraint_eval.py::evaluate_constraint` and
-    `partial/_partial.py::_classify_constraint` both compute a Kleene
-    satisfaction value via `evaluate_bool` and then, separately, a margin
-    via `eval/_margins.py::margin`, which independently re-walks the same
-    `Compare` leaves — call `fn` only once per node instead of twice. A
-    `None` cache (every other caller) evaluates exactly as before."""
+    The result is Unknown exactly when some operand evaluates Unknown,
+    rather than when a literal scan of `expr.params` finds one, so that
+    `.if_inactive()` and any other coercion inside an operand compose. API.md,
+    "Expressions" promises that "`.if_inactive()` and any other coercion
+    compose inside them".
+
+    `fn` is called with exactly the operand values, positionally, and never
+    with the config. An exception `fn` raises propagates uncaught. That is
+    deliberately unlike `_evaluate_prop`'s defensive swallow, which the
+    custom-type contract law licenses by promising that "extract is called
+    only on a value that passed validate"; `fn` has no equivalent.
+
+    `value_cache` is optional and identity-keyed on the `Value` node itself.
+    It lets a caller that evaluates one expression tree twice call `fn` once
+    per node rather than twice. Both `evaluate_constraint` in
+    `eval/_constraint_eval.py` and `_classify_constraint` in
+    `partial/_partial.py` compute a Kleene satisfaction value through
+    `evaluate_bool` and then a margin through `margin` in
+    `eval/_margins.py`, which re-walks the same `Compare` leaves
+    independently. A `None` cache evaluates as if the cache did not exist.
+    """
     if value_cache is not None and expr in value_cache:
         return value_cache[expr]
     values = [
@@ -518,10 +551,13 @@ def _count_range(
     status: Mapping[str, str] | None = None,
     value_cache: dict[Value, Any] | None = None,
 ) -> tuple[int, int, Unknown]:
-    """`(true_count, unknown_count, joined_unknown)` — API.md: `ds.count`
-    tracks `[t, t + u]`. `joined_unknown` is the strongest provenance among
-    the operands that came back Unknown (rule 5); meaningful only when
-    `u > 0` and the caller ends up reporting Unknown."""
+    """`(true_count, unknown_count, joined_unknown)` for `ds.count`.
+
+    API.md has `ds.count` track `[t, t + u]`. `joined_unknown` is the
+    strongest provenance among the operands that came back Unknown, under
+    rule 5, and is meaningful only when `u > 0` and the caller reports
+    Unknown.
+    """
     t = 0
     u = 0
     joined = UNKNOWN_INACTIVE
@@ -599,8 +635,9 @@ def evaluate_arith(
         value = evaluate_arith(expr.operand, config, activity, space)
         if isinstance(value, Unknown):
             return UNKNOWN
-        # Missing mapping keys contribute 0 (spec: mapping keys ⊆ item
-        # universe, so partial coverage is legal — see DECISIONS.md).
+        # A missing mapping key contributes 0. The spec constrains mapping
+        # keys to a subset of the item universe, so partial coverage is
+        # legal.
         return sum(expr.mapping.get(item, 0) for item in value)
     if isinstance(expr, PositionOf):
         value = evaluate_arith(expr.operand, config, activity, space)
@@ -618,11 +655,11 @@ def evaluate_arith(
             expr, config, activity, space, status=status, value_cache=value_cache
         )
     if isinstance(expr, ChartApply):
-        # Scalar position: `operand` is always a bare `ParamExpr` here (a
-        # `Field`-projected operand only ever reaches this node inside an
-        # aggregate, which evaluates it through `_vector_values` instead —
-        # `Field` has no arithmetic dunders of its own, so it can never
-        # appear directly under a `Compare`/`ArithOp`).
+        # Scalar position: `operand` is always a bare `ParamExpr` here. A
+        # `Field`-projected operand reaches this node only inside an
+        # aggregate, which evaluates it through `_vector_values` instead.
+        # `Field` has no arithmetic dunders of its own and so can never
+        # appear directly under a `Compare` or `ArithOp`.
         assert isinstance(expr.operand, ArithExpr)
         value = evaluate_arith(
             expr.operand, config, activity, space, status=status, value_cache=value_cache
@@ -635,7 +672,7 @@ def evaluate_arith(
         if len(leaves) == 0:
             return 0  # rule 6: empty aggregate
         if any(isinstance(v, Unknown) for v in leaves):
-            return _join_unknown(*leaves)  # D-19: interior Unknown -> aggregate Unknown
+            return _join_unknown(*leaves)  # an interior Unknown makes the aggregate Unknown
         return sum(leaves)
     if isinstance(expr, Min):
         leaves = _aggregate_leaves(expr, config, activity, space)
@@ -702,12 +739,15 @@ def _kleene_or(a: Kleene, b: Kleene) -> Kleene:
 def _evaluate_is_active(
     expr: IsActive, activity: dict[str, bool], status: Mapping[str, str] | None
 ) -> Kleene:
-    """`is_active()` is total under *full* evaluation (rule 1: every param has
-    a determined binary activity) but not under *partial* evaluation — API.md,
-    "Partial Configs": "`is_active(p)` ... determined for a determined `p`,
-    Unknown for an `unknown` one." `status` (the four-valued partial status
-    map) carries that extra distinction; absent it, this falls back to the
-    old total/binary reading unchanged.
+    """Evaluate `is_active()`, which is total only under full evaluation.
+
+    Under full evaluation every param has a determined binary activity, by
+    rule 1. Under partial evaluation it does not: API.md, "Partial Configs"
+    says `is_active(p)` is "determined for a determined `p`, Unknown for an
+    `unknown` one".
+
+    `status`, the four-valued partial status map, carries that extra
+    distinction. Without it this falls back to the total, binary reading.
     """
     if status is None:
         return all(activity.get(p, True) for p in expr.operand.params)
@@ -736,14 +776,15 @@ def evaluate_bool(
         v = _leaf_value(expr.path, config, activity)
         return v if isinstance(v, Unknown) else bool(v)
     if isinstance(expr, Prop):
-        # A bool-declared prop used bare as a condition (not inside a
-        # Compare) — same "coerce via bool()" convention as a bare
-        # ParamExpr, above.
+        # A bool-declared prop used bare as a condition rather than inside
+        # a Compare, under the same "coerce via bool()" convention a bare
+        # ParamExpr uses above.
         value = _evaluate_prop(expr, config, activity, space, status=status)
         return value if isinstance(value, Unknown) else bool(value)
     if isinstance(expr, Value):
-        # A bool-declared value used bare as a condition — same "coerce via
-        # bool()" convention as a bare ParamExpr/Prop, above.
+        # A bool-declared value used bare as a condition, under the same
+        # "coerce via bool()" convention a bare ParamExpr or Prop uses
+        # above.
         value = _evaluate_value(
             expr, config, activity, space, status=status, value_cache=value_cache
         )
@@ -863,15 +904,17 @@ def _evaluate_count_compare(
 
 
 def compute_activity(space: Space, config: dict[str, Any]) -> dict[str, bool]:
-    """Activity per param, walking the condition dependency order (rule 3:
-    Unknown coerces to False at `.when()`, cascading deactivation).
+    """Activity per param, walking the condition dependency order.
 
-    Assumes `config` is *fully* materialized already (every lift's
-    realized count, and every instance's leaf values, already present) —
-    true for `validate()` (which flattens the whole submitted config up
-    front) but not for the sampler, which must interleave drawing values
-    with deciding activity and so does its own, incremental version of
-    the per-instance expansion below (sample/_sample.py).
+    Rule 3 coerces Unknown to False at `.when()`, which cascades
+    deactivation.
+
+    `config` must be fully materialized, with every lift's realized count
+    and every instance's leaf values present. That holds for `validate()`,
+    which flattens the whole submitted config up front, but not for the
+    sampler, which interleaves drawing values with deciding activity and so
+    performs its own incremental version of the per-instance expansion
+    below, in `sample/_sample.py`.
     """
     activity: dict[str, bool] = {}
     conditions_by_target = {c.target: c for c in space.conditions}
@@ -892,14 +935,17 @@ def compute_activity(space: Space, config: dict[str, Any]) -> dict[str, bool]:
 def _expand_lift_activity(
     space: Space, path: str, domain: Any, config: dict[str, Any], activity: dict[str, bool]
 ) -> None:
-    """Struct/choice lift elements carry descendant *templates*
-    (`"edges[]."`, DECISIONS.md D-18) with their own conditions (a
-    sibling field's `.when()`); scalar/subset/permutation/nested-list
-    elements have no such per-element condition, so there is nothing to
-    expand for them (an in-range instance is active by construction
-    whenever the lift itself is). One active instance at a time, in
-    local dependency order within that instance (cross-field references
-    inside one struct element)."""
+    """Expand a lift's per-instance activity, one active instance at a time.
+
+    A struct or choice lift element carries descendant templates, prefixed
+    `"edges[]."`, with their own conditions, such as a sibling field's
+    `.when()`. Scalar, subset, permutation and nested-list elements carry no
+    per-element condition, so there is nothing to expand for them: an
+    in-range instance is active by construction whenever the lift is.
+
+    Each instance is walked in local dependency order, which resolves
+    cross-field references inside one struct element.
+    """
     from designspace.resolve._relocate import instantiate_element
 
     assert isinstance(domain, ListDomain)
@@ -923,14 +969,17 @@ def _expand_lift_activity(
 
 
 def status_activity_view(status: Mapping[str, str]) -> dict[str, bool]:
-    """The binary view of a partial four-valued status map, for ordinary
-    leaf/aggregate lookups: every non-`"inactive"` status (`"set"`,
-    `"active_unset"`, `"unknown"`) reads as activity-True — `_leaf_value`
-    already returns `UNKNOWN` for any param absent from `config` regardless
-    of this flag, so `"active_unset"`/`"unknown"` and `"set"` only ever
-    differ by presence, which `_leaf_value` already handles on its own.
-    Only `IsActive` needs the finer four-way distinction (`status` itself,
-    threaded straight through) — see `_evaluate_is_active`.
+    """The binary view of a partial four-valued status map.
+
+    Used for ordinary leaf and aggregate lookups. Every status other than
+    `"inactive"`, meaning `"set"`, `"active_unset"` and `"unknown"`, reads
+    as active. `_leaf_value` returns `UNKNOWN` for any param absent from
+    `config` whatever this flag says, so `"active_unset"` and `"unknown"`
+    differ from `"set"` only by presence, which `_leaf_value` already
+    handles.
+
+    Only `IsActive` needs the finer four-way distinction, and it receives
+    `status` itself; see `_evaluate_is_active`.
     """
     return {p: s != "inactive" for p, s in status.items()}
 
@@ -941,14 +990,16 @@ def classify_condition(
     status: dict[str, str],
     space: Space,
 ) -> str:
-    """`"active"` / `"inactive"` / `"unknown"` for one param's own condition
-    (API.md, "Partial Configs" — the pending-dependency rule), evaluated
-    against the status already computed for its dependencies (topological
-    order guarantees they precede it). Kleene-Unknown collapses to
-    `"inactive"` when every param the condition references is itself
-    determined (the same cascading deactivation a full config applies), or
-    to `"unknown"` when at least one is `"active_unset"`/`"unknown"` —
-    "undetermined but resolvable."
+    """One param's own condition as `"active"`, `"inactive"` or `"unknown"`.
+
+    This applies API.md, "Partial Configs"' pending-dependency rule,
+    evaluating against the status already computed for the condition's
+    dependencies; topological order guarantees they precede it.
+
+    Kleene Unknown collapses to `"inactive"` when every param the condition
+    references is itself determined, which is the cascading deactivation a
+    full config applies. It collapses to `"unknown"`, meaning undetermined
+    but resolvable, when at least one is `"active_unset"` or `"unknown"`.
     """
     if condition is None:
         return "active"
@@ -965,20 +1016,25 @@ def classify_condition(
 
 
 class PartialActivity(NamedTuple):
-    """`compute_activity_partial`'s result — internal to eval/partial, not
-    part of the public `PartialEval` surface (ir/_results.py).
+    """`compute_activity_partial`'s result.
 
-    `status`: four-valued, keyed by definition *and* instance path (a
-    lift's instances appear only once its count is determined).
-    `order`: every path visited, in dependency order — definition paths
-    first, lift instances expanded inline, since `topological_order` itself
-    omits lift descendant templates and knows nothing of instances;
-    `partial/_partial.py`'s `missing_params`/`next_assignable` walk this to
-    report *instance* paths "in topological order."
-    `deps`: each visited path's own gating references (condition params,
-    already instance-substituted inside a lift, plus — for a top-level
-    list/bound-origin param — its repeat-count/bound-envelope references)
-    — `next_assignable`'s readiness check.
+    Internal to `eval/` and `partial/`, and not part of the public
+    `PartialEval` surface in `ir/_results.py`.
+
+    `status` is four-valued, keyed by definition path and by instance path.
+    A lift's instances appear only once its count is determined.
+
+    `order` is every path visited, in dependency order: definition paths
+    first, with lift instances expanded inline, since `topological_order`
+    omits lift descendant templates and knows nothing of instances.
+    `missing_params` and `next_assignable` in `partial/_partial.py` walk
+    this to report instance paths "in topological order".
+
+    `deps` is each visited path's own gating references: the condition's
+    params, already instance-substituted inside a lift, plus, for a
+    top-level list or bound-origin param, its repeat-count and
+    bound-envelope references. `next_assignable` uses it as the readiness
+    check.
     """
 
     status: dict[str, str]
@@ -987,12 +1043,15 @@ class PartialActivity(NamedTuple):
 
 
 def compute_activity_partial(space: Space, config: dict[str, Any]) -> PartialActivity:
-    """Three/four-valued activity + presence over a *partial* flat config
-    (API.md, "Space: Partial Configs"): `"set"` (active & present),
-    `"active_unset"` (active & absent), `"inactive"`, `"unknown"` (Kleene-
-    Unknown but resolvable). Collapsing `"set"`/`"active_unset"` to `True`
-    and everything else to `False` reproduces `compute_activity` exactly
-    (the spec's collapse law) — both walk the same `topological_order`.
+    """Four-valued activity and presence over a partial flat config.
+
+    See API.md, "Space: Partial Configs". The values are `"set"`, active and
+    present; `"active_unset"`, active and absent; `"inactive"`; and
+    `"unknown"`, Kleene Unknown but resolvable.
+
+    Collapsing `"set"` and `"active_unset"` to `True` and everything else to
+    `False` reproduces `compute_activity` exactly, which is the spec's
+    collapse law. Both walk the same `topological_order`.
     """
     from designspace.resolve._bounds import bound_origin_targets
 
@@ -1002,7 +1061,7 @@ def compute_activity_partial(space: Space, config: dict[str, Any]) -> PartialAct
     conditions_by_target = {c.target: c for c in space.conditions}
     for path in topological_order(space):
         if "[]" in path:
-            continue  # a lift's descendant template (D-18) -- never a real leaf
+            continue  # a lift's descendant template, never a real leaf
         pd = space.params[path]
         condition = conditions_by_target.get(path)
         deps[path] = condition.params if condition is not None else frozenset()
@@ -1013,11 +1072,11 @@ def compute_activity_partial(space: Space, config: dict[str, Any]) -> PartialAct
                 space, path, pd.domain, activity_class, config, status, order, deps
             )
         elif pd.type_kind == "space":
-            # A struct has no own value to await (API.md: "a struct
-            # carries no own default value"; its activity never depends on
-            # its own members') -- "active_unset" would be meaningless for
-            # it, so it collapses to "set" the same way a list container's
-            # own shape does once determined.
+            # A struct has no own value to await: API.md says "a struct
+            # carries no own default value", and its activity never depends
+            # on its members'. "active_unset" would be meaningless for it,
+            # so it collapses to "set", as a list container's own shape does
+            # once determined.
             status[path] = "set" if activity_class == "active" else activity_class
             order.append(path)
         else:
@@ -1040,13 +1099,15 @@ def compute_activity_partial(space: Space, config: dict[str, Any]) -> PartialAct
 def _determine_count_partial(
     count: int | ArithExpr, config: dict[str, Any], status: dict[str, str], space: Space
 ) -> int | None:
-    """The Defaults section's count rule, reused for Partial Configs
-    (API.md: "an undetermined count (a pending count-dependency)
-    contributes none"): a static int is always determined; an `ArithExpr`
-    is determined if it evaluates to a definite integer, or is Unknown
-    *solely* because a referenced param is inactive (-> 0, "the complete
-    value []"); otherwise (some referenced param is itself
-    `active_unset`/`unknown`) it is genuinely pending -> `None`.
+    """The Defaults section's count rule, reused for partial configs.
+
+    API.md states that "an undetermined count (a pending count-dependency)
+    contributes none". A static int is always determined. An `ArithExpr` is
+    determined when it evaluates to a definite integer, or when it is
+    Unknown solely because a referenced param is inactive, in which case it
+    contributes 0, "the complete value []". Otherwise some referenced param
+    is itself `active_unset` or `unknown`, the count is genuinely pending,
+    and the result is `None`.
     """
     if not isinstance(count, ArithExpr):
         return count
@@ -1069,11 +1130,14 @@ def _resolve_list_status(
     order: list[str],
     deps: dict[str, frozenset[str]],
 ) -> None:
-    """A list container is `"set"`/`"unknown"`/`"inactive"`, never
-    `"active_unset"` (API.md, "Partial Configs") — there is no value to
-    await for the container itself, only for its count param (elsewhere in
-    `topological_order`) and its instance leaves (expanded below, once the
-    count is known)."""
+    """Assign a list container's partial status.
+
+    A list container is `"set"`, `"unknown"` or `"inactive"`, and never
+    `"active_unset"` (API.md, "Partial Configs"). There is no value to await
+    for the container itself, only for its count param, which appears
+    elsewhere in `topological_order`, and for its instance leaves, expanded
+    below once the count is known.
+    """
     if activity_class != "active":
         status[path] = activity_class
         order.append(path)
@@ -1140,10 +1204,12 @@ def _expand_instance_status(
 
 
 def local_topological_order(paths: list[str], conditions_by_target: dict[str, Any]) -> list[str]:
-    """`topological_order`'s algorithm, scoped to one lift instance's
-    freshly-instantiated params (already guaranteed acyclic — the
-    element's own fields were cycle-checked when it was originally
-    resolved, before ever being lifted)."""
+    """`topological_order`'s algorithm, scoped to one lift instance.
+
+    The instance's freshly instantiated params are guaranteed acyclic: the
+    element's own fields were cycle-checked when it was originally resolved,
+    before being lifted.
+    """
     path_set = set(paths)
     order: list[str] = []
     done: set[str] = set()
@@ -1165,8 +1231,10 @@ def local_topological_order(paths: list[str], conditions_by_target: dict[str, An
 
 
 def _lift_count_deps(domain: Any) -> frozenset[str]:
-    """Repeat-count references join the dependency graph (DECISIONS.md
-    D-21) — recurse through chained/nested `.repeat()` levels."""
+    """Repeat-count references, which join the dependency graph.
+
+    Recurses through chained and nested `.repeat()` levels.
+    """
     deps: frozenset[str] = frozenset()
     while isinstance(domain, ListDomain):
         if isinstance(domain.count, ArithExpr):
@@ -1178,9 +1246,11 @@ def _lift_count_deps(domain: Any) -> frozenset[str]:
 def _bound_order_deps(
     bound_targets: dict[str, tuple[ArithExpr | None, ArithExpr | None]], path: str
 ) -> frozenset[str]:
-    """Bound-origin constraints impose assignment order too (M5, API.md
-    "Expression bounds are sugar" — "Ordering"): the params a bound
-    expression references must be assigned before the param it bounds."""
+    """Bound-origin constraints impose assignment order too.
+
+    Under API.md, "Expression bounds are sugar" > "Ordering", the params a
+    bound expression references must be assigned before the param it bounds.
+    """
     lo_expr, hi_expr = bound_targets.get(path, (None, None))
     deps: frozenset[str] = frozenset()
     if lo_expr is not None:
@@ -1194,8 +1264,8 @@ def topological_order(space: Space) -> list[str]:
     """Params in an order where each one's condition, repeat-count, and
     bound-origin-constraint dependencies come first.
 
-    Not the public `.topological_order` (M6, Partial Configs) — an internal
-    ordering the sampler and activity computation both need now.
+    This is not the public `.topological_order` of Partial Configs, but an
+    internal ordering the sampler and activity computation both need.
     """
     from designspace.resolve._bounds import bound_origin_targets
 
@@ -1208,11 +1278,11 @@ def topological_order(space: Space) -> list[str]:
         if path in done:
             return
         if path not in space.params:
-            # A per-instance virtual placeholder — e.g. a lifted choice's
-            # bare discriminator template ("pipeline[]", referenced by a
-            # variant payload's folded discriminator-equality condition,
-            # DECISIONS.md D-18) — not a real definition, so it has no
-            # further dependencies and never joins `order` itself.
+            # A per-instance virtual placeholder, such as a lifted
+            # choice's bare discriminator template "pipeline[]", which a
+            # variant payload's folded discriminator-equality condition
+            # references. It is not a real definition, so it has no further
+            # dependencies and never joins `order` itself.
             done.add(path)
             return
         condition = conditions_by_target.get(path)

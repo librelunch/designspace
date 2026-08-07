@@ -1,15 +1,13 @@
-"""Space: the resolved container returned by `ds.space()` (API.md, "Space").
+"""`Space`: the resolved container `ds.space()` returns (API.md, "Space").
 
-M1 exposes only what flat scalar spaces need; M2 adds feasibility
-(`.forbid()`/`.encourage()`), Kleene-aware validation, and the reference
-sampler. `.anchor()` and space-level `.meta()` are added at M8 (API.md,
-"Constraints and Feasibility"; DECISIONS.md D-40) — they were deferred
-past M2 and have no assigned milestone until M8's structural operations
-need to interact with them (`freeze`/`slice` re-validate anchors).
+A `Space` holds the resolved parameters, the activity conditions, the
+feasibility constraints, the named reference configurations `.anchor()`
+adds, and the space-level metadata `.meta()` carries. It is immutable, and
+every operation that appears to modify it returns a new one.
 
-`anchors`/`meta_map` default empty and are omitted from the preimage/
-`to_json` document when empty (identity/_ir_codec.py's byte-identity
-guarantee for additive fields), so every pre-M8 space is unaffected.
+`anchors` and `meta_map` default to empty and are omitted from the
+fingerprint preimage and the `to_json` document when empty, under
+`identity/_ir_codec.py`'s byte-identity guarantee for additive fields.
 """
 
 from __future__ import annotations
@@ -136,20 +134,24 @@ class Space:
     params: MappingProxyType[str, ParamDef]
     conditions: tuple[Condition, ...]
     constraints: tuple[Constraint, ...] = field(default_factory=tuple)
-    # M8: named reference configs (API.md, ".anchor()") and space-level
-    # metadata (".meta()"). `meta_map`, not `meta` — a same-named field and
-    # method collide (the `def meta` statement would overwrite the field's
-    # class-level default), mirroring ParamExpr's `meta_map`/`.meta()` split.
+    # Named reference configs, from `.anchor()`, and space-level metadata,
+    # from `.meta()`. The field is `meta_map` rather than `meta` because a
+    # same-named field and method collide, the `def meta` statement
+    # overwriting the field's class-level default. `ParamExpr` splits
+    # `meta_map` from `.meta()` the same way.
     anchors: MappingProxyType[str, Any] = field(default_factory=lambda: MappingProxyType({}))
     meta_map: MappingProxyType[str, Any] = field(default_factory=lambda: MappingProxyType({}))
-    # M10.7: a lazily-built, cached index backing `_direct_children` below —
-    # a pure function of `params`, so excluded from `__eq__`/`__repr__`
-    # (`compare=False, repr=False`) rather than treated as part of a space's
-    # identity. Lazy rather than built at every one of the ~12 construction
-    # sites (`_emit`, `from_json`, `space_from_ir`, `extend`, `freeze`, the
-    # two throwaway `skeleton = Space(...)` spaces in `ops/_structural.py`,
-    # and every `dataclasses.replace(space, ...)` call) — those would all
-    # need to remember to (re)build it; laziness needs none of them to.
+    # A lazily built, cached index backing `_direct_children` below. It is
+    # a pure function of `params`, so `compare=False, repr=False` keeps it
+    # out of `__eq__` and `__repr__` rather than treating it as part of a
+    # space's identity.
+    #
+    # It is lazy rather than built at each of the dozen construction sites,
+    # which are `_emit`, `from_json`, `space_from_ir`, `extend`, `freeze`,
+    # the two throwaway `skeleton = Space(...)` spaces in
+    # `ops/_structural.py`, and every `dataclasses.replace(space, ...)`
+    # call. Each of those would have to remember to rebuild it; laziness
+    # requires nothing of them.
     _child_index: dict[str, tuple[str, ...]] | None = field(
         default=None, init=False, compare=False, repr=False
     )
@@ -433,17 +435,20 @@ class Space:
         return [c for c in self.conditions if c.target == path or path in c.params]
 
     def _direct_children(self, prefix: str) -> tuple[str, ...]:
-        """Template paths one segment below `prefix` (M10.7 — the traversal
-        primitive every space-guided walker shares): `""` for the root,
-        `"algo.svm."` inside a chosen variant, `"edges[]."` inside a lift's
-        element template. `prefix` must be `""` or end in `"."` — the only
-        two forms any caller constructs; a bare non-empty, non-dot-terminated
-        prefix (e.g. `"algo"`) is not a valid query and returns `()`.
+        """Template paths one segment below `prefix`.
 
-        Backed by a lazily-built, cached index (`_child_index`) rather than a
-        per-call scan of `space.params` — the scan is quadratic in param
-        count (a struct with many fields pays it for every field), the index
-        is one pass, and `Space` is frozen, so caching is safe."""
+        This is the traversal primitive every space-guided walker shares.
+        `prefix` is `""` for the root, `"algo.svm."` inside a chosen variant,
+        or `"edges[]."` inside a lift's element template. It must be `""` or
+        end in `"."`, the only two forms any caller constructs; a non-empty
+        prefix without a trailing dot, such as `"algo"`, is not a valid query
+        and returns `()`.
+
+        Backed by the lazily built, cached `_child_index` rather than a
+        per-call scan of `space.params`. The scan is quadratic in param
+        count, a struct with many fields paying it once per field, whereas
+        the index is one pass, and `Space` is frozen, so caching is safe.
+        """
         index = self._child_index
         if index is None:
             index = _build_child_index(self.params)
@@ -1848,12 +1853,15 @@ class Space:
 
 
 def _build_child_index(params: Mapping[str, ParamDef]) -> dict[str, tuple[str, ...]]:
-    """One pass over `space.params`, bucketing each path by its parent
-    prefix (`path[: path.rfind(".") + 1]`, `""` when dotless) — exactly the
-    set the old per-call predicate (`startswith(prefix)` and a dot-free
-    remainder) selected, for the `""`/dot-terminated prefixes every caller
-    builds. Dict order preserves `params`' declaration order (already
-    `flatten`'s order, already the DataFrame column order)."""
+    """Bucket each path in `space.params` by its parent prefix, in one pass.
+
+    The prefix is `path[: path.rfind(".") + 1]`, or `""` when the path is
+    dotless. For the `""` and dot-terminated prefixes every caller builds,
+    each bucket is exactly the set a `startswith(prefix)` test with a
+    dot-free remainder selects. Dict order preserves `params`' declaration
+    order, which is already `flatten`'s order and the DataFrame column
+    order.
+    """
     buckets: dict[str, list[str]] = {}
     for path in params:
         prefix = path[: path.rfind(".") + 1]
@@ -1920,25 +1928,30 @@ def _is_finite_list_domain(domain: ListDomain) -> bool:
     return True
 
 
-# -- .cardinality() (M9) ------------------------------------------------------
+# -- .cardinality() -----------------------------------------------------------
 
 
 def _condition_matches_injection(actual: BoolExpr | None, expected: BoolExpr | None) -> bool:
-    """Whether `actual` (a struct-field/choice-variant descendant's stored,
-    folded `.condition`) is *exactly* what structural relocation alone
-    would inject — i.e. the field/variant carries no independent `.when()`
-    of its own. Structural (not identity) comparison via the canonical AST
-    encoder, since `relocate_child`'s choice-variant path builds a fresh
-    `and_(...)` composite rather than reusing an existing object.
+    """Whether a descendant's condition is exactly relocation's own injection.
 
-    A condition referencing a `ds.value(...)` (M10.8) makes `encode_expr`
-    raise (opaque, uncalled-with-no-context here) rather than return a
-    comparable tree — this is a *structural-equality* check, not
-    serialization, so that is degraded to identity comparison instead of
-    propagating the error: an opaque condition can never structurally equal
-    a freshly-built injection object anyway, so `.cardinality()`'s callers
-    (`_struct_cardinality`/`_choice_cardinality`) correctly see "not
-    enumerable" (`None`) for it."""
+    `actual` is a struct field's or choice variant's descendant's stored,
+    folded `.condition`. It matches when the field or variant carries no
+    independent `.when()` of its own.
+
+    The comparison is structural rather than by identity, through the
+    canonical AST encoder, because `relocate_child`'s choice-variant path
+    builds a fresh `and_(...)` composite rather than reusing an existing
+    object.
+
+    A condition referencing a `ds.value(...)` makes `encode_expr` raise,
+    the node being opaque and no context supplied, rather than return a
+    comparable tree. This is a structural-equality check rather than
+    serialization, so the error is degraded to an identity comparison rather
+    than propagated. An opaque condition can never structurally equal a
+    freshly built injection object, so `_struct_cardinality` and
+    `_choice_cardinality` correctly read it as not enumerable, returning
+    `None`.
+    """
     from designspace.errors import SerializationError
     from designspace.identity._tags import encode_expr
 
@@ -2067,8 +2080,9 @@ def _param_cardinality(path: str, pd: ParamDef, space: Space) -> int | None:
             return cast("int | None", domain.param_type.cardinality())
         return None
     if isinstance(domain, SymbolicDomain | CodeDomain):
-        # Opaque, no declared-cardinality capability of any kind (unlike a
-        # custom type's optional `.cardinality()`) — never enumerable.
+        # Opaque, with no declared-cardinality capability of any kind,
+        # unlike a custom type's optional `.cardinality()`, and so never
+        # enumerable.
         return None
     if isinstance(domain, ListDomain):
         return _list_cardinality(path, domain, space)

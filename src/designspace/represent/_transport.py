@@ -1,24 +1,26 @@
-"""Expression transport (API.md, "The Representation Layer" > "Transport";
-DECISIONS.md D-54).
+"""Expression transport (API.md, "The Representation Layer" > "Transport").
 
-Conditions and constraints are rewritten, never dropped — three mechanisms,
-preferred in order: leaf substitution (`decode_expr`), node rewriting
-(`rewrite`), opaque (a `ds.value` core synthesizes itself from `decode` and
-the source AST, since core always knows both). Because nothing is dropped,
-target activity always matches source activity, and feasibility agreement
-holds by construction; what differs is *quality*, reported via
-`opaque_conditions`/`opaque_constraints`.
+Conditions and constraints are rewritten, never dropped. Three mechanisms
+apply, in order of preference: leaf substitution through `decode_expr`, node
+rewriting through `rewrite`, and opaque transport, where core synthesizes a
+`ds.value` from `decode` and the source AST, both of which it always knows.
 
-Two implementation facts this file exists to get right (D-54). Expressions
-live in **four** stores — `Space.conditions`, each `ParamDef.condition`,
-`Space.constraints`, and `ListDomain.element_constraints` — not two; a
-struct lift's own `.forbid(...)` puts a constraint on the *lift's* element
-template, whose owning param is itself never encodable, but whose
-constraint may still reference encoded descendant fields. And
-`Expr.params` **cannot drive the walk**: for `boxes.field("w").sum()` it
-reports `{"boxes"}`, never `"boxes[].w"`, so a `.params`-keyed walk passes
-a reference straight through unrewritten — `_vector_base` (mirrored here
-as `_governing_path`) resolves the projection correctly and must be used.
+Because nothing is dropped, target activity always matches source activity
+and feasibility agreement holds by construction. What differs is quality,
+reported through `opaque_conditions` and `opaque_constraints`.
+
+Two implementation facts govern this file. First, expressions live in four
+stores, not two: `Space.conditions`, each `ParamDef.condition`,
+`Space.constraints` and `ListDomain.element_constraints`. A struct lift's
+own `.forbid(...)` puts a constraint on the lift's element template, whose
+owning param is never encodable but whose constraint may still reference
+encoded descendant fields.
+
+Second, `Expr.params` cannot drive the walk. For `boxes.field("w").sum()` it
+reports `{"boxes"}` and never `"boxes[].w"`, so a `.params`-keyed walk would
+pass a reference straight through unrewritten. `_governing_path` below,
+mirroring `_vector_base`, resolves the projection correctly and must be used
+instead.
 """
 
 from __future__ import annotations
@@ -72,26 +74,30 @@ _VECTOR_AGGREGATES = (Sum, Min, Max, CountOf, IsSorted, Distinct)
 
 
 class NeedsOpaque(Exception):  # internal control-flow signal, never a real error
-    """Raised (and always caught within this module) when a reference
-    inside the expression being transported has no structural path — no
-    `rewrite` fired for its containing node, and its encoding supplies no
-    `decode_expr`."""
+    """Signals that a reference has no structural transport path.
+
+    Raised and always caught within this module, when no `rewrite` fired for
+    the reference's containing node and its encoding supplies no
+    `decode_expr`.
+    """
 
     def __init__(self, path: str) -> None:
         super().__init__(path)
         self.path = path
 
 
-# -- governing-path resolution (D-54: `.params` cannot drive this walk) -----
+# -- governing-path resolution: `.params` cannot drive this walk ------------
 
 
 def _governing_path(node: Expr, space: Space) -> str | None:
-    """The `space.params` key a bare reference or `.field()` projection
-    reads, or `None` if `node` is not a reference site. Mirrors
-    `resolve/_expr_checks.py::_vector_base` plus `_check_field_declared`'s
-    own field-path construction — `.field()` is never chained (only a
-    lift's own bare base takes it), so `node.operand` is always a plain
-    `ParamExpr` here."""
+    """The `space.params` key a reference or `.field()` projection reads.
+
+    Returns `None` when `node` is not a reference site. This mirrors
+    `_vector_base` in `resolve/_expr_checks.py` together with
+    `_check_field_declared`'s field-path construction. `.field()` is never
+    chained, only a lift's own bare base taking it, so `node.operand` is
+    always a plain `ParamExpr` here.
+    """
     if isinstance(node, ParamExpr):
         return _governing_definition_path(space, node.path)
     if isinstance(node, Field) and isinstance(node.operand, ParamExpr):
@@ -115,18 +121,22 @@ def _governing_paths_in_subtree(node: Expr, space: Space) -> frozenset[str]:
 def _decode_expr_template(
     encoding: Encoding, param: ParamDef, path: str, cache: dict[str, Expr | None]
 ) -> Expr | None:
-    """`decode_expr(param)` is a pure function of `param` alone — cached
-    per governing path so it runs once per param, not once per occurrence
-    of a reference to it."""
+    """The cached `decode_expr(param)` for one governing path.
+
+    `decode_expr` is a pure function of `param` alone, so caching per
+    governing path runs it once per param rather than once per occurrence of
+    a reference to it.
+    """
     if path in cache:
         return cache[path]
     template: Expr | None = None
     if has_decode_expr(encoding):
-        # `decode_expr` is an optional capability (hasattr-checked, never
-        # part of `Encoding`'s static Protocol shape -- the same convention
-        # `custom/_protocol.py`'s `sample`/`cardinality`/`extract` already
-        # use), so it is reached via `getattr` rather than a direct
-        # attribute access mypy --strict would reject.
+        # `decode_expr` is an optional, hasattr-checked capability, never
+        # part of `Encoding`'s static Protocol shape, under the convention
+        # `sample`, `cardinality` and `extract` already follow in
+        # `custom/_protocol.py`. It is therefore reached through `getattr`
+        # rather than the direct attribute access mypy --strict would
+        # reject.
         candidate = getattr(encoding, "decode_expr")(param)  # noqa: B009
         if candidate is not None:
             if not candidate.params <= {path}:
@@ -146,14 +156,16 @@ def rewrite_node(
     matched: Mapping[str, Encoding],
     decode_expr_cache: dict[str, Expr | None],
 ) -> Expr:
-    """Transport one node of a *source* expression tree into its target
-    form: node rewriting first (tried at every node containing a reference
-    to a matched param whose encoding supplies `rewrite`), then leaf
-    substitution (`decode_expr`) when the node itself is a reference site,
-    else recurse. Raises `NeedsOpaque` when a reference site's encoding
-    supplies neither — caught by the per-expression driver
-    (`transport_bool`/`transport_arith`), which falls back to opaque
-    transport for the *whole* expression.
+    """Transport one node of a source expression tree into its target form.
+
+    Node rewriting is tried first, at every node containing a reference to a
+    matched param whose encoding supplies `rewrite`. Leaf substitution
+    through `decode_expr` follows, when the node itself is a reference site.
+    Otherwise the walk recurses.
+
+    Raises `NeedsOpaque` when a reference site's encoding supplies neither.
+    The per-expression driver, `transport_bool` or `transport_arith`,
+    catches it and falls back to opaque transport for the whole expression.
     """
     relevant = sorted(_governing_paths_in_subtree(node, space) & matched.keys())
     for path in relevant:
@@ -165,7 +177,7 @@ def rewrite_node(
     direct = _governing_path(node, space)
     if direct is not None:
         if direct not in matched:
-            return node  # unmatched param -- passes through unchanged
+            return node  # an unmatched param passes through unchanged
         template = _decode_expr_template(
             matched[direct], space.params[direct], direct, decode_expr_cache
         )
@@ -181,12 +193,15 @@ def _rebuild_children(
     matched: Mapping[str, Encoding],
     cache: dict[str, Expr | None],
 ) -> Expr:
-    """Reconstruct `node` with each child transported via `rewrite_node` —
-    the same exhaustive per-kind dispatch `resolve/_relocate.py::rewrite_expr`
-    and `ops/_structural.py::substitute_expr` already use, parameterized by
-    recursive transport instead of a rename or a fixed substitution. A
-    source expression never contains a `ChartApply` (that node is only ever
-    transport's own *output*), so no branch handles it here.
+    """Reconstruct `node` with each child transported through `rewrite_node`.
+
+    This is the exhaustive per-kind dispatch `rewrite_expr` in
+    `resolve/_relocate.py` and `substitute_expr` in `ops/_structural.py`
+    already use, parameterized by recursive transport rather than by a
+    rename or a fixed substitution.
+
+    A source expression never contains a `ChartApply`, that node being
+    transport's own output, so no branch handles it here.
     """
 
     def go(child: Expr) -> Expr:
@@ -239,15 +254,17 @@ def _rebuild_children(
     if isinstance(node, Distinct):
         return Distinct(go(node.operand), node.fields)
     if isinstance(node, ChartApply):
-        # The node a representation itself emits (API.md, "Expressions":
-        # the second opaque-free leaf). It appears here whenever the source
-        # is *already* a representation target — `rep.target` is an ordinary
-        # `Space`, so representing it again is supported by construction,
-        # and it is what makes `then` usable past one derived level. Only
-        # the operand transports: the carried chart declaration describes
-        # the *source* param's own chart and is not the thing being
-        # re-encoded, exactly as `_relocate.py::rewrite_expr` and
-        # `ops/_structural.py::substitute_expr` treat it.
+        # The node a representation itself emits, API.md's second
+        # opaque-free leaf under "Expressions". It appears here whenever the
+        # source is already a representation target: `rep.target` is an
+        # ordinary `Space`, so representing it again is supported by
+        # construction, and that is what makes `then` usable past one
+        # derived level.
+        #
+        # Only the operand transports. The carried chart declaration
+        # describes the source param's own chart and is not the thing being
+        # re-encoded, exactly as `rewrite_expr` in `_relocate.py` and
+        # `substitute_expr` in `ops/_structural.py` treat it.
         return ChartApply(
             go(node.operand),
             node.chart,
@@ -267,23 +284,27 @@ def _rebuild_children(
 
 
 def _enumerate_instances(path: str, domain: Any, space: Space, counts: dict[str, int]) -> list[str]:
-    """Every concrete instance path under `path` (recursively, through
-    chained `.repeat()` levels), for a *static* count only — opaque
-    transport needs a fixed operand list at resolution time, which a
-    dynamic count cannot supply; core's own chart encoding always supplies
-    `decode_expr` (never reaching opaque transport at all), so this is
-    reachable only through a user-supplied rule missing both `decode_expr`
-    and `rewrite` for a dynamic-count lift. `counts` accumulates the static
-    length bookkeeping key at *every* level touched (`{"m": 2, "m[0]": 3,
-    ...}` for a chained repeat), needed later so nested aggregate
-    evaluation (`_gather_instance_paths`) can recover each level's count."""
+    """Every concrete instance path under `path`, for a static count only.
+
+    The walk recurses through chained `.repeat()` levels. Opaque transport
+    needs a fixed operand list at resolution time, which a dynamic count
+    cannot supply. Core's own chart encoding always supplies `decode_expr`
+    and so never reaches opaque transport, leaving this reachable only
+    through a user-supplied rule that supplies neither `decode_expr` nor
+    `rewrite` for a dynamic-count lift.
+
+    `counts` accumulates the static length bookkeeping key at every level
+    touched, giving `{"m": 2, "m[0]": 3, ...}` for a chained repeat.
+    `_gather_instance_paths` needs it later to recover each level's count
+    during nested aggregate evaluation.
+    """
     if not isinstance(domain, ListDomain):
         return [path]
     count = domain.count
     if not isinstance(count, int) or isinstance(count, bool):
         raise ResolutionError(
             f"represent(): cannot opaquely transport an expression touching "
-            f"{path!r}, whose repeat() count is dynamic — opaque transport "
+            f"{path!r}, whose repeat() count is dynamic; opaque transport "
             f"needs a fixed operand list at resolution time; supply an "
             f"Encoding.decode_expr() or .rewrite() for the encoded param(s) "
             f"this expression references instead"
@@ -356,7 +377,8 @@ def _opaque_fn(
         if isinstance(result, Unknown):
             raise ValueError(
                 "represent(): opaque transport's reconstructed evaluation was "
-                "Unknown — every ds.value operand was active by the calling "
+                "Unknown, though every ds.value operand was active by the "
+                "calling "
                 "convention, so this indicates a source expression this "
                 "opaque path does not yet support"
             )
@@ -382,11 +404,13 @@ def transport_bool(
     matched: Mapping[str, Encoding],
     decode_expr_cache: dict[str, Expr | None],
 ) -> tuple[BoolExpr, bool]:
-    """Transport one `Condition`/`Constraint` expression. Returns
-    `(transported_expr, is_opaque)` — `is_opaque` names whether *any*
-    reference inside `expr` needed the opaque fallback (a whole-expression
-    decision, matching how `opaque_conditions`/`opaque_constraints` report
-    at that granularity)."""
+    """Transport one `Condition` or `Constraint` expression.
+
+    Returns `(transported_expr, is_opaque)`. `is_opaque` says whether any
+    reference inside `expr` needed the opaque fallback. It is a
+    whole-expression decision, at the granularity `opaque_conditions` and
+    `opaque_constraints` report.
+    """
     try:
         return cast(BoolExpr, rewrite_node(expr, space, matched, decode_expr_cache)), False
     except NeedsOpaque:
@@ -422,9 +446,11 @@ def _transport_constraint_tuple(
 def _transport_list_domain(
     domain: ListDomain, space: Space, matched: Mapping[str, Encoding], cache: dict[str, Expr | None]
 ) -> tuple[ListDomain, list[Constraint]]:
-    """Store 4 (`ListDomain.element_constraints`), recursing through a
-    chained/nested `.repeat()` chain — each level's own template
-    constraints are transported independently of the others'."""
+    """Transport store 4, `ListDomain.element_constraints`.
+
+    Recurses through a chained or nested `.repeat()` chain. Each level's own
+    template constraints transport independently of the others'.
+    """
     opaque: list[Constraint] = []
     if domain.element_kind == "list":
         assert isinstance(domain.element_domain, ListDomain)
@@ -441,12 +467,14 @@ def _transport_list_domain(
 def transport_space(
     source: Space, matched: Mapping[str, Encoding], raw_target_params: Mapping[str, ParamDef]
 ) -> TransportResult:
-    """Rewrites every expression in all four stores (D-54) a source space's
-    conditions/constraints inhabit, given `raw_target_params` (the
-    structurally-built, not-yet-transported target `ParamDef`s each
-    `Encoding.target()` produced). Returns a fully self-consistent bundle:
-    `target_conditions` and each rewritten param's own `.condition` field
-    carry the identical rewritten expression object for a given path.
+    """Rewrite every expression in all four stores.
+
+    `raw_target_params` holds the structurally built, not-yet-transported
+    target `ParamDef` records each `Encoding.target()` produced.
+
+    The returned bundle is self-consistent: for a given path,
+    `target_conditions` and that param's own `.condition` field carry the
+    identical rewritten expression object.
     """
     decode_expr_cache: dict[str, Expr | None] = {}
     target_params = dict(raw_target_params)

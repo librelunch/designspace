@@ -1,28 +1,25 @@
-"""Builder view types (API.md, "Builder view types"; DECISIONS.md D-27,
-D-28).
+"""Builder view types (API.md, "Builder view types").
 
-`ds.param(name)` returns a `FreshParamExpr` — a `ParamExpr` carrying the 12
-type methods (M12 adds `.symbolic()`/`.code()` to M9's `.custom()`-updated
-10). Each type method narrows to a type-specific view that omits
-the type methods, so a second one is a static type error (and, via
-`ParamExpr.__getattr__`, still the path-named row-2 `ResolutionError` at
-runtime — never a bare `AttributeError`). `.repeat()` — available on any
-typed view, not on `FreshParamExpr` or the base — narrows to `ListParamExpr`,
-which re-offers `.repeat()` for nested/variadic lifts.
+`ds.param(name)` returns a `FreshParamExpr`, a `ParamExpr` carrying the 12
+type methods. Each type method narrows to a type-specific view that omits
+the type methods, so calling a second one is a static type error, and
+remains the path-named row-2 `ResolutionError` at runtime through
+`ParamExpr.__getattr__` rather than a bare `AttributeError`. `.repeat()`,
+available on any typed view but not on `FreshParamExpr` or the base, narrows
+to `ListParamExpr`, which re-offers `.repeat()` for nested and variadic
+lifts.
 
-`TypedParamExpr` is public as of M8 (API.md, "Space: Metaprogramming":
-"`TypedParamExpr` is the type-specific builder view for `pd`'s type ... when
-this surface lands (M8) it becomes the common base of those views" —
-D-27). It was already the shared implementation base of every narrowed view
-(as `_TypedParamExpr`); M8 only promotes the name and gives
-`ds.param_from_def(pd: ParamDef) -> TypedParamExpr` a base to return.
+`TypedParamExpr` is public. API.md, "Space: Metaprogramming" calls it "the
+type-specific builder view for `pd`'s type" and "the common base of those
+views", and `ds.param_from_def(pd: ParamDef) -> TypedParamExpr` returns it.
 
 Class shape, bottom to top:
-    ParamExpr                     (builder/_paramexpr.py — no type methods, no .repeat();
-                                    type_kind: ClassVar[str | None] = None)
+    ParamExpr                     (builder/_paramexpr.py: no type methods,
+                                    no .repeat(); type_kind is a ClassVar
+                                    defaulting to None)
     +-- FreshParamExpr            12 type methods only; inherits type_kind = None
-    +-- TypedParamExpr            .repeat() only — shared by every narrowed view
-        +-- _NumericParamExpr     + .log_scale()/.quantized() — Real/Integer only
+    +-- TypedParamExpr            .repeat() only; shared by every narrowed view
+        +-- _NumericParamExpr     adds .log_scale()/.quantized(); Real/Integer only
         |   +-- RealParamExpr     type_kind = "real"
         |   +-- IntegerParamExpr  type_kind = "integer"
         +-- BoolParamExpr         type_kind = "bool"
@@ -37,14 +34,15 @@ Class shape, bottom to top:
         +-- CodeParamExpr         type_kind = "code"
         +-- ListParamExpr         type_kind = "list"
 
-None of these subclasses add fields (API.md: "they add no state beyond
-ParamExpr"); each is a thin method surface (plus, on the 13 leaves, a fixed
-`type_kind` override) over the same dataclass fields, constructed via
-`ParamExpr._as()`. None needs `@dataclass` redecoration — `type_kind` was
-declared `ClassVar` on `ParamExpr` itself, so dataclass field processing
-never sees it as a field anywhere in the hierarchy; a plain class-attribute
-override is enough (DECISIONS.md D-28), and no subclass's `__init__` ever
-accepts `type_kind` as an argument.
+No subclass adds a field; API.md says "they add no state beyond ParamExpr".
+Each is a thin method surface over the same dataclass fields, constructed
+through `ParamExpr._as()`, plus a fixed `type_kind` override on the 13
+leaves.
+
+None needs `@dataclass` redecoration. `type_kind` is declared `ClassVar` on
+`ParamExpr` itself, so dataclass field processing never sees it as a field
+anywhere in the hierarchy, a plain class-attribute override suffices, and no
+subclass's `__init__` accepts `type_kind` as an argument.
 """
 
 from __future__ import annotations
@@ -643,11 +641,11 @@ class FreshParamExpr(ParamExpr):
         from designspace.builder._space import Space
         from designspace.resolve._pipeline import resolve_space
 
-        # `.space(prebuilt: Space)` (DECISIONS.md D-20/D-15): the only route
-        # to per-element constraints on a repeated struct — the inline
-        # `.space(*exprs)` form has nowhere to hang a `.forbid()`. A single
-        # positional `Space` argument is unambiguous: the inline form's
-        # `*exprs` are always bare `ParamExpr`s, never a `Space`.
+        # `.space(prebuilt: Space)` is the only route to per-element
+        # constraints on a repeated struct; the inline `.space(*exprs)` form
+        # has nowhere to hang a `.forbid()`. A single positional `Space`
+        # argument is unambiguous, the inline form's `*exprs` always being
+        # bare `ParamExpr` objects and never a `Space`.
         if len(exprs) == 1 and isinstance(exprs[0], Space):
             child = exprs[0]
         else:
@@ -717,9 +715,9 @@ class TypedParamExpr(ParamExpr):
         """
         if len(counts) == 0:
             raise ResolutionError(f"param {self.path!r}: repeat() requires at least one count")
-        # Variadic sugar: `.repeat(2, 3)` reads as shape (2, 3), first count
-        # outermost, desugaring to chained lifts in *reverse* order —
-        # `.repeat(3).repeat(2)` (API.md, "The lift").
+        # Variadic sugar: `.repeat(2, 3)` reads as shape (2, 3) with the
+        # first count outermost, desugaring to chained lifts in reverse
+        # order as `.repeat(3).repeat(2)` (API.md, "The lift").
         ordered = list(reversed(counts))
         result = self._repeat_one(ordered[0])
         for c in ordered[1:]:
@@ -731,10 +729,10 @@ class TypedParamExpr(ParamExpr):
             assert self.lift is not None
             inner = self.lift
         else:
-            # type(self) is always a concrete leaf here (DECISIONS.md D-28):
-            # .repeat() only exists on typed views, and modifiers preserve
-            # the caller's class via replace(), so this is exactly the view
-            # the element was declared with — e.g. RealParamExpr.
+            # type(self) is always a concrete leaf here: .repeat() exists
+            # only on typed views, and modifiers preserve the caller's class
+            # through replace(), so this is the view the element was
+            # declared with, such as RealParamExpr.
             inner = _ElementSnapshot(
                 element_class=type(self),
                 domain=self.domain,
@@ -760,11 +758,13 @@ class TypedParamExpr(ParamExpr):
 
 
 class _NumericParamExpr(TypedParamExpr):
-    """Real/Integer only: `.log_scale()`/`.quantized()` (API.md,
-    "Modifiers and Layering"). Absent from every other view — misuse
-    (`.categorical(...).log_scale()`) is a static `attr-defined` error and,
-    at runtime, `ParamExpr.__getattr__` re-raises it as row 11's
-    path-named `ResolutionError` (DECISIONS.md D-28)."""
+    """The real and integer views, which add `.log_scale()` and `.quantized()`.
+
+    See API.md, "Modifiers and Layering". Both are absent from every other
+    view, so a misuse such as `.categorical(...).log_scale()` is a static
+    `attr-defined` error, and at runtime `ParamExpr.__getattr__` re-raises
+    it as row 11's path-named `ResolutionError`.
+    """
 
     def log_scale(self) -> Self:
         """Sample the parameter logarithmically rather than uniformly.
@@ -864,8 +864,8 @@ class BoolParamExpr(TypedParamExpr):
     or a constraint without being compared to `True`.
     """
 
-    # Already a BoolExpr transitively (ParamExpr is BoolExpr-inheriting) —
-    # API.md: "BoolParamExpr is additionally a BoolExpr (a boolean param
+    # Already a BoolExpr transitively, ParamExpr inheriting from BoolExpr.
+    # API.md says "BoolParamExpr is additionally a BoolExpr (a boolean param
     # is usable directly as a condition)".
     type_kind: ClassVar[str] = "bool"
 
@@ -927,13 +927,15 @@ class StructParamExpr(TypedParamExpr):
 
 
 class CustomParamExpr(TypedParamExpr):
-    """`.custom()`'s return type, a thin leaf view. A custom value is
-    opaque by design (API.md, "Solver Integration", the open/closed-world
-    split): no domain-specific chainers exist here beyond the universal
-    modifiers (`.default()`, `.when()`, `.tag()`, `.meta()`) and `.repeat()`
-    (inherited from `TypedParamExpr`). Domain-specific, fluent config lives
-    on the author's own `ParamType` object, passed to `.custom()`
-    (DECISIONS.md D-45), not on this view."""
+    """`.custom()`'s return type, a thin leaf view.
+
+    A custom value is opaque by design, under the open-world and
+    closed-world split in API.md, "Solver Integration". This view therefore
+    carries no domain-specific chainers beyond the universal modifiers
+    `.default()`, `.when()`, `.tag()` and `.meta()`, plus `.repeat()`
+    inherited from `TypedParamExpr`. Domain-specific fluent configuration
+    lives on the author's own `ParamType` object, passed to `.custom()`.
+    """
 
     type_kind: ClassVar[str] = "custom"
 
@@ -947,8 +949,10 @@ class SymbolicParamExpr(TypedParamExpr):
 
 
 class CodeParamExpr(TypedParamExpr):
-    """`.code()`'s return type, a thin leaf view; always non-generative
-    (no `sampler=` form exists for `.code()`)."""
+    """`.code()`'s return type, a thin leaf view, always non-generative.
+
+    There is no `sampler=` form for `.code()`.
+    """
 
     type_kind: ClassVar[str] = "code"
 

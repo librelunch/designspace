@@ -1,9 +1,9 @@
 """eval: Kleene evaluation, activity, and margins (API.md, "Expressions" >
 "Three-valued semantics"; "Constraints and Feasibility" > "Margins").
 
-Internal machinery consumed by validate/ and sample/ — not part of the
-public surface (the public result types, `ConstraintEval`/`ValidationResult`,
-live in ir/).
+Internal machinery consumed by `validate/` and `sample/`, and not part of
+the public surface. The public result types, `ConstraintEval` and
+`ValidationResult`, live in `ir/`.
 """
 
 from designspace.eval._constraint_eval import (

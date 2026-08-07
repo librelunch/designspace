@@ -1,17 +1,24 @@
-"""represent/: the Representation Layer (API.md, "The Representation
-Layer"; "Protocols" — `Encoding`; "IR" — `Representation`; M11).
+"""represent: the Representation Layer.
 
-A genotype **is** a `Space`; a `Representation` is the `Space → Space`
-morphism between one and its phenotype, carrying a value-level `decode`/
-`encode` pair. `_protocol.py` defines the per-param `Encoding` arrow;
-`_representation.py` the whole-space morphism, `then`, and `check()`;
-`_charts.py` the one representation core ships (the induced chart
-representation); `_transport.py` the expression rewriting that keeps
-conditions/constraints meaningful in the target; `_build.py` the
-`space.represent(*rules)` dispatcher these all feed. `Space.represent()`
-(`builder/_space.py`) is the only builder-facing entry point — everything
-here is otherwise reached through the `Representation`/`Encoding` objects
-`designspace/__init__.py` re-exports.
+See API.md, "The Representation Layer", "Protocols" for `Encoding` and "IR"
+for `Representation`.
+
+A genotype is a `Space`, and a `Representation` is the `Space -> Space`
+morphism between one and its phenotype, carrying a value-level `decode` and
+`encode` pair. The modules divide as follows:
+
+- `_protocol.py` defines the per-param `Encoding` arrow.
+- `_representation.py` defines the whole-space morphism, `then` and
+  `check()`.
+- `_charts.py` holds the one representation core ships, the induced chart
+  representation.
+- `_transport.py` holds the expression rewriting that keeps conditions and
+  constraints meaningful in the target.
+- `_build.py` holds the `space.represent(*rules)` dispatcher the rest feed.
+
+`Space.represent()` in `builder/_space.py` is the only builder-facing entry
+point. Everything else here is reached through the `Representation` and
+`Encoding` objects `designspace/__init__.py` re-exports.
 """
 
 from designspace.represent._protocol import (

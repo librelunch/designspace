@@ -1,19 +1,22 @@
-"""`Representation`: the whole-space `Space → Space` morphism (API.md, "The
-Representation Layer"; "IR"; DECISIONS.md D-52…D-63).
+"""`Representation`: the whole-space `Space` to `Space` morphism.
 
-`decode`/`encode` are **stored callables**, not delegating methods — there
-is no separate method of either name, so `rep.decode`/`rep.encode` *are*
-the functions passed at construction, called directly (`rep.decode(g)`).
-This is what makes the spec's own supplied-tier constructor call ---
-`Representation(source=…, target=…, decode=…, encode=None)` --- type-check
-verbatim, and sidesteps the field/method name collision this codebase
-already has a pattern for elsewhere (`ParamExpr.meta_map`/`.meta()`,
-`Space.meta_map`/`.meta()`): here there is simply no method to collide
-with, since the field itself is the whole public surface either name
-needs. `__post_init__` derives `invertible` from whether `encode` was
-supplied, and — when it was not — replaces the stored `None` with
-`_not_invertible` so `rep.encode(x)` always "raises unless invertible"
-with a real message, never `NoneType is not callable`.
+See API.md, "The Representation Layer" and "IR".
+
+`decode` and `encode` are stored callables rather than delegating methods.
+There is no separate method of either name, so `rep.decode` and `rep.encode`
+are the functions passed at construction, called directly as `rep.decode(g)`.
+That is what makes the spec's own supplied-tier constructor call,
+`Representation(source=..., target=..., decode=..., encode=None)`,
+type-check verbatim. It also avoids the field-and-method name collision this
+codebase handles elsewhere with a paired spelling, as in
+`ParamExpr.meta_map` beside `.meta()` and `Space.meta_map` beside `.meta()`:
+here there is no method to collide with, the field being the whole public
+surface either name needs.
+
+`__post_init__` derives `invertible` from whether `encode` was supplied.
+When it was not, it replaces the stored `None` with `_not_invertible`, so
+that `rep.encode(x)` raises with a real message rather than
+`NoneType is not callable`.
 """
 
 from __future__ import annotations
@@ -40,13 +43,15 @@ custom type's native form; inactive params are absent rather than null.
 
 
 def _approx_equal(a: Any, b: Any) -> bool:
-    """Structural equality with numeric tolerance for `float` leaves.
-    `decode(encode(x)) == x` is the stated law (API.md, "The Representation
-    Layer"), but a log/logit chart's `from_unit`/`to_unit` compose through
-    `exp`/`log`, which are not bit-exact inverses at IEEE-754 precision —
-    the law is meant up to that unavoidable slack, mirroring
-    `charts/_grid.py::_isclose`'s own tolerance convention, not literal
-    float equality."""
+    """Structural equality, with numeric tolerance for `float` leaves.
+
+    API.md, "The Representation Layer" states the law as
+    `decode(encode(x)) == x`. A log or logit chart's `from_unit` and
+    `to_unit` compose through `exp` and `log`, which are not bit-exact
+    inverses at IEEE-754 precision, so the law holds up to that unavoidable
+    slack rather than under literal float equality. The tolerance convention
+    is `_isclose`'s, in `charts/_grid.py`.
+    """
     if isinstance(a, float) and isinstance(b, float):
         return math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-9)
     if isinstance(a, dict) and isinstance(b, dict):
@@ -59,7 +64,7 @@ def _approx_equal(a: Any, b: Any) -> bool:
 def _not_invertible(_phenotype: Config) -> Config:
     raise TypeError(
         "this Representation is not invertible (no applied encoding supplied "
-        "encode()) — rep.encode() is unavailable; see rep.invertible"
+        "encode()); rep.encode() is unavailable, and rep.invertible says so"
     )
 
 
@@ -128,7 +133,7 @@ class Representation:
     dropped_anchors: tuple[str, ...] = ()  # anchor keys likewise (an anchor drops whole)
     # phenotype -> genotype; raises unless invertible
     encode: Callable[[Config], Config] | None = None
-    measure_preserving: bool = False  # every applied encoding declares it (D-56)
+    measure_preserving: bool = False  # true only if every encoding declares it
     invertible: bool = field(init=False, default=False)  # every applied encoding supplies encode()
 
     def __post_init__(self) -> None:
@@ -190,7 +195,7 @@ class Representation:
         if other.source.fingerprint("full") != self.target.fingerprint("full"):
             raise TypeError(
                 "then(): other.source does not fingerprint-equal self.target "
-                "— these two representations do not compose"
+                "and so these two representations do not compose"
             )
         self_decode, other_decode = self.decode, other.decode
 
@@ -201,7 +206,7 @@ class Representation:
         if self.invertible and other.invertible:
             # `invertible` is derived from `encode is not None` in
             # `__post_init__`, but mypy cannot see that correlation across
-            # the two independent fields — assert it explicitly.
+            # the two independent fields, so assert it explicitly.
             assert self.encode is not None and other.encode is not None
             self_encode, other_encode = self.encode, other.encode
 
@@ -315,16 +320,18 @@ class Representation:
         return RepresentationCheck(n=n, ok=not failures, failures=failures)
 
     def _check_declared_round_trip(self, record: Callable[[str, str], None]) -> None:
-        """The round-trip law over **authored** phenotypes — the source's
-        anchors and its defaults-filled config (D-94).
+        """The round-trip law over authored phenotypes.
 
-        The sampled half of `check()` can only round-trip `x = decode(g)`,
+        The authored phenotypes are the source's anchors and its
+        defaults-filled config.
+
+        The sampled half of `check()` can round-trip only `x = decode(g)`,
         and every such `x` sits on the chart's image: `encode` recovers the
-        very unit coordinate it was decoded from, so the comparison is
-        exact and the tolerance is never exercised. An **authored** value —
-        `lr=1e-3` under a `Log()` chart — does not sit there, and composing
-        `to_unit`/`from_unit` through `log`/`exp` returns it only to within
-        floating-point accuracy.
+        unit coordinate it was decoded from, so the comparison is exact and
+        the tolerance is never exercised. An authored value such as
+        `lr=1e-3` under a `Log()` chart does not sit there, and composing
+        `to_unit` with `from_unit` through `log` and `exp` returns it only
+        to within floating-point accuracy.
 
         That is the case `encode` exists for (API.md: "warm-starting ...
         anchors and historical observations are phenotypes, and seeding a

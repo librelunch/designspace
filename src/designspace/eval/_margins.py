@@ -27,17 +27,21 @@ def margin(
     *,
     value_cache: dict[Value, Any] | None = None,
 ) -> float | None:
-    """`value_cache` (optional, identity-keyed on each `ds.value` node) lets
-    a caller that already evaluated `expr` via `evaluate_bool` for
-    satisfaction share those results here instead of re-invoking each
-    `ds.value`'s `fn` a second time — `eval/_constraint_eval.py::
-    evaluate_constraint` and `partial/_partial.py::_classify_constraint`
-    both do exactly this. `None` (every other caller) computes exactly as
-    before."""
+    """The signed distance from `expr` to the constraint boundary.
+
+    `value_cache` is optional and identity-keyed on each `ds.value` node. It
+    lets a caller that already evaluated `expr` through `evaluate_bool` for
+    satisfaction share those results here, rather than invoking each
+    `ds.value`'s `fn` a second time. `evaluate_constraint` in
+    `eval/_constraint_eval.py` and `_classify_constraint` in
+    `partial/_partial.py` both do so. A `None` cache computes as if the
+    cache did not exist.
+    """
     result = _margin(expr, config, activity, space, value_cache=value_cache)
-    # Negation/eq/composition can land exactly on the boundary as IEEE-754
-    # -0.0 (e.g. -abs(0.0), or negating a 0.0 inner margin); normalize so
-    # "zero is on the boundary" is never observably signed.
+    # Negation, equality and composition can land exactly on the boundary
+    # as IEEE-754 -0.0, through -abs(0.0) or by negating a 0.0 inner margin.
+    # Normalize so that "zero is on the boundary" is never observably
+    # signed.
     return 0.0 if result is not None and result == 0.0 else result
 
 

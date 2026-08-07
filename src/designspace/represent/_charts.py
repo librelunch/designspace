@@ -1,23 +1,24 @@
-"""The induced chart representation (API.md, "The Representation Layer" >
-"The induced chart representation"; DECISIONS.md D-58/D-56).
+"""The induced chart representation, which `space.represent()` builds.
 
-`space.represent()` with no rules. `induced_rule` is the sole rule the
-derived tier falls back to when a caller passes none (`represent/_build.py`
-— never as a fallback *behind* user rules, which would break the identity
-law). It matches a param carrying a chart **at its own level or at any
-element level of its `ListDomain` chain** — `ParamDef.chart is not None` is
-*not* the test: a scalar lift's chart lives in `ListDomain.element_chart`,
-and the literal reading would silently drop whole vectors from the
-genotype (D-58).
+See API.md, "The Representation Layer" > "The induced chart
+representation". `induced_rule` is the whole rule set the derived tier uses
+when a caller passes none, in `represent/_build.py`. It is never a fallback
+behind user rules, which would break the identity law.
 
-Two encoding classes, not one flag: `_ChartEncoding` (decode/decode_expr/
-measure_preserving) and `_InvertibleChartEncoding` (adds `encode`) —
-`hasattr` is the capability protocol, so "cannot encode" must be the
-attribute's *absence*, decided once per param at dispatch time by probing
-whether the param's own chart(s) actually support `to_unit` (every
-built-in family does; only an external `Prior` supplying `ppf` without
-`cdf` does not — API.md, "Charts": "a `Prior` with `ppf` alone yields a
-chart that decodes but cannot encode").
+The rule matches a param carrying a chart at its own level or at any element
+level of its `ListDomain` chain. `ParamDef.chart is not None` is not the
+test: a scalar lift's chart lives in `ListDomain.element_chart`, and the
+literal reading would silently drop whole vectors from the genotype.
+
+There are two encoding classes rather than one flag. `_ChartEncoding`
+supplies `decode`, `decode_expr` and `measure_preserving`;
+`_InvertibleChartEncoding` adds `encode`. `hasattr` is the capability
+protocol, so "cannot encode" must be the attribute's absence. Which class
+applies is decided once per param at dispatch time, by probing whether the
+param's own charts support `to_unit`. Every built-in family does. Only an
+external `Prior` supplying `ppf` without `cdf` does not; API.md, "Charts"
+says "a `Prior` with `ppf` alone yields a chart that decodes but cannot
+encode".
 """
 
 from __future__ import annotations
@@ -31,10 +32,12 @@ from designspace.ir import Chart, ListDomain, ParamDef, RealDomain
 
 
 def _bottom_list_domain(domain: ListDomain) -> ListDomain:
-    """The innermost `ListDomain` in a chained/nested `.repeat()` chain —
-    the only level that ever carries `element_chart` (every wrapping level
-    has `element_kind == "list"` and `element_chart is None`), mirroring
-    `meta/_meta.py::_innermost_element_kind`'s own recursion shape."""
+    """The innermost `ListDomain` in a chained or nested `.repeat()` chain.
+
+    That is the only level ever carrying `element_chart`; every wrapping
+    level has `element_kind == "list"` and `element_chart is None`. The
+    recursion shape mirrors `_innermost_element_kind` in `meta/_meta.py`.
+    """
     d = domain
     while d.element_kind == "list":
         assert isinstance(d.element_domain, ListDomain)
@@ -56,11 +59,14 @@ def is_chart_bearing(param: ParamDef) -> bool:
 
 
 def _chart_is_invertible(chart: Chart) -> bool:
-    """Probes rather than inspects: the one failure mode (an external
-    `Prior` with `ppf` but no `cdf`, however deeply nested inside an
-    `IntegerChart`/`QuantizedChart` wrapper) always raises `TypeError` from
-    `charts/_external.py::ExternalPriorChart.to_unit` — every built-in
-    family's `to_unit` always succeeds."""
+    """Whether this chart supports `to_unit`, decided by probing it.
+
+    Probing beats inspection here because the one failure mode, an external
+    `Prior` with `ppf` but no `cdf` however deeply nested inside an
+    `IntegerChart` or `QuantizedChart` wrapper, always raises `TypeError`
+    from `ExternalPriorChart.to_unit` in `charts/_external.py`. Every
+    built-in family's `to_unit` succeeds.
+    """
     try:
         chart.to_unit(chart.from_unit(0.5))
     except TypeError:
@@ -81,10 +87,12 @@ def _map_nested(value: Any, fn: Any) -> Any:
 
 
 def _unit_list_domain(domain: ListDomain) -> ListDomain:
-    """Recurses to the bottom `ListDomain` level and replaces only its
-    chart-bearing element facts with the unit-real equivalent — every
-    wrapping level's `count`/`list_default`/`element_constraints` (not
-    chart facts) is untouched."""
+    """Replace the bottom `ListDomain` level's chart facts with unit reals.
+
+    Recurses to that level and rewrites only its chart-bearing element
+    facts. Each wrapping level's `count`, `list_default` and
+    `element_constraints` are not chart facts and are left untouched.
+    """
     if domain.element_kind == "list":
         assert isinstance(domain.element_domain, ListDomain)
         return replace(domain, element_domain=_unit_list_domain(domain.element_domain))
@@ -96,15 +104,17 @@ def _unit_list_domain(domain: ListDomain) -> ListDomain:
         element_prior=None,
         element_quantized=None,
         element_default=None,  # settled by _build.py, like the scalar default below
-        # element_periodic: mirrored, left as-is (D-58 -- from_unit(1.0) == hi
-        # is not a domain member for a periodic real without the mirror).
+        # element_periodic is mirrored and left as is: without the mirror,
+        # from_unit(1.0) == hi is not a domain member for a periodic real.
     )
 
 
 def _target_domain_facts(param: ParamDef) -> tuple[str, Any, bool]:
-    """`(type_kind, domain, periodic)` for the target `ParamDef` `target()`
-    builds — unconditionally `real(0, 1)` at whatever level the chart was
-    found (API.md: "Each becomes real(0, 1)"), `periodic` mirrored."""
+    """`(type_kind, domain, periodic)` for the target `ParamDef`.
+
+    Always `real(0, 1)` at whatever level the chart was found, API.md
+    stating that "Each becomes real(0, 1)", with `periodic` mirrored.
+    """
     if param.type_kind == "list":
         assert isinstance(param.domain, ListDomain)
         return "list", _unit_list_domain(param.domain), param.periodic
@@ -112,10 +122,13 @@ def _target_domain_facts(param: ParamDef) -> tuple[str, Any, bool]:
 
 
 def _element_expr_facts(param: ParamDef) -> tuple[Chart, str, Any, Any, Any, bool]:
-    """`(chart, type_kind, domain, prior, quantized, periodic)` describing
-    the *source* chart's own declaration at the level `decode`/`decode_expr`
-    must read — the own-level facts for a plain scalar, or the bottom
-    `ListDomain` level's element facts for a lift."""
+    """The source chart's own declaration facts.
+
+    Returns `(chart, type_kind, domain, prior, quantized, periodic)` at the
+    level `decode` and `decode_expr` must read: the own-level facts for a
+    plain scalar, or the bottom `ListDomain` level's element facts for a
+    lift.
+    """
     if param.type_kind == "list":
         assert isinstance(param.domain, ListDomain)
         bottom = _bottom_list_domain(param.domain)
@@ -135,8 +148,10 @@ def _element_expr_facts(param: ParamDef) -> tuple[Chart, str, Any, Any, Any, boo
 
 
 class _ChartEncoding:
-    """The induced chart representation's per-param arrow: decode-only
-    (source chart lacks a working `to_unit`)."""
+    """The induced chart representation's per-param arrow, decode-only.
+
+    Used when the source chart has no working `to_unit`.
+    """
 
     def target(self, param: ParamDef) -> ParamDef:
         type_kind, domain, periodic = _target_domain_facts(param)
@@ -162,13 +177,14 @@ class _ChartEncoding:
         )
 
     def measure_preserving(self) -> bool:
-        # D-56: core proves it only for the induced chart representation,
-        # where chart(u) on u ~ U[0,1] *is* the declared measure.
+        # Core proves measure preservation only for the induced chart
+        # representation, where chart(u) on u ~ U[0, 1] is the declared
+        # measure.
         return True
 
 
 class _InvertibleChartEncoding(_ChartEncoding):
-    """As `_ChartEncoding`, plus `encode` — present only when every chart
+    """As `_ChartEncoding`, plus `encode`, present only when every chart
     along the param's own (or element) level actually supports `to_unit`."""
 
     def encode(self, param: ParamDef, value: Any) -> Any:

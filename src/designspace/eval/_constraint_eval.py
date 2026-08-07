@@ -1,18 +1,22 @@
-"""Building a `ConstraintEval` from a `Constraint` (shared by validate/ and
-sample/): Kleene-evaluate the expression, and if it isn't Unknown, attach
-its margin (API.md, "Expressions" rule 4; "Constraints and Feasibility").
+"""Building a `ConstraintEval` from a `Constraint`.
 
-`Constraint.expr` is stored exactly as the author wrote it, for both
-`.forbid()` and `.encourage()` — introspection and the fingerprint's
-structural-identity model both need the literal predicate, not a silently
-negated one. `satisfied`/`margin` are therefore a *structural* property of
-the expression (the composition-invariant conformance test builds raw
-`BoolExpr` trees with no hard/soft framing at all), which means `.forbid()`
-and `.encourage()` disagree about which value of `satisfied` is "good":
-a forbid's expr names the *forbidden* state (`lr > 0.1` — bad when true),
-while a declared constraint's expr names the *desired* state (`sum <= 4096`
-— good when true). `is_violated` below is the one place that polarity
-distinction is resolved — see DECISIONS.md.
+Shared by `validate/` and `sample/`. The expression is Kleene-evaluated,
+and its margin attached when the result is not Unknown. See API.md,
+"Expressions" rule 4 and "Constraints and Feasibility".
+
+`Constraint.expr` is stored exactly as the author wrote it, for `.forbid()`
+and `.encourage()` alike, because introspection and the fingerprint's
+structural-identity model both need the literal predicate rather than a
+silently negated one.
+
+`satisfied` and `margin` are therefore structural properties of the
+expression; the composition-invariant conformance law builds raw `BoolExpr`
+trees with no hard or soft framing at all. `.forbid()` and `.encourage()`
+consequently disagree about which value of `satisfied` is good. A forbid's
+expression names the forbidden state, so `lr > 0.1` is bad when true, while
+a declared constraint's expression names the desired state, so `sum <= 4096`
+is good when true. `is_violated` below is where that polarity distinction is
+resolved.
 """
 
 from __future__ import annotations
@@ -53,16 +57,19 @@ def evaluate_constraint(
 def instance_evals_indexed(
     space: Space, config: dict[str, Any], activity: dict[str, bool]
 ) -> list[tuple[str, int, ConstraintEval]]:
-    """`instance_constraint_evals`'s underlying walk, additionally tagged
-    with `(owning list path, template index)` per eval — the owning lift's
-    definition path and the position of the *template* `Constraint` within
-    `domain.element_constraints`, i.e. which declared per-element
-    constraint this eval instantiates. `instance_constraint_evals` is a
-    thin projection of this (drops the tag); `sample/_diagnostics.py`
-    needs the tag to fold per-instance evals back onto one
-    `ConstraintReport` row per template (D-73), grouping across instances
-    and across draws without re-walking `element_constraints` itself or
-    depending on flat-list ordering."""
+    """`instance_constraint_evals`'s walk, tagged by owning lift and template.
+
+    Each eval carries `(owning list path, template index)`: the owning
+    lift's definition path, and the position within
+    `domain.element_constraints` of the template `Constraint` this eval
+    instantiates. `instance_constraint_evals` is a thin projection that
+    drops the tag.
+
+    `sample/_diagnostics.py` needs the tag to fold per-instance evals back
+    onto one `ConstraintReport` row per template, grouping across instances
+    and across draws without re-walking `element_constraints` or depending
+    on flat-list ordering.
+    """
     from designspace.resolve._relocate import instantiate_constraints
 
     result: list[tuple[str, int, ConstraintEval]] = []
@@ -91,11 +98,13 @@ def instance_evals_indexed(
 def instance_constraint_evals(
     space: Space, config: dict[str, Any], activity: dict[str, bool]
 ) -> list[ConstraintEval]:
-    """Constraints declared on a `.space(prebuilt)` lift element
-    (DECISIONS.md D-20) — carried as templates on `ListDomain.
-    element_constraints`, never in `space.constraints` — instantiated
-    once per active instance ("evaluation reports one `ConstraintEval`
-    per instance path," API.md "Modifiers and Layering")."""
+    """Instantiate a lift element's own constraints, once per active instance.
+
+    Constraints declared on a `.space(prebuilt)` lift element are carried as
+    templates on `ListDomain.element_constraints` rather than in
+    `space.constraints`. API.md, "Modifiers and Layering" requires that
+    "evaluation reports one `ConstraintEval` per instance path".
+    """
     return [ce for _path, _idx, ce in instance_evals_indexed(space, config, activity)]
 
 
@@ -103,13 +112,16 @@ def is_violated(ce: ConstraintEval) -> bool:
     """Whether this evaluation counts against feasibility (a hard
     forbid/require) or is flagged as a violation (a soft encourage/discourage).
 
-    Thin alias for `ConstraintEval.violated` (ir/_results.py), kept as the
-    name validate/ and sample/ already import. The polarity — a `forbid`/
-    `discourage` names the *forbidden* state (violated when satisfied), the
-    other verbs name the *desired* state (violated when not satisfied) — is
-    centralized in `Constraint.feasible_when_satisfied`, so a bound sugar and a
-    `require` (both storing the desired predicate) get the right Kleene
-    behavior for free: violated iff the predicate is definitely False; an
-    Unknown or True predicate is feasible (Unknown ⇒ inapplicable, rule 4).
+    A thin alias for `ConstraintEval.violated` in `ir/_results.py`, kept
+    under the name `validate/` and `sample/` already import.
+
+    `Constraint.feasible_when_satisfied` centralizes the polarity: `forbid`
+    and `discourage` name the forbidden state and are violated when
+    satisfied, while the other verbs name the desired state and are violated
+    when not satisfied. A bound sugar and a `require`, both storing the
+    desired predicate, therefore get the right Kleene behaviour for free.
+    Each is violated exactly when its predicate is definitely False; an
+    Unknown or True predicate is feasible, Unknown being inapplicable under
+    rule 4.
     """
     return ce.violated
