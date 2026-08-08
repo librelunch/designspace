@@ -448,6 +448,75 @@ passes and the authored anchor catches).
 
 ---
 
+## D-95: May user-facing text cite the error table?
+
+- Status: Resolved
+- Date: 2026-08-08
+- Spec section: API.md §Error table, §Errors and Concurrency
+- Decided by: User
+
+### Question
+
+The error table numbers its rows, and 52 raised messages ended by citing the
+row they implement, as in `... to materialize from (row 26)`. 24 citations of
+`API.md`, an error-table row, or a private module also sat in the docstrings of
+exported objects, which are published as the API reference. May text a user
+meets, in an exception or on the documentation site, name a document that ships
+with the repository rather than with the package?
+
+### Why the specification is insufficient
+
+`API.md` requires every `ResolutionError` message to name the offending
+definition path or paths, and the error table fixes what each row covers. It
+says nothing about anything else a message may contain, so the row citation was
+neither required nor forbidden, and it spread by imitation.
+
+### Possibilities considered
+
+1. **Publish the error table on the documentation site.** The row citation
+   becomes resolvable, and 56 tests matching on `row N`, several of them
+   conformance tests, stand unchanged. The number stays positional, so
+   inserting a row still renumbers every row below it and invalidates every
+   message already emitted into a log.
+2. **Keep the citation, treat it as an internal detail.** Costs nothing to
+   implement and leaves a user holding an identifier that resolves nowhere.
+3. **State the condition, drop the number.** The message says what went wrong.
+   The row-to-test correspondence moves into the tests, which are read by the
+   people row numbers are for.
+
+### Answer
+
+Possibility 3. A reference resolves for its reader. Maintainer-facing text,
+meaning private modules, comments and everything under `tests/`, may cite
+`API.md`, its sections and its error-table rows. User-facing text, meaning
+runtime messages, the docstrings of exported objects and their public members,
+and everything under `docs/`, states the thing.
+
+### Reasoning
+
+A row number is not an error code in the sense `mypy` and `rustc` have one.
+Those are stable public identifiers with a documented registry; a row number is
+a position in a markdown table that renumbers on insertion, so it cannot
+identify a condition durably even for a reader holding the table. Publishing
+the table would have made a fragile reference reachable rather than making it
+good.
+
+`API.md` states the target, unshipped surface included, so publishing it would
+also show a reader things that do not exist and would leave the site with two
+reference surfaces to drift apart.
+
+### Specification update
+
+`CLAUDE.md`'s prose standards gain the rule as their fifth entry, that being
+where the standards governing authored text live. `API.md` is unchanged: it
+already says what a message must name, and says nothing this contradicts.
+Enforced by `messages_cite_no_error_table_row` and
+`every_error_row_is_named_by_a_test` in `tests/test_docs_site.py`,
+`site_prose_is_self_contained` in the same file, and
+`published_docstrings_are_self_contained` in `tests/test_docs.py`.
+
+---
+
 _Numbering._ D-1 through D-90 were resolved into `API.md` and removed from this
 file, and are recoverable from git history. Numbering continues unbroken, so a
 number always names one question.

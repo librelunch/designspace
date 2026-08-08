@@ -51,6 +51,12 @@ These govern every authored document, docstring, and comment in the repository.
    NumPy and SciPy reference documentation.
 4. **Wrap authored markdown prose at 80 columns.** Tables and code blocks are
    exempt.
+5. **A reference resolves for its reader.** Maintainer-facing text, meaning
+   private modules, comments and everything under `tests/`, may cite `API.md`,
+   its sections and its error-table rows. User-facing text, meaning runtime
+   messages, the docstrings of exported objects and their public members, and
+   everything under `docs/`, states the thing: it names no repository-only
+   document, no error-table row, and no private module.
 
 Prose laws in `tests/test_docs_site.py` enforce what is mechanically checkable.
 Read a failure from that file as a rule, not as a lint to satisfy narrowly.
