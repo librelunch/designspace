@@ -27,12 +27,12 @@ class TestStaticOutOfRangeIndexIsResolutionError:
 
     def test_positive_out_of_range_raises(self):
         space = ds.space(ds.param("y").real(0.0, 1.0).repeat(3))
-        with pytest.raises(ResolutionError, match=r"out of range.*row 29"):
+        with pytest.raises(ResolutionError, match=r"instance index 7 .* is out of range"):
             space.require(ds.param("y[7]") > 0.99)
 
     def test_negative_out_of_range_raises(self):
         space = ds.space(ds.param("y").real(0.0, 1.0).repeat(3))
-        with pytest.raises(ResolutionError, match=r"out of range.*row 29"):
+        with pytest.raises(ResolutionError, match=r"instance index -7 .* is out of range"):
             space.require(ds.param("y[-7]") > 0.99)
 
     def test_in_range_resolves_and_is_feasibility_load_bearing(self):
@@ -127,7 +127,9 @@ class TestResultTypedRepeatCounts:
         assert space.is_feasible({**c, "z": [0.1, 0.2, 0.3]})  # len 3 == true-count
 
     def test_min_over_bool_lift_still_rejected_row_12(self):
-        with pytest.raises(ResolutionError, match=r"row 12"):
+        with pytest.raises(
+            ResolutionError, match=r"min\(\) over a 'bool'-leaved lift is not integer-typed"
+        ):
             ds.space(
                 ds.param("m").bool().repeat(4),
                 ds.param("z").real(0.0, 1.0).repeat(ds.param("m").min()),
@@ -141,14 +143,16 @@ class TestResultTypedRepeatCounts:
         assert space.is_feasible({"m": [0, 1, 2, 3], "z": []})
 
     def test_sum_over_real_lift_still_rejected_row_12(self):
-        with pytest.raises(ResolutionError, match=r"row 12"):
+        with pytest.raises(
+            ResolutionError, match=r"sum\(\) over a 'real'-leaved lift is not integer-typed"
+        ):
             ds.space(
                 ds.param("m").real(0.0, 4.0).repeat(4),
                 ds.param("z").real(0.0, 1.0).repeat(ds.param("m").sum()),
             )
 
     def test_division_still_rejected_row_12(self):
-        with pytest.raises(ResolutionError, match=r"row 12"):
+        with pytest.raises(ResolutionError, match=r"division is not integer-typed"):
             ds.space(
                 ds.param("n").integer(0, 10),
                 ds.param("z").real(0.0, 1.0).repeat(ds.param("n") / 2),
@@ -175,15 +179,21 @@ class TestBooleanOperatorOnLiftValuedOperandIsResolutionError:
     """
 
     def test_not_over_still_list_typed_operand_raises(self):
-        with pytest.raises(ResolutionError, match=r"still a lift.*row 29"):
+        with pytest.raises(
+            ResolutionError, match=r"still a lift \(repeat\(\)\), not a scalar bool"
+        ):
             ds.space(ds.param("g").bool().repeat(4, 4)).require(~ds.param("g[0]"))
 
     def test_bool_op_over_still_list_typed_operand_raises(self):
-        with pytest.raises(ResolutionError, match=r"still a lift.*row 29"):
+        with pytest.raises(
+            ResolutionError, match=r"still a lift \(repeat\(\)\), not a scalar bool"
+        ):
             ds.space(ds.param("g").bool().repeat(4, 4)).require(ds.param("g[0]") & ds.param("g[1]"))
 
     def test_bare_condition_over_still_list_typed_operand_raises(self):
-        with pytest.raises(ResolutionError, match=r"still a lift.*row 29"):
+        with pytest.raises(
+            ResolutionError, match=r"still a lift \(repeat\(\)\), not a scalar bool"
+        ):
             ds.space(
                 ds.param("g").bool().repeat(4, 4),
                 ds.param("x").real(0.0, 1.0).when(ds.param("g[0]")),
@@ -206,7 +216,7 @@ class TestChoicePayloadMustBeASpace:
     """
 
     def test_bare_param_expr_payload_raises(self):
-        with pytest.raises(ResolutionError, match=r"must be a Space.*row 29"):
+        with pytest.raises(ResolutionError, match=r"payload for variant 'a' must be a Space"):
             ds.space(ds.param("c").choice(("a", ds.param("x").real(0.0, 1.0)), "b"))
 
     def test_valid_space_payload_still_works(self):
@@ -227,7 +237,7 @@ class TestSpaceFromIrValidatesAnchors:
 
     def test_invalid_anchor_raises(self):
         base = self._base()
-        with pytest.raises(ResolutionError, match=r"row 22"):
+        with pytest.raises(ResolutionError, match=r"anchor 'bad' is invalid against the space"):
             ds.space_from_ir(
                 base.params, base.conditions, base.constraints, anchors={"bad": {"x": 99.0}}
             )
@@ -265,7 +275,7 @@ class TestCheckFullyResolvedAlsoWalksConstraints:
             meta={},
             params=bad_expr.params,
         )
-        with pytest.raises(ResolutionError, match=r"row 29"):
+        with pytest.raises(ResolutionError, match=r"instance index 7 .* is out of range"):
             ds.space_from_ir(base.params, base.conditions, (bad_constraint,))
 
     def test_valid_constraint_round_trips_through_space_from_ir(self):

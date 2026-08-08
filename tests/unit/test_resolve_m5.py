@@ -95,7 +95,7 @@ class TestEnvelopeArithmetic:
 
 class TestUncomputableHullRow20:
     def test_mul_of_two_non_constant_operands_raises(self):
-        with pytest.raises(ResolutionError, match="row 20"):
+        with pytest.raises(ResolutionError, match="multiplies two non-constant operands"):
             ds.space(
                 ds.param("y1").real(1.0, 10.0),
                 ds.param("y2").real(1.0, 10.0),
@@ -103,35 +103,46 @@ class TestUncomputableHullRow20:
             )
 
     def test_division_raises(self):
-        with pytest.raises(ResolutionError, match="row 20"):
+        with pytest.raises(
+            ResolutionError, match=r"no computable interval hull \(unsupported 'div'"
+        ):
             ds.space(
                 ds.param("y").real(1.0, 10.0),
                 ds.param("x").real(0.0, ds.param("y") / 2),
             )
 
     def test_power_raises(self):
-        with pytest.raises(ResolutionError, match="row 20"):
+        with pytest.raises(
+            ResolutionError, match=r"no computable interval hull \(unsupported 'pow'"
+        ):
             ds.space(
                 ds.param("y").real(1.0, 10.0),
                 ds.param("x").real(0.0, ds.param("y") ** 2),
             )
 
     def test_modulo_raises(self):
-        with pytest.raises(ResolutionError, match="row 20"):
+        with pytest.raises(
+            ResolutionError, match=r"no computable interval hull \(unsupported 'mod'"
+        ):
             ds.space(
                 ds.param("y").real(1.0, 10.0),
                 ds.param("x").real(0.0, ds.param("y") % 3),
             )
 
     def test_reference_to_non_numeric_param_raises(self):
-        with pytest.raises(ResolutionError, match="row 20"):
+        with pytest.raises(
+            ResolutionError,
+            match="not a real or integer param, so it has no computable interval hull",
+        ):
             ds.space(
                 ds.param("b").bool(),
                 ds.param("x").real(0.0, ds.param("b")),
             )
 
     def test_count_operator_in_bound_raises(self):
-        with pytest.raises(ResolutionError, match="row 20"):
+        with pytest.raises(
+            ResolutionError, match=r"no computable interval hull \(unsupported 'count'"
+        ):
             ds.space(
                 ds.param("flag1").bool(),
                 ds.param("flag2").bool(),

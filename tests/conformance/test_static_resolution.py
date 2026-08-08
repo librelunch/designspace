@@ -77,7 +77,10 @@ class TestSliceFoldsACount:
         """The motivating consequence: `coordinate_paths()` requires every
         count to be a literal integer, so slicing is the route to one."""
         base = self._space()
-        with pytest.raises(ResolutionError, match="row 33"):
+        with pytest.raises(
+            ResolutionError,
+            match=r"has a dynamic repeat\(\) count, so the space has no fixed layout",
+        ):
             base.coordinate_paths()
         sliced = base.slice(n=3)
         assert sliced.coordinate_paths() == ("xs[0]", "xs[1]", "xs[2]")

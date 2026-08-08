@@ -424,7 +424,7 @@ class TestRow31Row32Messages:
         def rule(pd: ParamDef):
             return _AnyRule() if pd.path == "stops" else None
 
-        with pytest.raises(ResolutionError, match="row 32"):
+        with pytest.raises(ResolutionError, match="has relocated descendants"):
             space.represent(rule)
 
     def test_row_32_count_read_is_strict_even_for_a_user_rule(self):
@@ -443,7 +443,9 @@ class TestRow31Row32Messages:
         def rule(pd: ParamDef):
             return _AnyRule() if pd.path == "n" else None
 
-        with pytest.raises(ResolutionError, match="row 32"):
+        with pytest.raises(
+            ResolutionError, match=r"is read by a .repeat\(\) count and cannot be encoded"
+        ):
             space.represent(rule)
 
     def test_row_32_prop_read_without_prop_expr(self):
@@ -485,7 +487,9 @@ class TestRow31Row32Messages:
         def rule(pd: ParamDef):
             return _NoPropExpr() if pd.path == "c" else None
 
-        with pytest.raises(ResolutionError, match="row 32"):
+        with pytest.raises(
+            ResolutionError, match=r"is read by a .repeat\(\) count and cannot be encoded"
+        ):
             space.represent(rule)
 
     def test_row_31_target_must_return_the_same_path(self):
@@ -503,7 +507,9 @@ class TestRow31Row32Messages:
         def rule(pd: ParamDef):
             return _WrongPath() if pd.path == "x" else None
 
-        with pytest.raises(ResolutionError, match="row 31"):
+        with pytest.raises(
+            ResolutionError, match=r"Encoding.target\(\) for 'x' returned a different path"
+        ):
             space.represent(rule)
 
 

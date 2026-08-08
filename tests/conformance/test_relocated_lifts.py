@@ -274,7 +274,9 @@ class TestRow6OverDomainCarriedStores:
             ds.param("grp").space(ds.param("f").real(0.0, 1.0)),
             ds.param("xs").real(0.0, 1.0).repeat(ds.param("grp.f")),
         )
-        with pytest.raises(ResolutionError, match="row 12"):
+        with pytest.raises(
+            ResolutionError, match=r"references 'grp\.f', which is 'real', not integer"
+        ):
             space.sample_one(seed=0)
 
 

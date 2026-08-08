@@ -1,6 +1,6 @@
 """Documentation gates for the public surface.
 
-Five laws, each scoped to exactly what `designspace.__all__` exports. The
+Six laws, each scoped to exactly what `designspace.__all__` exports. The
 scoping is why they run on griffe rather than on ruff or `__doc__`:
 
 - **Ruff cannot express it.** Ruff's `D1xx` missing-docstring rules never
@@ -34,6 +34,7 @@ plumbing rather than surface a user reads or sets.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -45,6 +46,18 @@ import pytest
 import designspace as ds
 
 _SRC = Path(__file__).resolve().parent.parent / "src"
+
+# A document that ships with the repository and not with the package.
+_REPO_ONLY_DOC = re.compile(r"\b(?:API|PLAN|PROGRESS|DECISIONS|CLAUDE)\.md\b")
+# An error-table row, cited singly or as a run.
+_ROW_CITATION = re.compile(r"\brows?\s+\d+(?:\s*(?:,|and|or|to)\s*\d+)*")
+# A private implementation module, as `represent/_build.py`.
+_PRIVATE_MODULE = re.compile(r"\b[a-z_]+/_[a-z_]+\.py\b")
+_NOT_SELF_CONTAINED = [
+    ("a repository-only document", _REPO_ONLY_DOC),
+    ("an error-table row", _ROW_CITATION),
+    ("a private module", _PRIVATE_MODULE),
+]
 
 PACKAGE = griffe.load(
     "designspace",
@@ -277,4 +290,32 @@ def test_every_protocol_has_an_implementation_example(label: str, obj: Any) -> N
     assert _documented(obj) and ">>>" in obj.docstring.value, (
         f"{label} is a protocol a consumer implements; its docstring must show "
         f"a worked implementation."
+    )
+
+
+@pytest.mark.parametrize(("label", "obj"), DOCUMENTABLE, ids=DOCUMENTABLE_IDS)
+def test_published_docstrings_are_self_contained(label: str, obj: Any) -> None:
+    """No published docstring points at something its reader cannot open.
+
+    These docstrings are the API reference, so their reader has the package
+    and not the repository. `API.md`, the error table and the private
+    modules are all on the far side of that line: naming one gives the
+    reader a reference that resolves for the maintainer who wrote it and for
+    nobody else. The docstring states the thing instead, or names the public
+    route to it.
+
+    The same rule holds for authored site prose, enforced over `docs/` in
+    `tests/test_docs_site.py`.
+    """
+    if not _documented(obj):
+        return
+    text = obj.docstring.value
+    offenders = [
+        f"{kind}: {match.group(0)!r}"
+        for kind, p in _NOT_SELF_CONTAINED
+        for match in p.finditer(text)
+    ]
+    assert not offenders, (
+        f"{label}'s docstring is published as the API reference but names "
+        f"something its reader has no copy of:\n  " + "\n  ".join(offenders)
     )

@@ -158,7 +158,7 @@ class TestSliceAnchors:
         space = ds.space(ds.param("x").real(0.0, 1.0), ds.param("y").integer(0, 10)).anchor(
             {"a": {"x": 0.5, "y": 5}}
         )
-        with pytest.raises(ResolutionError, match=r"anchor 'a'.*row 22"):
+        with pytest.raises(ResolutionError, match=r"anchor 'a' conflicts with sliced value"):
             space.slice(y=3)
 
 
@@ -212,7 +212,7 @@ class TestFreeze:
 class TestFreezeAnchors:
     def test_conflicting_anchor_raises(self):
         space = ds.space(ds.param("x").integer(0, 10)).anchor({"a": {"x": 5}})
-        with pytest.raises(ResolutionError, match=r"anchor 'a'.*row 22"):
+        with pytest.raises(ResolutionError, match=r"anchor 'a' is invalid against the space"):
             space.freeze(x=3)
 
     def test_matching_anchor_survives(self):
@@ -713,5 +713,5 @@ class TestExtend:
 
     def test_extend_with_new_required_param_invalidates_anchor(self):
         space = ds.space(ds.param("x").real(0.0, 1.0)).anchor({"a": {"x": 0.5}})
-        with pytest.raises(ResolutionError, match=r"anchor 'a'.*row 22"):
+        with pytest.raises(ResolutionError, match=r"anchor 'a' is invalid after the operation"):
             space.extend(ds.param("y").integer(0, 10))

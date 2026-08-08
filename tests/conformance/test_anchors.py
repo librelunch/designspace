@@ -55,12 +55,14 @@ def _xy() -> Space:
 class TestAnchorValidation:
     def test_row22_out_of_domain_value_raises(self):
         space = _xy()
-        with pytest.raises(ResolutionError, match=r"anchor 'bad'.*row 22"):
+        with pytest.raises(ResolutionError, match=r"anchor 'bad' is invalid.*out_of_bounds"):
             space.anchor({"bad": {"x": 5.0, "k": 3}})  # x outside [0, 1]
 
     def test_row22_violated_constraint_raises(self):
         space = _xy().forbid(ds.param("k") > 5)
-        with pytest.raises(ResolutionError, match=r"anchor 'bad'.*row 22"):
+        with pytest.raises(
+            ResolutionError, match=r"anchor 'bad' is invalid.*constraint is violated"
+        ):
             space.anchor({"bad": {"x": 0.5, "k": 8}})
 
     def test_valid_anchor_accepted_and_readable(self):

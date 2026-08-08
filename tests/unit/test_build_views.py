@@ -195,11 +195,11 @@ class TestRow11WrongTypeModifierIsStaticallyHidden:
             ds.space(ds.param("x").categorical("a", "b").quantized(step=1))
 
     def test_log_scale_after_repeat_still_says_row_11(self):
-        with pytest.raises(ResolutionError, match="row 11"):
+        with pytest.raises(ResolutionError, match=r"log_scale\(\) written after .repeat\(\)"):
             ds.param("x").real(0.0, 1.0).repeat(4).log_scale()
 
     def test_quantized_after_repeat_still_says_row_11(self):
-        with pytest.raises(ResolutionError, match="row 11"):
+        with pytest.raises(ResolutionError, match=r"quantized\(\) written after .repeat\(\)"):
             ds.param("x").real(0.0, 1.0).repeat(4).quantized(step=0.1)
 
     def test_programmatically_built_quantized_on_categorical_raises(self):

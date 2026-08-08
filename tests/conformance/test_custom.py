@@ -288,7 +288,9 @@ class TestRow16:
 
     def test_comparison_type_mismatch_raises(self):
         space = ds.space(ds.param("t").custom(TaggedValue()))
-        with pytest.raises(ResolutionError, match="row 16"):
+        with pytest.raises(
+            ResolutionError, match=r"prop\('n'\) is 'int'-typed, compared against 'not-an-int'"
+        ):
             space.require(ds.param("t").prop("n") == "not-an-int")
 
     def test_two_prop_type_mismatch_raises(self):
@@ -296,7 +298,9 @@ class TestRow16:
             ds.param("a").custom(TaggedValue(tag="a")),
             ds.param("b").custom(TaggedValue(tag="b")),
         )
-        with pytest.raises(ResolutionError, match="row 16"):
+        with pytest.raises(
+            ResolutionError, match=r"prop\('n'\) \('int'\) compared against prop\('ok'\) \('bool'\)"
+        ):
             space.require(ds.param("a").prop("n") == ds.param("b").prop("ok"))
 
 
@@ -306,12 +310,16 @@ class TestRow16:
 class TestRow23:
     def test_non_json_describe_raises_on_to_json(self):
         space = ds.space(ds.param("u").custom(Unserializable()))
-        with pytest.raises(SerializationError, match="row 23"):
+        with pytest.raises(
+            SerializationError, match=r"describe\(\) output is not JSON-serializable"
+        ):
             space.to_json()
 
     def test_non_json_describe_raises_on_fingerprint(self):
         space = ds.space(ds.param("u").custom(Unserializable()))
-        with pytest.raises(SerializationError, match="row 23"):
+        with pytest.raises(
+            SerializationError, match=r"describe\(\) output is not JSON-serializable"
+        ):
             space.fingerprint()
 
 
@@ -353,10 +361,10 @@ class TestRow27:
         doc = space.to_json()
         from designspace import Space
 
-        with pytest.raises(SerializationError, match="row 27"):
+        with pytest.raises(SerializationError, match="has no entry in custom_types"):
             Space.from_json(doc)  # no custom_types registry at all
 
-        with pytest.raises(SerializationError, match="row 27"):
+        with pytest.raises(SerializationError, match="has no entry in custom_types"):
             Space.from_json(doc, custom_types={"other_key": probability_factory})
 
 

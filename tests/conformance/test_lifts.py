@@ -321,7 +321,7 @@ class TestIsSortedDepthRestriction:
         )
 
     def test_depth_2_is_a_resolution_error(self):
-        with pytest.raises(ResolutionError, match="row 24"):
+        with pytest.raises(ResolutionError, match=r"restricted to a single repeat\(\) level"):
             ds.space(ds.param("grid").real(0.0, 1.0).repeat(3).repeat(2)).encourage(
                 ds.param("grid").is_sorted()
             )

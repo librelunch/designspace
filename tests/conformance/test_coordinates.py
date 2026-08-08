@@ -101,7 +101,7 @@ class TestNoFixedLayoutRaisesRow33:
         with pytest.raises(ResolutionError) as excinfo:
             space.coordinate_paths()
         message = str(excinfo.value)
-        assert "row 33" in message
+        assert "so the space has no fixed layout" in message
         assert any(path in message for path in NOT_FIXED_FIXTURES[name])
 
 
@@ -189,5 +189,7 @@ class TestCoordinatePathsStructure:
         space = ds.space(
             ds.param("algo").choice("linear", svm=ds.space(ds.param("gamma").real(0.0, 1.0))),
         )
-        with pytest.raises(ResolutionError, match="row 33"):
+        with pytest.raises(
+            ResolutionError, match="carries a condition, so the space has no fixed layout"
+        ):
             space.coordinate_paths()

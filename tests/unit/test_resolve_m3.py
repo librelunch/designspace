@@ -21,6 +21,7 @@ class TestSubsetDomain:
         space = ds.space(ds.param("s").subset(("a", "b")))
         assert space.params["s"].domain == SubsetDomain(("a", "b"), 0, None)
 
+    # Error-table row 28, nonsensical size bounds, in both its forms.
     def test_min_size_negative_raises(self):
         with pytest.raises(ResolutionError, match="'s'"):
             ds.space(ds.param("s").subset(("a", "b"), min_size=-1))

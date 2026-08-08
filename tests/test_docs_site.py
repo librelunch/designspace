@@ -26,7 +26,14 @@ The prose standard in `CLAUDE.md`, over the trees `_PROSE_SOURCES` names:
 8. every `API.md` section a docstring or comment cites is a heading of
    `API.md`, including its bold run-in form;
 9. every conformance law names itself in the module the spec's *Enforced by*
-   column assigns it, so the column reads in both directions.
+   column assigns it, so the column reads in both directions;
+10. no message a user can be shown cites an error-table row. The row number is
+    an index into a table that ships with the repository and not with the
+    package, and inserting a row renumbers every row below it, so it names
+    nothing durable even to a reader holding the table;
+11. every error-table row is named by at least one test module. This is the
+    counterweight to law 10: the row-to-test correspondence moves into the
+    tests, which are read by the people the row numbers are for.
 
 These are the mechanically checkable part of that standard. Register is not
 gated: second-person counts and antithesis counts are editorial judgment, and a
@@ -38,6 +45,7 @@ of its own, run as `sphinx-build` directly.
 
 from __future__ import annotations
 
+import ast
 import re
 import warnings
 from pathlib import Path
@@ -104,6 +112,28 @@ _RUN_IN_HEADING = re.compile(r"^(?:[-*]\s+)?\*\*(.+?)\.?\*\*", re.MULTILINE)
 _SECTION_CITATION = re.compile(r'API\.md,\s*"([^"\n]+)"((?:\s*>\s*"[^"\n]+")*)')
 _QUOTED = re.compile(r'"([^"\n]+)"')
 
+# An error-table row, cited singly or as a run: "row 12", "rows 6, 7 and 14".
+_ROW_CITATION = re.compile(r"\brows?\s+\d+(?:\s*(?:,|and|or|to)\s*\d+)*")
+# A citation whose number is interpolated, so the constant ends at "(row ".
+# `_check_opaque_compare_types` built one this way and no scan for a spelled
+# number could have seen it.
+_ROW_INTERPOLATED = re.compile(r"\brows?\s+$")
+# The other form a test names a row by: the class the unit suites group by row.
+_ROW_CLASS = re.compile(r"\bTestRow(\d+)")
+# A document that ships with the repository and not with the package.
+_REPO_ONLY_DOC = re.compile(r"\b(?:API|PLAN|PROGRESS|DECISIONS|CLAUDE)\.md\b")
+# A private implementation module, as `represent/_build.py`.
+_PRIVATE_MODULE = re.compile(r"\b[a-z_]+/_[a-z_]+\.py\b")
+_NOT_SELF_CONTAINED = [
+    ("a repository-only document", _REPO_ONLY_DOC),
+    ("an error-table row", _ROW_CITATION),
+    ("a private module", _PRIVATE_MODULE),
+]
+_NUMBER = re.compile(r"\d+")
+# The rows of the spec's error table, by number. The tag is `R`, `V`, or `R`
+# qualified, as row 25's `R (warning)` is.
+_ERROR_ROW = re.compile(r"^\| (\d+) \| .* \| [RV][^|]* \|$", re.MULTILINE)
+
 # ```{code-cell}\n:tags: [...]\n<source>\n``` is myst-nb's executable block.
 # Anchored at the fence so a mention in prose cannot match.
 _CODE_CELL = re.compile(
@@ -117,6 +147,48 @@ _CELL_OPTION = re.compile(r"\A(?:^:[a-z-]+:.*$\n)+", re.MULTILINE)
 def _slug(heading: str) -> str:
     """The anchor a markdown renderer derives from a heading."""
     return re.sub(r"\s+", "-", re.sub(r"[^\w\s-]", "", heading.strip().lower())).strip("-")
+
+
+def _runtime_strings(path: Path) -> list[tuple[int, str]]:
+    """Every string constant in `path` that is not a docstring.
+
+    Docstrings are excluded because a private module's docstring is read by
+    a maintainer with `API.md` open. What is left is the text a running
+    program can put in front of a user, message templates and their f-string
+    fragments among it.
+    """
+    tree = ast.parse(path.read_text())
+    docstrings = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        first = node.body[0] if node.body else None
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            docstrings.add(id(first.value))
+    return [
+        (node.lineno, node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in docstrings
+    ]
+
+
+def _cited_rows(text: str) -> set[int]:
+    """Every error-table row `text` names, by either form a test uses.
+
+    A run is expanded, so "rows 6, 7 and 14" names three. `TestRow12Counts`
+    names row 12: the unit suites group a row's cases into one class, which
+    is the older and the more precise of the two forms.
+    """
+    cited = {int(n) for n in _ROW_CLASS.findall(text)}
+    for match in _ROW_CITATION.finditer(text):
+        cited |= {int(n) for n in _NUMBER.findall(match.group(0))}
+    return cited
 
 
 def _cite_lines(path: Path, pattern: re.Pattern[str]) -> list[str]:
@@ -328,4 +400,81 @@ def test_every_law_names_itself_in_its_own_module() -> None:
     assert not missing, (
         f"{len(missing)} of {len(rows)} conformance laws are not named in the "
         f"module API.md assigns them:\n  " + "\n  ".join(missing)
+    )
+
+
+@pytest.mark.parametrize("path", _SOURCE, ids=lambda p: str(p.relative_to(_ROOT)))
+def test_messages_cite_no_error_table_row(path: Path) -> None:
+    """No text a running program can show cites an error-table row.
+
+    The table lives in `API.md`, which ships with the repository and not
+    with the package, so a reader who meets a bare row number in an
+    exception has nothing to look it up in. The number is also positional:
+    inserting a row renumbers every row below it, so it identifies nothing
+    durable even to a reader holding the table. A message states the
+    condition instead.
+
+    No row number is spelled out anywhere in this module, so that
+    `test_every_error_row_is_named_by_a_test` cannot count a mention here as
+    coverage of the row it names.
+
+    Docstrings are exempt here. An exported docstring is held to the same
+    standard by `tests/test_docs.py`, and a private one is maintainer-facing.
+    """
+    offenders = [
+        f"  line {lineno}: {value.strip()!r}"
+        for lineno, value in _runtime_strings(path)
+        if _ROW_CITATION.search(value) or _ROW_INTERPOLATED.search(value)
+    ]
+    assert not offenders, (
+        f"{path.relative_to(_ROOT)} cites an error-table row in text a user "
+        f"can be shown; state the condition instead:\n" + "\n".join(offenders)
+    )
+
+
+@pytest.mark.parametrize("path", _DOC_SOURCES, ids=lambda p: str(p.relative_to(_ROOT)))
+def test_site_prose_is_self_contained(path: Path) -> None:
+    """No page points at something its reader cannot open.
+
+    The site's reader has the package, not the repository. `API.md` states
+    the target, unshipped surface included, and the error table and the
+    private modules are internal structure; a page that names one of them is
+    describing the project to somebody who came to read about the library.
+    A page states the thing, or names the public route to it.
+
+    The same rule holds for the docstrings the reference is generated from,
+    enforced in `tests/test_docs.py`.
+    """
+    text = path.read_text()
+    offenders = [
+        f"  {kind}: {match.group(0)!r}"
+        for kind, pattern in _NOT_SELF_CONTAINED
+        for match in pattern.finditer(text)
+    ]
+    assert not offenders, (
+        f"{path.relative_to(_ROOT)} is published, but names something its "
+        f"reader has no copy of:\n" + "\n".join(offenders)
+    )
+
+
+def test_every_error_row_is_named_by_a_test() -> None:
+    """Every error-table row is named by at least one module under `tests/`.
+
+    Messages no longer carry the row number, so this is where the
+    correspondence between a row and the test holding it now lives. A row
+    named nowhere is either untested or tested by something no one can find
+    from the table.
+
+    Either form counts, a `TestRowNN` class or a citation in prose, because
+    both are equally greppable from a row number in hand.
+    """
+    rows = {int(n) for n in _ERROR_ROW.findall(_SPEC.read_text())}
+    assert rows, "API.md's error table parses to no rows"
+    cited: set[int] = set()
+    for path in _TESTS:
+        cited |= _cited_rows(path.read_text())
+    missing = sorted(rows - cited)
+    assert not missing, (
+        f"{len(missing)} of {len(rows)} error-table rows are named by no test "
+        f"module: {', '.join(str(n) for n in missing)}"
     )

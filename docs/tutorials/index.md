@@ -119,35 +119,35 @@ solver integration takes.
 
 ## Feature index
 
-Keyed by `API.md` section heading. A concept is introduced in exactly one
-place, and later pages use it without re-explaining it.
+Every concept the tutorials cover, and the page that introduces it. A concept
+is introduced in exactly one place, and later pages use it without
+re-explaining it.
 
-| `API.md` section | Page |
+| Concept | Page |
 |---|---|
-| Parameter Types, Scalar (`real`/`integer`/`categorical`/`ordinal`/`bool`) | 01 |
-| Parameter Types, Combinatorial (`subset`/`permutation`) | 04 (queries), 09 (`SubsetRemaining`, `PermutationRemaining`) |
-| Parameter Types, Structural (`choice`, `.space(...)` struct) | 03, 05 (lifted choice, struct lift) |
-| Parameter Types, Extension (`.custom(...)`) | 06 |
-| Parameter Types, Program (`.symbolic(...)`, `.code(...)`) | 07 |
-| Modifiers and Layering (`.prior`, `.log_scale`, `.quantized`, `.default`, `.when`, `.tag`, `.meta`) | 01 (priors, scales, grids, tags), 03 (`.when`), 09 (`.default`), 11 (`.meta`) |
-| Paths and Scoping (path grammar, instance against definition paths) | 02 (`flatten`), 03 (choice payload paths), 05 (instance and nested indices) |
-| Expressions, boolean vocabulary (`==`, `.is_in`, `.is_active`, `&`/`\|`/`~`, `.implies`, `ds.all_`/`ds.any_`/`ds.count`) | 04 |
-| Expressions, arithmetic vocabulary (`.size`, `.sum_over`, `.position_of`, `.length`, `.prop`, `.if_inactive`) | 04 (subset and permutation queries), 05 (`.length`), 06 (`.prop`), 10 (`.if_inactive`) |
-| Expressions, vector aggregates (`.field`, `.sum`/`.min`/`.max`/`.count_of`/`.is_sorted`/`.distinct`) | 05 |
-| Constraints and Feasibility (the four verbs, margins, `constraint.kind`/`ce.violated`) | 04 |
+| Scalar parameters (`real`/`integer`/`categorical`/`ordinal`/`bool`) | 01 |
+| Combinatorial parameters (`subset`/`permutation`) | 04 (queries), 09 (`SubsetRemaining`, `PermutationRemaining`) |
+| Structural parameters (`choice`, `.space(...)` struct) | 03, 05 (lifted choice, struct lift) |
+| Custom types (`.custom(...)`) | 06 |
+| Program types (`.symbolic(...)`, `.code(...)`) | 07 |
+| Modifiers and layering (`.prior`, `.log_scale`, `.quantized`, `.default`, `.when`, `.tag`, `.meta`) | 01 (priors, scales, grids, tags), 03 (`.when`), 09 (`.default`), 11 (`.meta`) |
+| Paths and scoping (path grammar, instance against definition paths) | 02 (`flatten`), 03 (choice payload paths), 05 (instance and nested indices) |
+| Boolean expressions (`==`, `.is_in`, `.is_active`, `&`/`\|`/`~`, `.implies`, `ds.all_`/`ds.any_`/`ds.count`) | 04 |
+| Arithmetic expressions (`.size`, `.sum_over`, `.position_of`, `.length`, `.prop`, `.if_inactive`) | 04 (subset and permutation queries), 05 (`.length`), 06 (`.prop`), 10 (`.if_inactive`) |
+| Vector aggregates (`.field`, `.sum`/`.min`/`.max`/`.count_of`/`.is_sorted`/`.distinct`) | 05 |
+| Constraints and feasibility (the four verbs, margins, `constraint.kind`/`ce.violated`) | 04 |
 | Charts (prior families, quantization, periodicity) | 01, 11 (a solver's use of them) |
-| Sampling and Generativity (`sample`/`sample_one`/`sample_dicts`, `reject_soft`, non-generative params) | 02, 06 (non-generative custom), 07 (non-generative program), 10 (`reject_soft`) |
+| Sampling and generativity (`sample`/`sample_one`/`sample_dicts`, `reject_soft`, non-generative params) | 02, 06 (non-generative custom), 07 (non-generative program), 10 (`reject_soft`) |
 | Defaults (`.default`, `apply_defaults`, cascade) | 09 |
 | Sampling diagnostics (`sampling_report`, Unknown-swallowing, `tighten_bounds`) | 10 |
-| Space, Validation (`validate`, `validate_param`, `is_feasible`, `infeasibility_reasons`, `evaluate_constraints`) | 02, 04 (constraint evaluation), 09 (`validate_param` with context) |
-| Space, Partial Configs (`evaluate_partial`, `remaining_domain`, `param_activity`, `next_assignable`, `is_complete`, `missing_params`) | 09 |
-| Space, Introspection (`.params`, `.constraints`, `.subspaces`, `.dependency_graph`, `.cardinality()`) | 01, 03 (`.subspaces`), 06 (`.cardinality()`), 11 (`dependency_graph`, `topological_order`) |
-| Space, Structural Operations (`.freeze`/`.slice`/`.select`/`.filter`/`.extend`/`.active_subspace`) | 08, 03 (`.active_subspace`) |
-| Space, Metaprogramming (`.map_params`, `.without_constraints`) | 08 |
-| Identity and Serialization (`to_json`/`from_json`, `fingerprint`, `config_hash`) | 11 |
-| Config Utilities (`flatten`/`unflatten`, `config_diff`, `variant`/`payload`/`destructure`, `coordinate_paths`) | 02 (`flatten`/`unflatten`), 03 (`variant`/`payload`/`destructure`), 09 (`coordinate_paths`), 10 (`config_diff`) |
-| Config Representation (the dtype table) | 10 |
-| The Representation Layer (`.represent()`, `Representation`, `rep.check()`) | 11 |
+| Validation (`validate`, `validate_param`, `is_feasible`, `infeasibility_reasons`, `evaluate_constraints`) | 02, 04 (constraint evaluation), 09 (`validate_param` with context) |
+| Partial configurations (`evaluate_partial`, `remaining_domain`, `param_activity`, `next_assignable`, `is_complete`, `missing_params`) | 09 |
+| Introspection (`.params`, `.constraints`, `.subspaces`, `.dependency_graph`, `.cardinality()`) | 01, 03 (`.subspaces`), 06 (`.cardinality()`), 11 (`dependency_graph`, `topological_order`) |
+| Structural operations (`.freeze`/`.slice`/`.select`/`.filter`/`.extend`/`.active_subspace`) | 08, 03 (`.active_subspace`) |
+| Metaprogramming (`.map_params`, `.without_constraints`) | 08 |
+| Identity and serialization (`to_json`/`from_json`, `fingerprint`, `config_hash`) | 11 |
+| Configuration utilities (`flatten`/`unflatten`, `config_diff`, `variant`/`payload`/`destructure`, `coordinate_paths`) | 02 (`flatten`/`unflatten`), 03 (`variant`/`payload`/`destructure`), 09 (`coordinate_paths`), 10 (`config_diff`) |
+| DataFrame representation (the dtype table) | 10 |
+| The representation layer (`.represent()`, `Representation`, `rep.check()`) | 11 |
 
-`Space.to_json_schema()` appears in `API.md` but on no page, because it is not
-built yet. See `PROGRESS.md`.
+`Space.to_json_schema()` has no page of its own because it is not built yet.

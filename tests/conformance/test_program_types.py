@@ -132,7 +132,7 @@ class TestDeclarationRewrittenRow15:
             ds.space(ds.param("sched").symbolic(_cooling_signature(), [123], 3))  # type: ignore[list-item]
 
     def test_code_examples_must_be_json_serializable(self):
-        with pytest.raises(ResolutionError, match="row 23"):
+        with pytest.raises(ResolutionError, match=r"code\(\) examples.*is not JSON-serializable"):
             ds.space(ds.param("p").code(ds.Signature({}, "bool"), examples=[object()]))
 
     def test_code_bad_signature_arg_name_raises(self):

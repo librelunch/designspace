@@ -83,11 +83,11 @@ class TestPrebuiltSpaceForm:
 
 class TestRow11MisplacedLayerModifier:
     def test_prior_after_repeat_raises(self):
-        with pytest.raises(ResolutionError, match="row 11"):
+        with pytest.raises(ResolutionError, match=r"log_scale\(\) written after .repeat\(\)"):
             ds.space(ds.param("x").real(0.0, 1.0).repeat(4).log_scale())
 
     def test_quantized_after_repeat_raises(self):
-        with pytest.raises(ResolutionError, match="row 11"):
+        with pytest.raises(ResolutionError, match=r"quantized\(\) written after .repeat\(\)"):
             ds.space(ds.param("x").real(0.0, 1.0).repeat(4).quantized(step=0.1))
 
     def test_prior_before_repeat_is_legal(self):
@@ -96,11 +96,13 @@ class TestRow11MisplacedLayerModifier:
 
 class TestRow12CountNotIntegerTyped:
     def test_float_literal_count_raises(self):
-        with pytest.raises(ResolutionError, match="row 12"):
+        with pytest.raises(
+            ResolutionError, match="count must be an int or an integer-typed expression"
+        ):
             ds.space(ds.param("x").real(0.0, 1.0).repeat(2.5))  # type: ignore[arg-type]
 
     def test_real_typed_count_reference_raises(self):
-        with pytest.raises(ResolutionError, match="row 12"):
+        with pytest.raises(ResolutionError, match="references 'y', which is 'real', not integer"):
             ds.space(
                 ds.param("y").real(0.0, 5.0), ds.param("x").real(0.0, 1.0).repeat(ds.param("y"))
             )
@@ -116,7 +118,7 @@ class TestRow13NegativeEvaluatedCount:
             ds.param("n").integer(-3, -1),
             ds.param("xs").real(0.0, 1.0).repeat(ds.param("n")),
         )
-        with pytest.raises(SamplingError, match="row 13"):
+        with pytest.raises(SamplingError, match="count evaluated to a negative value"):
             space.sample_one(seed=0)
 
     def test_validate_flags_count_mismatch_against_a_dynamic_reference(self):
@@ -131,18 +133,24 @@ class TestRow13NegativeEvaluatedCount:
 
 class TestRow21Defaults:
     def test_element_and_list_default_together_raises(self):
-        with pytest.raises(ResolutionError, match="row 21"):
+        with pytest.raises(
+            ResolutionError, match="element default and list default are mutually exclusive"
+        ):
             ds.space(ds.param("x").real(0.0, 1.0).default(0.5).repeat(3).default([0.1, 0.2, 0.3]))
 
     def test_list_default_under_dynamic_count_raises(self):
-        with pytest.raises(ResolutionError, match="row 21"):
+        with pytest.raises(
+            ResolutionError, match=r"list default requires a static \(int\) repeat count"
+        ):
             ds.space(
                 ds.param("n").integer(0, 5),
                 ds.param("x").real(0.0, 1.0).repeat(ds.param("n")).default([0.1, 0.2]),
             )
 
     def test_list_default_length_mismatch_raises(self):
-        with pytest.raises(ResolutionError, match="row 21"):
+        with pytest.raises(
+            ResolutionError, match="list default length must match the static repeat count"
+        ):
             ds.space(ds.param("x").real(0.0, 1.0).repeat(3).default([0.1, 0.2]))
 
     def test_valid_list_default(self):
@@ -156,7 +164,10 @@ class TestRow21Defaults:
 
 class TestNestedStructChoiceLiftBoundary:
     """A struct or choice element under more than one `.repeat()` level is
-    rejected at resolution rather than left silently wrong."""
+    rejected at resolution rather than left silently wrong.
+
+    Error-table row 34.
+    """
 
     def test_double_nested_struct_element_raises(self):
         with pytest.raises(ResolutionError, match="nested under more than one"):

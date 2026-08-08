@@ -29,11 +29,11 @@ from designspace.ir import RealRemaining
 
 class TestConstructionRow30:
     def test_non_scalar_returns_raises(self):
-        with pytest.raises(ResolutionError, match="row 30"):
+        with pytest.raises(ResolutionError, match=r"returns=.* is not scalar-typed"):
             ds.value(lambda x: [x], ds.param("x").real(0.0, 1.0), returns=list)
 
     def test_non_expression_operand_raises(self):
-        with pytest.raises(ResolutionError, match="row 30"):
+        with pytest.raises(ResolutionError, match="operand 5 is not an expression"):
             ds.value(lambda x: x, 5, returns=float)
 
     def test_non_callable_fn_raises_type_error(self):
@@ -118,7 +118,9 @@ class TestIntDrivesRepeat:
         assert len(cfg["edges"]) == self._n_edges(cfg["k"])
 
     def test_returns_float_count_is_row_12(self):
-        with pytest.raises(ResolutionError, match="row 12"):
+        with pytest.raises(
+            ResolutionError, match=r"ds.value\(returns=float\) is not integer-typed"
+        ):
             ds.space(
                 ds.param("k").integer(0, 3),
                 ds.param("edges")
@@ -317,36 +319,49 @@ class _TaggedInt:
 class TestCompareTypeMismatch:
     def test_value_vs_literal_mismatch_is_row_30(self):
         space = ds.space(ds.param("x").real(0.0, 1.0))
-        with pytest.raises(ResolutionError, match="row 30"):
+        with pytest.raises(
+            ResolutionError,
+            match=r"ds\.value\(.*\) is 'float'-typed, compared against 'not-a-float'",
+        ):
             space.require(ds.value(lambda x: x, ds.param("x"), returns=float) == "not-a-float")
 
     def test_no_int_float_leniency(self):
         # Strict type match, mirroring .prop(). An int-
         # declared value compared against a float literal is still row 30.
         space = ds.space(ds.param("x").real(0.0, 1.0))
-        with pytest.raises(ResolutionError, match="row 30"):
+        with pytest.raises(
+            ResolutionError, match=r"ds\.value\(.*\) is 'int'-typed, compared against 1\.0"
+        ):
             space.require(ds.value(lambda x: int(x), ds.param("x"), returns=int) == 1.0)
 
     def test_value_vs_value_mismatch_is_row_30(self):
         space = ds.space(ds.param("x").real(0.0, 1.0), ds.param("y").real(0.0, 1.0))
-        with pytest.raises(ResolutionError, match="row 30"):
+        with pytest.raises(
+            ResolutionError,
+            match=r"ds\.value\(.*\) \('float'\) compared against ds\.value\(.*\) \('bool'\)",
+        ):
             space.require(
                 ds.value(lambda x: x, ds.param("x"), returns=float)
                 == ds.value(lambda y: y > 0, ds.param("y"), returns=bool)
             )
 
-    def test_value_vs_prop_mismatch_cites_row_30_when_value_is_checked_first(self):
-        # The cited row follows whichever side of the comparison is being
-        # checked (left-to-right); a Value on the left cites row 30.
+    def test_value_vs_prop_mismatch_names_the_value_side_first(self):
+        # The message names whichever side the walk reached first, so the
+        # order of the two descriptions is what says which check fired. This
+        # is row 30's clause; the mirrored case below is row 16's.
         space = ds.space(ds.param("x").real(0.0, 1.0), ds.param("t").custom(_TaggedInt()))
-        with pytest.raises(ResolutionError, match="row 30"):
+        with pytest.raises(
+            ResolutionError, match=r"ds\.value\(.*\) \('float'\) compared against prop\('n'\)"
+        ):
             space.require(
                 ds.value(lambda x: x, ds.param("x"), returns=float) == ds.param("t").prop("n")
             )
 
-    def test_prop_vs_value_mismatch_cites_row_16_when_prop_is_checked_first(self):
+    def test_prop_vs_value_mismatch_names_the_prop_side_first(self):
         space = ds.space(ds.param("x").real(0.0, 1.0), ds.param("t").custom(_TaggedInt()))
-        with pytest.raises(ResolutionError, match="row 16"):
+        with pytest.raises(
+            ResolutionError, match=r"prop\('n'\) \('int'\) compared against ds\.value\(.*\)"
+        ):
             space.require(
                 ds.param("t").prop("n") == ds.value(lambda x: x, ds.param("x"), returns=float)
             )
@@ -423,7 +438,9 @@ class TestOpacity:
 
 class TestBoundHullRow20:
     def test_value_in_bound_expression_is_row_20(self):
-        with pytest.raises(ResolutionError, match="row 20"):
+        with pytest.raises(
+            ResolutionError, match=r"no computable interval hull \(unsupported 'value'"
+        ):
             ds.space(
                 ds.param("k").integer(0, 5),
                 ds.param("x").integer(0, ds.value(lambda k: k, ds.param("k"), returns=int)),
