@@ -1,15 +1,16 @@
 """Pytest configuration for the doctest gate.
 
-Both jobs here serve `pytest --doctest-modules --doctest-glob=*.md src docs`:
-inject the names every docstring example assumes, and keep collection away
-from the one file under `docs/` that is configuration rather than prose.
+Both jobs here serve
+`pytest --doctest-modules --doctest-glob=*.md src docs README.md`: inject the
+names every docstring example assumes, and keep collection away from the one
+file under `docs/` that is configuration rather than prose.
 
 **This file belongs at the repository root, not under `tests/`.** A conftest
-applies only to items collected at or below its own directory, and neither of
-the trees the doctest gate walks is inside `tests/`. The fixture has to reach
-docstrings in `src/designspace/**` and pages in `docs/**/*.md`, and
-`collect_ignore` entries resolve relative to the conftest's own directory, so
-`docs/conf.py` is unreachable from anywhere else.
+applies only to items collected at or below its own directory, and nothing the
+doctest gate walks is inside `tests/`. The fixture has to reach docstrings in
+`src/designspace/**`, pages in `docs/**/*.md` and the README, which is the one
+target at the root itself, and `collect_ignore` entries resolve relative to the
+conftest's own directory, so `docs/conf.py` is unreachable from anywhere else.
 """
 
 from __future__ import annotations

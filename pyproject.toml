@@ -1,7 +1,7 @@
 [project]
 name = "designspace"
 version = "0.0.0"
-description = "Declarative algorithm design spaces with a polars-like expression API"
+description = "Declarative design spaces with a polars-like expression API"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -17,7 +17,7 @@ docs = [
     "pydata-sphinx-theme>=0.16",
     "myst-parser>=4",
     # myst-nb supersedes myst-parser as the `.md` parser (see docs/conf.py) and
-    # executes the tutorial pages at build time. myst-parser stays listed above
+    # executes the user-guide pages at build time. myst-parser stays listed above
     # because `myst_heading_anchors` and `myst_enable_extensions` are still ours.
     "myst-nb>=1.4",
     "sphinx-copybutton>=0.5",
@@ -62,8 +62,8 @@ python_version = "3.12"
 # `pytest tests/unit/test_frame.py` collects that file and nothing more.
 testpaths = ["tests"]
 # Applies to the doctest gate, which runs `--doctest-modules --doctest-glob=*.md`
-# over `src` and `docs`: every `>>>` in a docstring is a test, and so is
-# every `>>>` on a design-note page.
+# over `src`, `docs` and `README.md`: every `>>>` in a docstring is a test, and
+# so is every `>>>` on a design-note page or in the README.
 doctest_optionflags = ["ELLIPSIS", "NORMALIZE_WHITESPACE"]
 # No `norecursedirs` override. It was restated here without "build" because the
 # builder package was once named `src/designspace/build/`, which collides

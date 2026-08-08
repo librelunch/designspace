@@ -13,9 +13,9 @@ so the choice is permanent in a way that a later refactor cannot undo.
 | parameters that are always active together and want a namespace | `.space()` (a struct) |
 | a set of items where each *member* carries its own payload | bool-per-item + `.when()` + `ds.count()` |
 
-The [conditionality and structure](../tutorials/03-conditionality-and-structure.md)
-tutorial shows each mechanism running. This page is about which one to reach
-for, and what each costs.
+The [conditionality and structure](../user-guide/03-conditionality-and-structure.md)
+page of the user guide shows each mechanism running. This page is about which
+one to reach for, and what each costs.
 
 ## When a bool stops paying
 

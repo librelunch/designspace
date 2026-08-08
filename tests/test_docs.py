@@ -1,7 +1,8 @@
 """Documentation gates for the public surface.
 
-Six laws, each scoped to exactly what `designspace.__all__` exports. The
-scoping is why they run on griffe rather than on ruff or `__doc__`:
+Six laws, scoped to what `designspace.__all__` exports and to the package's
+own docstring. The scoping is why they run on griffe rather than on ruff or
+`__doc__`:
 
 - **Ruff cannot express it.** Ruff's `D1xx` missing-docstring rules never
   fire in this repo, because every implementation module is private, as
@@ -19,6 +20,7 @@ What each member owes, by category:
 
 | category | owes |
 |---|---|
+| the package, read as `help(designspace)` | its own docstring |
 | exported name (class, function, type alias) | its own docstring |
 | public method | its own docstring; its parameters documented |
 | public property | its own docstring |
@@ -109,7 +111,13 @@ def _is_protocol(obj: Any) -> bool:
 
 def _build_targets() -> tuple[list[tuple[str, Any]], list[tuple[str, Any]], dict[str, list[str]]]:
     """Partition the public surface into the three things the laws check."""
-    documentable: list[tuple[str, Any]] = []
+    # `help(designspace)` is the first documentation most users read, and the
+    # package is not one of its own exports, so iterating `__all__` alone left
+    # it unchecked: a repository-only document was cited there while the same
+    # citation would have failed instantly on any exported name. It owes a
+    # docstring, a clean NumPy parse and self-containment. The callable and
+    # attribute partitions have nothing to say about a module.
+    documentable: list[tuple[str, Any]] = [("designspace", PACKAGE)]
     callables: list[tuple[str, Any]] = []
     attributes: dict[str, list[str]] = {}
 
@@ -199,10 +207,10 @@ def _expected_parameters(obj: Any) -> list[str]:
 
 @pytest.mark.parametrize(("label", "obj"), DOCUMENTABLE, ids=DOCUMENTABLE_IDS)
 def test_public_surface_is_documented(label: str, obj: Any) -> None:
-    """Every exported name, public method, and public property has a docstring."""
+    """The package, every exported name, and every public member has a docstring."""
     assert _documented(obj), (
-        f"{label} is exported (or is a public member of an exported class) but has "
-        f"no docstring. The public surface is user documentation."
+        f"{label} is part of the published surface but has no docstring. "
+        f"The public surface is user documentation."
     )
 
 

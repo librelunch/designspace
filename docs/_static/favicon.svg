@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <style>
+    .plate { fill: #fcfbf9 }
+    .rim { stroke: #e6e3dd }
+    .frame { stroke: #38352f }
+    .inner { stroke: #3f6bd8 }
+    .dot { fill: #3f6bd8 }
+    @media (prefers-color-scheme: dark) {
+      .plate { fill: #26241f }
+      .rim { stroke: none }
+      .frame { stroke: #eeece7 }
+      .inner { stroke: #8aa8f2 }
+      .dot { fill: #8aa8f2 }
+    }
+  </style>
+  <rect class="plate" width="64" height="64" rx="14"></rect>
+  <rect class="rim" x="0.5" y="0.5" width="63" height="63" rx="13.5" fill="none"></rect>
+  <g transform="translate(9 9) scale(0.9583)">
+    <rect class="frame" x="3" y="3" width="42" height="42" rx="11" fill="none" stroke-width="4"></rect>
+    <rect class="inner" x="14" y="14" width="26" height="26" rx="7" fill="none" stroke-width="4"></rect>
+    <circle class="dot" cx="27" cy="27" r="5"></circle>
+  </g>
+</svg>

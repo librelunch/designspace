@@ -60,9 +60,9 @@ myst_heading_anchors = 3
 # other.
 myst_enable_extensions = ["colon_fence"]
 
-# Execution of the tutorial pages. myst-nb treats a `.md` file as a notebook
-# only when its front matter says `file_format: mystnb`, so the guides and the
-# reference are parsed as plain MyST and never execute.
+# Execution of the user-guide pages. myst-nb treats a `.md` file as a notebook
+# only when its front matter says `file_format: mystnb`, so the design notes and
+# the reference are parsed as plain MyST and never execute.
 nb_execution_mode = "auto"
 # A failed cell defaults to a warning, which `-W` already promotes to an error.
 # Raising instead aborts at the failing cell and names it, rather than rendering
@@ -81,6 +81,23 @@ autodoc_typehints = "signature"
 
 html_theme = "pydata_sphinx_theme"
 html_title = "designspace"
+html_static_path = ["_static"]
+
+# The wordmark carries the project name, so the theme renders the image alone
+# and omits the text title beside it. Without `alt_text` the images would carry
+# the theme's default, which reads "designspace - Home".
+html_theme_options = {
+    "logo": {
+        "image_light": "_static/navbar-light.svg",
+        "image_dark": "_static/navbar-dark.svg",
+        "alt_text": "designspace",
+    }
+}
+
+# One file for both color schemes. The icon selects between them with a
+# `prefers-color-scheme` rule it carries internally, which applies because a
+# browser loads a favicon as a document rather than as an image.
+html_favicon = "_static/favicon.svg"
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),

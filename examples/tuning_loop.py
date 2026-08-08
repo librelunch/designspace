@@ -4,14 +4,6 @@ Declare a space, draw candidates from it, score each against an objective, keep
 the incumbent, and report the best configuration together with the key it
 should be stored under.
 
-This is the shape most consumers want first. The library declares the space and
-supplies the draws; the search strategy is the caller's, because designspace
-ships no search operators. Replacing ``objective`` with a real evaluation and
-``random search`` with a real optimizer leaves the rest of this file unchanged.
-
-The documentation site covers the surface used here one topic at a time; see
-``docs/tutorials/``.
-
 Run with ``uv run python examples/tuning_loop.py``.
 """
 

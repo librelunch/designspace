@@ -7,9 +7,9 @@ the configuration that shipped?
 The two are constantly confused because both associate values with a space. They
 answer different questions, and only one of them is a reference point.
 
-The [partial configs](../tutorials/09-partial-configs.md) tutorial covers
-defaults and `apply_defaults` running. This page is about anchors, and about the
-one place the two features meet.
+The [partial configs](../user-guide/09-partial-configs.md) page of the user
+guide covers defaults and `apply_defaults` running. This page is about anchors,
+and about the one place the two features meet.
 
 ## What an anchor is for
 

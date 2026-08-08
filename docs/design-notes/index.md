@@ -1,8 +1,8 @@
 # Design notes
 
 Five pages on decisions a space declaration forces, and what each option costs.
-The [tutorials](../tutorials/index.md) show the mechanisms running; these pages
-are about choosing between them.
+The [user guide](../user-guide/index.md) shows the mechanisms running; these
+pages are about choosing between them.
 
 They can be read in any order. The first two have the largest effect on the
 resulting space.
@@ -71,7 +71,7 @@ The word *tier* names three unrelated scales across the documentation:
 |---|---|---|
 | white / grey / black | [predicate transparency](predicate-transparency.md) | how much of a *predicate* the library can see into |
 | 1 / 2 / 3 | [structured values](structured-values.md) | how much of a *structure* is handed to a custom type |
-| derived / supplied | [identity and solver hand-off](../tutorials/11-identity-and-solvers.md) | where a `Representation` came from |
+| derived / supplied | [identity and solver hand-off](../user-guide/11-identity-and-solvers.md) | where a `Representation` came from |
 
 The three scales are independent. A tier-3 structured value can carry a
 white-box predicate, and a tier-1 family can carry a black-box one.

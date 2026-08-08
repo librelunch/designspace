@@ -1,9 +1,9 @@
 # designspace specification
 
-A Python library for declaratively defining (algorithm) design spaces using a
-chainable, polars-like expression API. It separates space definition, meaning
-what a valid configuration looks like, from search strategy, meaning how to
-explore it.
+A Python library for declaratively defining design spaces using a chainable,
+polars-like expression API. It separates space definition, meaning what a
+valid configuration looks like, from search strategy, meaning how to explore
+it.
 
 ```python
 import designspace as ds

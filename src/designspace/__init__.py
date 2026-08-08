@@ -1,7 +1,38 @@
-"""designspace: declarative algorithm design spaces.
+"""Declarative design spaces with a polars-like expression API.
 
-Public surface grows strictly with implemented milestones; see
-PLAN.md. Nothing speculative is exported.
+A design space is the set of configurations a system can take: an
+algorithm, a model, a process, or a physical assembly. A space is declared
+once, giving the parameters, their domains, the condition under which each
+is active, and the combinations that are legal.
+
+Spaces are built from `space` and `param`. `param` names a parameter and
+gives it a type, and the chainable modifiers that follow set its prior, the
+condition under which it is active, and its default. Every `Space` is
+immutable, so each operation on one returns a new space.
+
+A declared space can be sampled, validated against, serialized, or compared
+with another space by fingerprint. Sampling interprets the priors that were
+declared. It is not an optimizer. The library declares spaces and does not
+search them, and ships no search operators, distances, or neighborhoods.
+
+Examples
+--------
+>>> import designspace as ds
+>>> space = ds.space(
+...     ds.param("optimizer").categorical("adam", "sgd"),
+...     ds.param("lr").real(1e-4, 1e-1).log_scale(),
+...     ds.param("momentum").real(0.0, 0.99).when(ds.param("optimizer") == "sgd"),
+... )
+>>> sgd = space.sample_one(seed=0)
+>>> sgd["optimizer"]
+'sgd'
+
+A parameter whose condition does not hold is absent from the configuration
+rather than present and null.
+
+>>> adam = space.sample_one(seed=3)
+>>> "momentum" in adam
+False
 """
 
 from designspace.builder import (
