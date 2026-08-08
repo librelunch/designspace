@@ -1,11 +1,8 @@
-"""A small `discourage`/`encourage`-using space for the M7.6 known-answer
-digest vector (PLAN.md M7.6: the new `origin="discourage"` frozen-format value
-gets a committed KA vector).
+"""A small `discourage` and `encourage` space, for a known-answer digest vector.
 
-Not a corpus fixture, not collected by pytest (leading underscore) — parallels
-`_require_demo`. It locks the soft polarity pair: `encourage` (origin `"user"`,
-byte-identical to the old `constrain`) and `discourage` (the new
-`origin="discourage"`, canonicalized to `Not(e)` in the preimage).
+The frozen format carries `origin="discourage"`, and this fixture is what
+locks it. Not a corpus fixture, and not collected by pytest, parallel to
+`_require_demo.py`.
 """
 
 from __future__ import annotations

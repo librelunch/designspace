@@ -1,18 +1,22 @@
-"""Conformance laws: `Space.coordinate_paths()` (API.md, "Config Utilities" >
-"The fixed leaf layout"; error-table row 33; M10.7).
+"""Conformance laws: `Space.coordinate_paths()`.
 
-- A fixed layout requires every `.repeat()` count to be a literal integer and
-  no param to carry a condition; either makes the key set config-dependent,
-  so `coordinate_paths()` raises a path-named `ResolutionError` (row 33)
-  rather than returning a config-specific answer.
-- `unflatten(dict(zip(space.coordinate_paths(), values)), space)` is the
-  inverse of reading those same paths out of `flatten` — the round trip the
-  fixed layout exists to support.
-- Lift-length bookkeeping entries are excluded at every nesting depth; struct
-  params never appear (they hold no value of their own); `subset`/
-  `permutation`/`categorical`/`ordinal` leaves *do* appear (a fixed layout is
-  not the same as numeric packability).
-- Order matches `flatten`'s (and therefore the DataFrame's) leaf order.
+See API.md, "Config Utilities" > "The fixed leaf layout", and error-table
+row 33.
+
+Laws enforced here: `fixed_leaf_layout`.
+
+A fixed layout requires every `.repeat()` count to be a literal integer and
+no param to carry a condition; either makes the key set config-dependent, so
+`coordinate_paths()` raises a path-named `ResolutionError` under row 33
+rather than returning a config-specific answer.
+
+`unflatten(dict(zip(space.coordinate_paths(), values)), space)` inverts
+reading those same paths out of `flatten`, which is the round trip the fixed
+layout exists to support. Lift-length bookkeeping entries are excluded at
+every nesting depth. A struct param never appears, holding no value of its
+own, while subset, permutation, categorical and ordinal leaves do: a fixed
+layout is not the same thing as numeric packability. The order matches
+`flatten`'s leaf order, and therefore the DataFrame's.
 """
 
 from __future__ import annotations
@@ -32,10 +36,11 @@ if str(CORPUS_DIR) not in sys.path:
 
 # Fixed layout: every `.repeat()` count is a literal integer and no param
 # carries a condition. Measured directly against each fixture's own
-# `build_space()` (not any other builder the module happens to also export —
-# `vi_family` exports `build_finite_space()` too, whose count *is* static;
-# `build_space()`, the one every other corpus-driven suite exercises, has a
-# `.prop()`-driven dynamic lift and belongs in the "not fixed" set below).
+# `build_space()`, rather than any other builder a module also exports.
+# `vi_family` also exports `build_finite_space()`, whose count is static,
+# while its `build_space()`, the one every other corpus-driven suite
+# exercises, has a `.prop()`-driven dynamic lift and belongs in the "not
+# fixed" set below.
 FIXED_FIXTURES = [
     "flow_chemistry",
     "job_shop",

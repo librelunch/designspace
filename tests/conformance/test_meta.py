@@ -1,16 +1,17 @@
-"""Conformance laws: `ds.param_from_def` (API.md, "Space: Metaprogramming";
-PLAN.md M8 gate). `space_from_ir`/`map_params`/`without_constraints` join
-this file once Stage 3 implements them.
+"""Conformance laws: `ds.param_from_def` and `ds.space_from_ir`.
+
+See API.md, "Space: Metaprogramming".
 
 "The IR is bidirectional": `param_from_def(pd)` must invert a resolved
-`ParamDef` back into the exact `TypedParamExpr` view the fluent builder
-would have produced, for every scalar/subset/permutation/list kind — proven
-by re-resolving the reconstructed param alone and checking fingerprint
-equality against the original single-param space. Struct/choice containers
-cannot round-trip through a single `ParamDef` (their descendants live as
-separate flat entries elsewhere in the space) — `param_from_def` raises
-`TypeError` naming `space_from_ir` as the correct tool instead of silently
-producing a descendant-less container (DECISIONS.md D-41).
+`ParamDef` into the `TypedParamExpr` view the fluent builder would have
+produced, for every scalar, subset, permutation and list kind. That is
+proven by re-resolving the reconstructed param alone and checking
+fingerprint equality against the original single-param space.
+
+A struct or choice container cannot round-trip through a single `ParamDef`,
+its descendants living as separate flat entries elsewhere in the space, so
+`param_from_def` raises `TypeError` naming `space_from_ir` as the right tool
+rather than producing a descendant-less container.
 """
 
 from __future__ import annotations

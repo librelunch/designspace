@@ -1,21 +1,27 @@
-"""Conformance laws: space-level `.anchor()` / `.meta()` (API.md,
-"Constraints and Feasibility"; deferred past M2 to M8 — DECISIONS.md D-40).
+"""Conformance laws: space-level `.anchor()` and `.meta()`.
 
-- Row 22: an anchor invalid against the space (out-of-domain value, or a
-  violated hard constraint) raises `ResolutionError` naming the anchor key.
-  ("Anchor conflicting with a frozen/sliced value" — row 22's other clause
-  — is exercised by ops/'s `freeze`/`slice` tests, not here.)
-- Row 23: a non-JSON-serializable space-level `.meta()` value raises.
-- Scope: anchors/meta are `full`-scope only (API.md's fingerprint scope
-  table) — excluded from `sampling`.
-- Round-trip law: `to_json`/`from_json` preserves anchors and meta exactly;
-  fingerprints match at both scopes.
-- Byte-identity guard: an anchor/meta-free space's preimage and `to_json`
-  document carry no `anchors`/`meta` key at all (identity/_ir_codec.py's
-  "an additive field costs nothing when absent" guarantee) — every pre-M8
-  corpus KA vector depends on this holding exactly.
-- KA vector: `_anchor_demo.py`'s space fingerprints/serializes to a
-  committed, byte-stable digest.
+See API.md, "Constraints and Feasibility".
+
+Row 22: an anchor invalid against the space, whether through an
+out-of-domain value or a violated hard constraint, raises `ResolutionError`
+naming the anchor key. Row 22's other clause, an anchor conflicting with a
+frozen or sliced value, is exercised by the `freeze` and `slice` tests.
+
+Row 23: a non-JSON-serializable space-level `.meta()` value raises.
+
+Scope: anchors and metadata are `full`-scope only, and are excluded from
+`sampling`.
+
+Round trip: `to_json` and `from_json` preserve anchors and metadata exactly,
+and fingerprints match at both scopes.
+
+Byte identity: a space with no anchors and no metadata carries no `anchors`
+or `meta` key at all, in either its preimage or its `to_json` document. That
+is `identity/_ir_codec.py`'s guarantee that an additive field costs nothing
+when absent, and every committed corpus vector depends on it.
+
+A known-answer vector: `_anchor_demo.py`'s space fingerprints and serializes
+to a committed, byte-stable digest.
 """
 
 from __future__ import annotations
@@ -146,7 +152,7 @@ def _load_vector() -> dict:
     path = VECTORS_DIR / "anchor_demo.json"
     if not path.exists():
         raise FileNotFoundError(
-            f"missing known-answer vector {path} — generate it with "
+            f"missing known-answer vector {path}; generate it with "
             "`uv run python tests/conformance/vectors/_generate.py` "
             "(deliberately; never auto-generated)"
         )

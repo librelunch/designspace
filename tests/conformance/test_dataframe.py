@@ -1,15 +1,17 @@
-"""Conformance laws: DataFrame output (PLAN.md M10 gate: "dtype table
-asserted per corpus fixture; null-for-inactive; column names == path
-grammar").
+"""Conformance laws: DataFrame output.
 
-Container-shaped top-level columns (struct/list/choice) are exercised by
-bespoke, fixture-specific assertions in `tests/corpus/test_delivery_routes.py`
-and `tests/corpus/test_memetic_pipeline.py` — the general laws here stay
-scoped to what holds for every corpus fixture without per-kind knowledge:
-row count, the top-level column-name set, and scalar-column null placement
-cross-checked against the already-conformance-tested `sample_dicts` path
-(same seed, same n -> the same underlying draws, since both go through the
-same per-draw sampling primitive).
+See API.md, "Config Representation" > "DataFrame output".
+
+Laws enforced here: `array_dtype_per_level`.
+
+Container-shaped top-level columns, meaning struct, list and choice, are
+exercised by fixture-specific assertions in
+`tests/corpus/test_delivery_routes.py` and
+`tests/corpus/test_memetic_pipeline.py`. The laws here stay scoped to what
+holds for every corpus fixture without per-kind knowledge: the row count,
+the top-level column-name set, and scalar-column null placement,
+cross-checked against the `sample_dicts` path at the same seed and `n`,
+which draws identically since both go through the same per-draw primitive.
 """
 
 from __future__ import annotations

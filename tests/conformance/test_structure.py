@@ -1,18 +1,19 @@
-"""Conformance laws: structure (API.md, "Parameter Types" > structural +
-combinatorial; "Paths and Scoping"; "Config Utilities").
+"""Conformance laws: structure.
 
-- Relocatability: a subspace behaves identically whether resolved
-  standalone or nested under a choice variant / struct.
-- `unflatten(flatten(c)) == c` over sampled configs (hypothesis).
-- Two choices in one scope may share a variant name; variant names never
-  occupy the parent scope.
-- Scoping: shadowing behaves like lexical closures.
-- Cascading deactivation (Kleene rule 3) through struct/choice nesting.
-- Error rows introduced by M3: row 3 (subset/permutation duplicate
-  items), row 5 (variant name chars; duplicate variant within one
-  choice), row 17 (subset/choice weight validity), row 18 (sum_over/
-  position_of/contains domain checks; M4.5 adds the ordinal
-  non-member-literal comparison check to the same row).
+See API.md, "Parameter Types", "Paths and Scoping" and "Config Utilities".
+
+Laws enforced here: `dependency_graph_is_closed`, `flatten_round_trip`.
+
+Also asserted: relocatability, a subspace behaving identically whether
+resolved standalone or nested under a choice variant or struct; that two
+choices in one scope may share a variant name, and that variant names never
+occupy the parent scope; that shadowing behaves like lexical closure; that
+deactivation cascades through struct and choice nesting under Kleene rule 3;
+and error rows 3, 5, 17 and 18, covering duplicate subset and permutation
+items, variant name characters and duplicate variants within one choice,
+subset and choice weight validity, and the `sum_over`, `position_of` and
+`contains` domain checks, to which row 18 adds the ordinal non-member
+literal comparison.
 """
 
 from __future__ import annotations
@@ -28,9 +29,12 @@ from designspace.eval import compute_activity
 
 
 class TestRelocatability:
-    """ "nesting a space under a variant or struct never rewrites its
-    internal references" — a subspace's own conditional-activation logic
-    behaves identically whether resolved standalone or embedded."""
+    """A subspace behaves identically standalone and embedded.
+
+    API.md states that "nesting a space under a variant or struct never
+    rewrites its internal references", so a subspace's own
+    conditional-activation logic is unchanged either way.
+    """
 
     @staticmethod
     def _payload():
@@ -115,10 +119,11 @@ class TestRelocatability:
 
 
 class TestUpReferenceFromEnclosingScope:
-    """API.md's sole scoping rule — "resolve the first segment by walking
-    up to the innermost scope where it binds" — and its worked example (a
-    `.when(ds.param("global_flag"))  # up` inside a choice-variant payload).
-    D-26 makes this resolve as the spec intends (D-12 previously rejected it).
+    """API.md's sole scoping rule, and its worked example.
+
+    The rule is to "resolve the first segment by walking up to the innermost
+    scope where it binds". The worked example is a
+    `.when(ds.param("global_flag"))` inside a choice-variant payload.
     """
 
     @staticmethod
@@ -140,7 +145,8 @@ class TestUpReferenceFromEnclosingScope:
     def test_up_reference_binds_to_enclosing_param(self):
         space = self._spec_example()
         # The nested leaf's activity condition depends on the enclosing-scope
-        # param plus its own discriminator — not a rewrite of either.
+        # param and on its own discriminator, rather than on a rewrite of
+        # either.
         condition = space.params["algo.svm.gamma"].condition
         assert condition is not None
         assert "global_flag" in condition.params

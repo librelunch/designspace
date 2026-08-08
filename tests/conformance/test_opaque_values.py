@@ -1,23 +1,16 @@
-"""Conformance laws: M10.8 `ds.value` — opaque derived quantities (API.md,
-"Expressions" > `ds.value`; Kleene rule 1's declared-operand rule; the
-white/grey/black tier table under *Constraints*; row 30; the
-non-serializable set gains `fn`; "Conformance Laws" > "Opaque values").
+"""Conformance laws: `ds.value`, the opaque derived quantity.
 
-Gate items covered here: `returns=float` margin parity with `.prop()`;
-`returns=bool` bare usage, `margin=None`, absorption through Boolean
-composition; `returns=int` driving a `.repeat()` count (row 12 otherwise);
-row 30 (non-scalar `returns`, a non-expression operand, comparison type
-mismatch — D-78); the calling convention (`fn` receives exactly the
-operand *values*, positionally, never the config; an uncaught `fn`
-exception propagates — D-76); Kleene provenance (an inactive operand never
-calls `fn`; `.if_inactive()` inside an operand composes; an unset operand
-under partial evaluation is pending and never coalesced); identity opacity
-(raise/mark/drop, each expression position a `ds.value` can occupy — D-77);
-`dependency_graph` inclusion; `.cardinality()`'s conservative `None`; the
-tier table's no-narrowing guarantee.
+See API.md, "Expressions" > `ds.value`, Kleene rule 1's declared-operand
+rule, the tier table under "Constraints", row 30, and the non-serializable
+set.
 
-`tests/conformance/test_custom.py` covers `.prop()`'s own laws; this file
-is the parity/extension surface for its generalization.
+Laws enforced here: `opaque_float_margin`, `opaque_bool_bare`,
+`opaque_int_count`, `opaque_declaration_errors`, `opaque_calling_convention`,
+`opaque_unknown_is_value_driven`, `opaque_identity`,
+`opaque_dependency_graph`, `opaque_cardinality`, `opaque_no_narrowing`.
+
+`tests/conformance/test_custom.py` covers `.prop()`'s own laws; this file is
+the parity and extension surface for its generalization.
 """
 
 from __future__ import annotations
@@ -231,7 +224,7 @@ class TestCallingConvention:
         assert calls == 1
 
 
-# -- Kleene provenance (D-76) --------------------------------------------------
+# -- Kleene provenance -------------------------------------------------------
 
 
 class TestKleeneProvenance:
@@ -285,7 +278,7 @@ class TestKleeneProvenance:
         assert len(pe.pending_constraints) == 1
 
 
-# -- row 30's comparison clause (D-78) ----------------------------------------
+# -- row 30's comparison clause ----------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -328,7 +321,7 @@ class TestCompareTypeMismatch:
             space.require(ds.value(lambda x: x, ds.param("x"), returns=float) == "not-a-float")
 
     def test_no_int_float_leniency(self):
-        # Strict type match, mirroring .prop() (D-34 precedent) -- an int-
+        # Strict type match, mirroring .prop(). An int-
         # declared value compared against a float literal is still row 30.
         space = ds.space(ds.param("x").real(0.0, 1.0))
         with pytest.raises(ResolutionError, match="row 30"):
@@ -359,7 +352,7 @@ class TestCompareTypeMismatch:
             )
 
 
-# -- identity opacity (D-77) ---------------------------------------------------
+# -- identity opacity --------------------------------------------------------
 
 
 class TestOpacity:
@@ -462,7 +455,7 @@ class TestDependencyGraph:
 class TestCardinalityConservativeNone:
     def test_independent_ds_value_condition_on_a_choice_variant_field(self):
         # A variant field's condition beyond what the discriminator alone
-        # would inject makes cardinality() conservatively None (D-48) --
+        # would inject makes cardinality() conservatively None:
         # exercised here through a ds.value-based guard specifically, which
         # forces `_condition_matches_injection`'s structural-equality check
         # to hit an opaque node (encode_expr raises; degrades to identity
@@ -503,24 +496,23 @@ class TestTierNoNarrowing:
 
 
 class TestRelocationInsideRepeatElement:
-    """resolve/_relocate.py::rewrite_expr had no branch for `Prop` before
-    M10.8 -- a latent `TypeError` for any `.prop()`-based condition on a
-    struct/choice payload field, surfacing in particular per-instance
-    inside a `.repeat()` struct-lift element (`instantiate_element` calls
-    the same `rewrite_bool`/`rewrite_expr`). Fixed alongside the `Value`
-    branch M10.8 itself needs, since it is the same walk with the same
-    missing-branch shape (PLAN.md's M10.8 entry)."""
+    """A `.prop()`-based condition survives relocation into a lift element.
+
+    `rewrite_expr` in `resolve/_relocate.py` needs a `Prop` branch. Without
+    one, any `.prop()`-based condition on a struct or choice payload field
+    raises `TypeError`, and it surfaces per instance inside a `.repeat()`
+    struct-lift element, `instantiate_element` calling the same
+    `rewrite_bool` and `rewrite_expr` walk.
+    """
 
     def test_prop_based_condition_on_a_repeat_struct_element_field(self):
-        # Prior to M10.8, resolving this space raised a TypeError out of
-        # rewrite_expr (no Prop branch) the moment the struct-lift
-        # element's own field condition was renamed for per-instance
-        # expansion. Evaluating it (.validate(), below) used to hit a
-        # second, separate bug in eval/_kleene.py's _resolve_param_domain
-        # -- its bracket-walk branch for a struct/custom element
-        # unconditionally returned None instead of the domain it had just
-        # walked, so _evaluate_prop's `assert isinstance(domain,
-        # CustomDomain)` raised a bare AssertionError. Both are fixed.
+        # Two walks have to handle this space. Resolving it renames the
+        # struct-lift element's own field condition for per-instance
+        # expansion, which needs `rewrite_expr`'s Prop branch. Evaluating
+        # it, through .validate() below, needs `_resolve_param_domain` in
+        # eval/_kleene.py to return the domain its bracket walk found for a
+        # struct or custom element, which is what `_evaluate_prop`'s
+        # `assert isinstance(domain, CustomDomain)` rests on.
         space = ds.space(
             ds.param("stops")
             .space(

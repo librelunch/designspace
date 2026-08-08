@@ -1,53 +1,28 @@
-"""Conformance laws: The Representation Layer (API.md, "The Representation
-Layer"; the Representation conformance bullet; PLAN.md M11 gate;
-DECISIONS.md D-52…D-64, D-76…D-78).
+"""Conformance laws: the representation layer.
 
-**Stage 1** section: the laws that hold for a **supplied** `Representation`
-— built directly, with no derived-tier machinery to lean on — plus the
-`ChartApply` node's serialization round-trip, since Stage 2's transport
-depends on the codec added here being correct first.
+See API.md, "The Representation Layer".
 
-**Stage 2** section: `Space.represent()` and the induced chart
-representation (`represent/_charts.py`, `_transport.py`, `_build.py`) —
-shape, path/arity preservation, rows 31/32 message content, struct-lift
-and dynamic-lift transport, bound-origin constraint transport, and
-defaults/anchors settling. Stage 3 completes the full law block (decode
-totality over the whole corpus, measure preservation, the supplied
-hierarchy-flattening morphism, the grep assertion) and adds the
-`mixture_stickbreaking` corpus fixture.
+Laws enforced here: `decode_totality`, `encode_target_validity`,
+`carried_values_valid`, `round_trip`, `round_trip_declared`,
+`feasibility_agreement`, `identity_representation`, `then_associativity`,
+`path_and_arity_preservation`, `induced_chart_representation`,
+`representation_outside_ir`.
 
-Laws covered here:
+`encode(decode(g)) == g` is explicitly not a law, and is witnessed against
+with an integer-chart-shaped many-to-one decode.
 
-- **Decode totality** — `source.validate(rep.decode(g)).param_errors == ()`
-  for every `g` drawn from `target` (D-62: domain membership, not `.valid`).
-- **Feasibility agreement** — `target.is_feasible(g) ==
-  source.is_feasible(rep.decode(g))`, for a representation whose target
-  correctly mirrors the source's constraint.
-- **Round-trip** — `decode(encode(x)) == x` when invertible;
-  `encode(decode(g)) == g` is explicitly *not* a law, witnessed with an
-  integer-chart-shaped many-to-one decode (D-59's asymmetry, generalized).
-- **`then`** — associative, with an identity representation a two-sided
-  unit — asserted extensionally (decode/encode agreement on sampled
-  configs), since `Representation` equality is closure identity.
-- **Never enters the IR / `to_json` / the fingerprint preimage** — `target`
-  serializes as an ordinary `Space`.
-- **`ChartApply` serialization** — round-trips through `to_json`/
-  `from_json` inside an ordinary constraint, byte-identical fingerprint;
-  its external-`Prior` case rides the existing raise/mark/drop path.
-- **The induced representation's shape** — exactly the chart-bearing
-  params (own or element level), excluding count/prop-read ones; `real(0,
-  1)` targets; `periodic` mirrored (D-58).
-- **Path and arity preservation** — `set(target.params) ==
-  set(source.params)` over definition-path keys; a count param stays
-  `integer`.
-- **Rows 31/32** — message-content tests naming the offending path.
-- **Struct-lift and dynamic-lift transport** — a per-element constraint on
-  a chart-bearing struct field, and a dynamic-count lift, both decode
-  totally and agree on feasibility.
-- **Bound-origin transport** — an expression-bounded param's generated
-  constraint still enforces correctly once its operands are chart-wrapped.
-- **Defaults and anchors** — encoded and validated where possible; dropped
-  and reported otherwise (an anchor drops whole).
+`then` is asserted extensionally, through decode and encode agreement on
+sampled configs, since `Representation` equality is closure identity.
+
+Also asserted: the `ChartApply` node round-trips through `to_json` and
+`from_json` inside an ordinary constraint with a byte-identical fingerprint,
+and its external-`Prior` case rides the raise, mark and drop path; rows 31
+and 32 name the offending path in their messages; a per-element constraint
+on a chart-bearing struct field and a dynamic-count lift both decode totally
+and agree on feasibility; an expression-bounded param's generated constraint
+still enforces once its operands are chart-wrapped; and defaults and anchors
+are encoded and validated where possible and dropped and reported otherwise,
+an anchor dropping whole.
 """
 
 from __future__ import annotations
@@ -82,11 +57,13 @@ _VECTORS_DIR = _CONF_DIR / "vectors"
 
 def _scaled_pair(factor: float, *, hi_source: float, forbid_above: float | None = None):
     """A source `real(0, hi_source)` and a target `real(0, 1)`, related by
-    `x_source = x_target * factor` — exact under floating point since every
-    `factor` used below is a power of two. `forbid_above` (in source units),
-    when given, is mirrored onto the target in target units, so the two
-    spaces' feasible sets agree by construction — exactly what a correct
-    transport is responsible for (Stage 2)."""
+    `x_source = x_target * factor`, exact under floating point since every
+    `factor` used below is a power of two.
+
+    `forbid_above`, in source units, is mirrored onto the target in target
+    units when given, so that the two spaces' feasible sets agree by
+    construction, which is what a correct transport is responsible for.
+    """
     source = ds.space(ds.param("x").real(0.0, hi_source))
     target = ds.space(ds.param("x").real(0.0, 1.0))
     if forbid_above is not None:
@@ -142,10 +119,11 @@ class TestRoundTrip:
         coordinate in the same quarter-bucket decodes to the same integer,
         and `encode` returns that bucket's midpoint (mirroring `to_unit`'s
         own integer convention, API.md "Charts"). `decode(encode(k)) == k`
-        holds; `encode(decode(g)) == g` does not — two different `g`s in
-        the same bucket decode to the same `k` and then re-encode to the
-        *same* midpoint, losing the original `g` (D-57's stated asymmetry:
-        "integer charts ... are many-to-one")."""
+        holds, and `encode(decode(g)) == g` does not: two different `g`
+        values in one bucket decode to the same `k` and re-encode to the
+        same midpoint, losing the original `g`. API.md states the asymmetry
+        as "integer charts ... are many-to-one".
+        """
         n_buckets = 4
 
         def decode(g: dict) -> dict:
@@ -295,10 +273,12 @@ class TestChartApplySerialization:
 
 
 class _ExternalPpfOnlyPrior:
-    """Opaque external `Prior` (ppf-only, contained in bounds): the one
-    case an M11 `ChartApply` can carry that is not fully structural
-    (API.md, "Identity and Serialization": external `Prior` objects join
-    the non-serializable set; DECISIONS.md D-31)."""
+    """An opaque external `Prior`, supplying `ppf` alone and contained in bounds.
+
+    It is the one case a `ChartApply` can carry that is not fully
+    structural, API.md, "Identity and Serialization" placing an external
+    `Prior` in the non-serializable set.
+    """
 
     def ppf(self, q: float) -> float:
         return q
@@ -353,8 +333,8 @@ class TestInducedRepresentationShape:
             assert rep.target.params[path].type_kind == space.params[path].type_kind
 
     def test_scalar_lift_element_chart_is_touched(self):
-        # ListDomain.element_chart, not ParamDef.chart -- D-58's "not
-        # ParamDef.chart is not None" case.
+        # The chart lives on ListDomain.element_chart rather than on
+        # ParamDef.chart, which is why the rule cannot test the latter.
         space = ds.space(ds.param("dropout").real(0.0, 1.0).repeat(5))
         rep = space.represent()
         assert rep.encoded == ("dropout",)
@@ -627,12 +607,11 @@ class TestIdentityLaw:
 
 class TestRoundTripOfAuthoredPhenotypes:
     """`decode(encode(x)) == x` holds **up to floating-point accuracy**, not
-    bit-exactly, and the distinction only shows for an *authored* phenotype
-    (D-94).
+    bit-exactly, and the distinction shows only for an authored phenotype.
 
     A phenotype produced by `decode` sits on the chart's image, so encoding
-    recovers the same unit coordinate and decoding reproduces it exactly —
-    which is every `x` the sampled half of `check()` can construct. An
+    recovers the same unit coordinate and decoding reproduces it exactly.
+    That is every `x` the sampled half of `check()` can construct. An
     author-supplied value does not: `lr=1e-3` under a `Log()` chart composes
     through `exp`/`log`, which are not bit-exact inverses.
 
@@ -706,7 +685,7 @@ class TestRoundTripOfAuthoredPhenotypes:
 
 class TestRepresentingARepresentationTarget:
     """`rep.target` is "an ordinary `Space`, so the first shape applies to
-    it unchanged — which is the point" (API.md, Solver Integration). That
+    it unchanged, which is the point" (API.md, "Solver Integration"). That
     makes a genotype a legal *source*, and transport must therefore handle
     the one node a representation itself emits: `ChartApply`, which API.md
     names as a first-class leaf of the expression language ("the one other
@@ -812,10 +791,10 @@ _CORPUS_FIXTURES = [
 
 
 class TestRepresentCorpus:
-    """The measured baseline PLAN.md's M11 gate names by name: decode
-    totality and feasibility agreement for every corpus fixture, under the
-    induced representation. `mixture_stickbreaking` joins the corpus and
-    this parametrization at Stage 3, alongside the full 200/200 gate."""
+    """Decode totality and feasibility agreement over every corpus fixture.
+
+    Each is measured under the induced representation.
+    """
 
     @pytest.fixture(autouse=True)
     def _corpus_path(self):
@@ -841,15 +820,17 @@ class TestRepresentCorpus:
 
 
 class TestChartApplyKnownAnswerVector:
-    """`_chart_apply_demo.py`'s induced-representation target fingerprints/
-    serializes to a committed, byte-stable digest — the M11 sibling of
-    `test_anchors.py`'s `anchor_demo`/`test_require.py`'s `require_demo`."""
+    """`_chart_apply_demo.py` fingerprints to a committed, byte-stable digest.
+
+    It is the sibling of `anchor_demo` in `test_anchors.py` and
+    `require_demo` in `test_require.py`.
+    """
 
     def _load_vector(self) -> dict:
         path = _VECTORS_DIR / "chart_apply_demo.json"
         if not path.exists():
             raise FileNotFoundError(
-                f"missing known-answer vector {path} — generate it with "
+                f"missing known-answer vector {path}; generate it with "
                 "`uv run python tests/conformance/vectors/_generate.py` "
                 "(deliberately, per the version-bump protocol; never auto-generated)"
             )
@@ -868,10 +849,10 @@ class TestChartApplyKnownAnswerVector:
 
 
 # =============================================================================
-# Measure preservation (D-56): the induced chart representation is the one
-# core proves it for -- chart(u) on u ~ U[0,1] *is* the declared measure.
-# Hand-rolled statistics with fixed seeds and asymptotic critical values, not
-# scipy (not a dependency and not needed for this milestone).
+# Measure preservation. The induced chart representation is the one core
+# proves it for: chart(u) on u ~ U[0, 1] is the declared measure. The
+# statistics are hand-rolled, with fixed seeds and asymptotic critical
+# values, scipy being neither a dependency nor needed here.
 # =============================================================================
 
 
@@ -950,17 +931,17 @@ class TestMeasurePreservation:
 
 
 class TestSuppliedHierarchyFlatteningMorphism:
-    """The only honest test that the supplied tier is expressive enough
-    without core shipping one (API.md, "Two tiers"; DECISIONS.md D-60/D-61:
-    "designspace's IR *is* already the flattening ... What blocks the
-    derived tier is merely mechanical: designspace derives structure from
-    path prefixes where ConfigSpace uses opaque flat names"). Written
-    entirely against the public surface named there: `ds.space_from_ir`,
-    `ds.flatten`/`ds.unflatten`, and the `Representation` constructor
-    itself — no private helper. Removing the struct container entirely is
-    exactly what the derived tier could never do (it must preserve the
-    source key set exactly); the supplied tier's "no arity or path law" is
-    what makes this legal here.
+    """A supplied morphism that flattens a hierarchy, which core ships none of.
+
+    This is the honest test that the supplied tier is expressive enough. See
+    API.md, "Two tiers". It is written entirely against the public surface:
+    `ds.space_from_ir`, `ds.flatten`, `ds.unflatten`, and the
+    `Representation` constructor, with no private helper.
+
+    Removing the struct container entirely is what the derived tier could
+    never do, having to preserve the source key set exactly. The supplied
+    tier carries no arity and no path law, which is what makes it legal
+    here.
     """
 
     def _source(self) -> ds.Space:
@@ -1023,8 +1004,8 @@ class TestSuppliedHierarchyFlatteningMorphism:
 
 
 # =============================================================================
-# "src/ contains zero chosen encodings and zero structural morphisms" — the
-# successor to "registry populated only in tests" (API.md gate wording).
+# "src/ contains zero chosen encodings and zero structural morphisms",
+# which is API.md's own gate wording.
 # =============================================================================
 
 

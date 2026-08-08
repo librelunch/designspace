@@ -1,31 +1,22 @@
-"""Conformance laws: lifts and aggregates (API.md, "Modifiers and
-Layering" > "The lift"; "Expressions" > "Vector expressions and
-aggregates"; "Three-valued semantics" rules 1 and 6; "Paths and Scoping").
+"""Conformance laws: lifts and aggregates.
 
-- Empty-aggregate values (rule 6): `sum/count_of/distinct/is_sorted` on an
-  *active, empty* lift; `min`/`max` -> Unknown.
-- Inactive-lift projection vs active-empty-list (rule 1 vs rule 6) — the
-  spec's own worked example, verbatim (lines 295-298).
-- Constraints declared inside a repeated element `Space` are instantiated
-  once per element (Modifiers and Layering, "The lift").
-- `.distinct(*fields)` (struct lift: distinct field-tuples) — satisfied,
-  violated, and interior-Unknown cases.
-- `is_sorted` on a lift nested deeper than one level is a resolution error
-  (row 24).
-- Nested lifts: numeric/equality aggregates flatten leaves across levels.
-- `unflatten(flatten(c)) == c` over lifted configs.
-- Variadic sugar `.repeat(a, b)` is structurally identical to the chained
-  form `.repeat(b).repeat(a)` (fingerprint equality is M7; structural
-  equality is asserted now, per PLAN.md's M4 gate).
-- Instance paths in expressions: an out-of-range index is Unknown.
-- `.field(name)` on a non-struct lift, or naming an undeclared element
-  field, is a resolution error (row 6) — not a silent Unknown cascade
-  (M4.5 faithfulness correction, superseding the earlier D-25 judgment
-  call).
-- Non-`count` aggregates plain-propagate Unknown (Three-valued semantics
-  rule 2): any interior-Unknown element in a *non-empty* aggregated
-  vector makes the aggregate itself Unknown, no range computed (M4.5
-  promotes this from a D-19 judgment call to a stated law).
+See API.md, "Modifiers and Layering" > "The lift", "Expressions" > "Vector
+expressions and aggregates", and "Three-valued semantics" rules 1 and 6.
+
+Laws enforced here: `per_element_instantiation_counts`,
+`nested_lift_leaf_aggregates`.
+
+Also asserted: the empty-aggregate values of rule 6, where `sum`,
+`count_of`, `distinct` and `is_sorted` over an active empty lift take their
+stated values and `min` and `max` go Unknown; the distinction between an
+inactive-lift projection and an active empty list, which is the spec's own
+worked example; `.distinct(*fields)` over a struct lift in its satisfied,
+violated and interior-Unknown cases; that `is_sorted` on a lift nested
+deeper than one level is row 24; that `unflatten(flatten(c)) == c` over
+lifted configs; that variadic `.repeat(a, b)` is structurally identical to
+the chained `.repeat(b).repeat(a)`; that an out-of-range instance path index
+is Unknown; and that `.field(name)` on a non-struct lift, or naming an
+undeclared element field, is row 6 rather than a silent Unknown cascade.
 """
 
 from __future__ import annotations
@@ -119,9 +110,9 @@ class TestInactiveLiftVsActiveEmpty:
 class TestNonCountAggregatesPlainPropagateUnknown:
     """Three-valued semantics rule 2: "Every *other* aggregate (`sum`,
     `min`, `max`, `count_of`, `is_sorted`, `distinct`) containing any
-    Unknown element is itself Unknown — plain propagation, no range
-    computed." Promoted from a D-19 judgment call (M4) to a stated law
-    (M4.5) once the spec was made explicit on this point."""
+    Unknown element is itself Unknown: plain propagation, no range
+    computed."
+    """
 
     def _space(self):
         return ds.space(
@@ -164,10 +155,10 @@ class TestNonCountAggregatesPlainPropagateUnknown:
 
 class TestRow6FieldProjection:
     """`.field(name)` requires a struct lift whose element declares `name`
-    (API.md, "Expressions" — "Instance paths are legal..." paragraph);
-    projecting an undeclared field, or `.field()` on a non-struct lift, is
-    a resolution error (row 6), not a silent Unknown. M4.5 faithfulness
-    correction: M4 (D-25) treated both as a silent cascade instead."""
+    (API.md, "Expressions"). Projecting an undeclared field, or calling
+    `.field()` on a non-struct lift, is a resolution error under row 6
+    rather than a silent Unknown.
+    """
 
     def test_field_on_scalar_lift_raises(self):
         with pytest.raises(ResolutionError, match="'xs'"):
@@ -227,7 +218,7 @@ class TestPerInstanceConstraintInstantiation:
 class TestPerElementConstraintOverNestedLift:
     """A struct-lift element that itself declares a nested `.repeat()`,
     aggregated by a per-element constraint declared in that same inner
-    scope — e.g. a repeated "row" whose own "cells" field is a repeated
+    scope, such as a repeated "row" whose own "cells" field is a repeated
     real, constrained by `.sum()` inside the row's own scope. Distinct
     from `TestPerInstanceConstraintInstantiation` (whose element fields
     are plain scalars): `instantiate_constraints` renames the template's
@@ -321,7 +312,7 @@ class TestDistinctFieldTuples:
 
 
 class TestIsSortedDepthRestriction:
-    """Row 24: `is_sorted` is restricted to depth 1 — "a grid has no
+    """Row 24: `is_sorted` is restricted to depth 1, "a grid has no
     canonical order"."""
 
     def test_depth_1_is_legal(self):
@@ -381,9 +372,12 @@ class TestFlattenUnflattenRoundTripWithLifts:
 
 
 class TestVariadicSugarStructuralEquality:
-    """`.repeat(2, 3)` desugars to chained lifts in reverse order —
-    `.repeat(3).repeat(2)` — "fingerprint-equal by the sugar-equivalence
-    law" (fingerprint itself is M7; structural equality is asserted now)."""
+    """`.repeat(2, 3)` desugars to `.repeat(3).repeat(2)`.
+
+    Chained lifts desugar in reverse order, and the two spellings are
+    "fingerprint-equal by the sugar-equivalence law". Structural equality is
+    what this asserts.
+    """
 
     def test_variadic_equals_reverse_chain(self):
         variadic = ds.space(ds.param("grid").real(0.0, 1.0).repeat(2, 3))

@@ -1,26 +1,21 @@
-"""Conformance laws: `.sampling_report()` (API.md, "Sampling diagnostics";
-"Conformance Laws" > "Sampling diagnostics"; PLAN.md M10.6 gate).
+"""Conformance laws: `.sampling_report()`.
 
-`sampling_report` draws the **unconditioned** measure (before rejection) and
-aggregates what happened — it reports, never repairs/reweights/suggests.
-The laws:
+See API.md, "Sampling diagnostics".
 
-- **Never rejects, never mutates.** Every row is backed by exactly `n`
-  draws regardless of `acceptance_rate`; `space.fingerprint()` is unchanged;
-  seed-reproducible.
-- **`satisfied` is conditioned on `applicable`**, not on all draws.
-- **Unknown-swallowing is visible**: an unguarded optional aggregate reports
-  `applicable < 1.0`; the identical space with `.if_inactive()` reports
-  `applicable == 1.0` — all else equal.
-- **The funnel is visible and correct-by-spec** (Kleene rule 4):
-  `acceptance_rate` matches the analytic value, and the *conditioned*
-  (post-rejection) sample concentrates away from where the constraint was
-  inapplicable — documented here beside rule 4, not "fixed" by this
-  milestone.
-- **Per-instance folding and template activity share the report's one
-  denominator, `n`** (D-73).
-- **`tighten_bounds` is off by default** and matches the reference sampler's
-  own acceptance rate when turned on (D-74).
+Laws enforced here: `report_never_rejects`, `report_seed_reproducible`,
+`satisfied_conditioned_on_applicable`, `unknown_swallowing_visible`,
+`funnel_visible`, `one_denominator`, `tighten_bounds_flag`.
+
+`sampling_report` draws the unconditioned measure, before rejection, and
+aggregates what happened. It reports, and never repairs, reweights or
+suggests.
+
+`unknown_swallowing_visible` is asserted comparatively: an unguarded
+optional aggregate reports `applicable < 1.0`, while the identical space
+with `.if_inactive()` reports `applicable == 1.0`. `funnel_visible` checks
+that `acceptance_rate` matches the analytic value and that the conditioned,
+post-rejection sample concentrates away from where the constraint was
+inapplicable, which is Kleene rule 4 working as stated rather than a defect.
 """
 
 from __future__ import annotations
@@ -90,11 +85,14 @@ def _optional_aggregate_space(*, guard: bool) -> Space:
 
 
 def _rare_but_always_satisfied_space() -> Space:
-    """A constraint applicable in ~1% of draws and always satisfied there —
-    the case `satisfied` must report as `1.0`, not `0.01`. `flag` is True
-    with probability 0.01 (`weights=(99, 1)`); when False, `y` is inactive
-    and the unguarded aggregate is Unknown (inapplicable); when True, `y`
-    is a single real in `[0,1]`, so `sum(y) >= 0.0` always holds."""
+    """A constraint applicable in about 1% of draws and always satisfied there.
+
+    `satisfied` must report `1.0` for this case rather than `0.01`. `flag`
+    is True with probability 0.01, under `weights=(99, 1)`. When it is
+    False, `y` is inactive and the unguarded aggregate is Unknown, and so
+    inapplicable. When it is True, `y` is a single real in `[0, 1]`, so
+    `sum(y) >= 0.0` always holds.
+    """
     flag = ds.param("flag").bool().prior(weights=(99, 1))
     guarded = ds.param("y").real(0.0, 1.0).repeat(1).when(flag)
     return ds.space(flag, guarded).encourage(ds.param("y").sum() >= 0.0)
@@ -288,7 +286,7 @@ def test_funnel_conditioned_sample_concentrates_on_short_lifts():
 
 
 # ---------------------------------------------------------------------------
-# tighten_bounds (D-74)
+# tighten_bounds
 # ---------------------------------------------------------------------------
 
 
@@ -310,7 +308,7 @@ def test_tighten_bounds_true_matches_reference_sampler():
 
 
 # ---------------------------------------------------------------------------
-# Per-instance folding and activity template keys (D-73)
+# Per-instance folding and activity template keys
 # ---------------------------------------------------------------------------
 
 
@@ -354,10 +352,12 @@ def test_activity_keys_exactly_space_params():
 
 
 def test_solver_portfolio_budget_forbid_stays_fully_applicable():
-    """Corpus reuse (PLAN.md M10.6: "Corpus: reuse solver_portfolio"): the
-    fixture's own `.if_inactive(0)`-guarded budget forbid stays
-    `applicable == 1.0` -- the naive (unguarded) form would not, by the
-    same law as `test_unknown_swallowing_visible_without_guard` above."""
+    """A guarded budget forbid stays fully applicable, over a corpus fixture.
+
+    `solver_portfolio`'s own `.if_inactive(0)`-guarded budget forbid stays
+    at `applicable == 1.0`. The unguarded form would not, under the law
+    `test_unknown_swallowing_visible_without_guard` above states.
+    """
     space = _build_solver_portfolio()
     report = space.sampling_report(2000, seed=0)
     # Both fixture forbids -- the solver count and the guarded budget --

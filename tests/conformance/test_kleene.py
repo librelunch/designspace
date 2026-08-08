@@ -1,19 +1,16 @@
-"""Conformance laws: Kleene three-valued logic (API.md, "Expressions" >
-"Three-valued semantics"; "Conformance Laws" > "Kleene").
+"""Conformance laws: Kleene three-valued logic.
 
-- The truth table, exhaustive over all 9 (a, b) combinations for `&`/`|`,
-  and all 3 for `~`.
-- `ds.count` range rule: Unknown iff the comparison outcome differs across
-  `[t, t + u]`.
-- Rule 1: any predicate over an inactive param is Unknown; `is_active()` is
-  total.
-- Rule 3: `.when()` coerces Unknown to False, cascading deactivation.
-- Rule 4: the constraint verbs coerce Unknown to inapplicable
-  (`margin=None`).
-- Rule 5 (M10.5/D-71): `.if_inactive()` discriminates Unknown's provenance —
-  coalesces inactivity alone, propagates a *pending* (partial-eval, unset)
-  operand and a *permanent* (rule-6 emptiness) one untouched.
-- Rule 7: bound-origin couplings follow rule 4 (inapplicable, not an error).
+See API.md, "Expressions" > "Three-valued semantics".
+
+Laws enforced here: `kleene_truth_table`, `count_range_rule`,
+`aggregate_plain_propagation`, `empty_aggregate_values`,
+`inactive_projection_is_not_empty`, `if_inactive_provenance`,
+`when_coerces_unknown_false`, `verbs_coerce_unknown_inapplicable`,
+`bound_coupling_inapplicable`, `is_active_totality`,
+`runtime_equality_type_tagging`.
+
+The truth table is exhaustive: all nine `(a, b)` combinations for `&` and
+`|`, and all three for `~`.
 """
 
 from __future__ import annotations
@@ -157,11 +154,12 @@ class TestRule1InactiveIsUnknown:
 
 
 class TestRule5UnknownProvenance:
-    """M10.5/D-71: Unknown has a provenance, and `.if_inactive()`
-    discriminates on it — coalescing inactivity alone, never eating a
-    pending (partial-eval) operand or a permanent (rule-6 emptiness) one.
-    Each of the three is tested against the *other* two, per the
-    conformance-law wording (API.md §Conformance Laws > Kleene)."""
+    """Rule 5: Unknown carries a provenance, and `.if_inactive()` reads it.
+
+    `.if_inactive()` coalesces inactivity alone, and never eats a pending
+    operand, from partial evaluation, or a permanent one, from rule 6's
+    emptiness. Each of the three is tested against the other two.
+    """
 
     def test_coalesces_inactivity(self):
         # Already covered by TestRule1InactiveIsUnknown; repeated here so
@@ -176,10 +174,12 @@ class TestRule5UnknownProvenance:
         assert result is True
 
     def test_never_coalesces_pending(self):
-        """The M10.5 headline bug: a lift that is *active* with its
-        elements merely unset must stay `pending` through `.if_inactive()`
-        — coalescing it would make a driver loop conclude a constraint is
-        satisfied while the deciding values are still unassigned."""
+        """A pending operand stays pending through `.if_inactive()`.
+
+        A lift that is active with its elements merely unset must not be
+        coalesced: that would make a driver loop conclude a constraint is
+        satisfied while the deciding values are still unassigned.
+        """
         space = ds.space(
             ds.param("n").integer(1, 4),
             ds.param("bufs").integer(0, 100).repeat(ds.param("n")),
@@ -189,9 +189,12 @@ class TestRule5UnknownProvenance:
         assert len(pe.pending_constraints) == 1
 
     def test_never_coalesces_emptiness(self):
-        """Rule 6: `min`/`max` of an *active* empty lift is Unknown, and
-        `.if_inactive()` must not swallow it — an author wanting an empty
-        lift to contribute a value writes it explicitly (API.md rule 5)."""
+        """An emptiness Unknown stays Unknown through `.if_inactive()`.
+
+        Rule 6 makes `min` and `max` of an active empty lift Unknown, and
+        rule 5 keeps `.if_inactive()` from swallowing it: an author wanting
+        an empty lift to contribute a value writes that explicitly.
+        """
         space = ds.space(ds.param("xs").real(0.0, 1.0).repeat(0))
         config = {"xs": 0}
         activity = compute_activity(space, config)
@@ -200,9 +203,11 @@ class TestRule5UnknownProvenance:
 
 
 class TestRule3WhenCoercesUnknownToFalse:
-    """Rule 3: `.when()` coerces Unknown to False, cascading deactivation
-    along `topological_order` — a param gated on an *inactive* upstream
-    param is itself inactive, not merely Unknown."""
+    """Rule 3: `.when()` coerces Unknown to False, cascading deactivation.
+
+    The cascade runs along `topological_order`, so a param gated on an
+    inactive upstream param is itself inactive rather than merely Unknown.
+    """
 
     def test_cascading_deactivation(self):
         space = ds.space(
@@ -216,8 +221,11 @@ class TestRule3WhenCoercesUnknownToFalse:
 
 
 class TestRule4ConstraintVerbsCoerceUnknownToInapplicable:
-    """Rule 4: Unknown at a constraint verb is *inapplicable* — not
-    violated, `margin=None`, `ConstraintEval.applicable=False`."""
+    """Rule 4: Unknown at a constraint verb is inapplicable, not violated.
+
+    Such an evaluation carries `margin=None` and
+    `ConstraintEval.applicable=False`.
+    """
 
     def test_inactive_operand_makes_constraint_inapplicable(self):
         space = ds.space(
@@ -232,9 +240,11 @@ class TestRule4ConstraintVerbsCoerceUnknownToInapplicable:
 
 
 class TestRule7BoundCouplingsFollowRule4:
-    """Rule 7: expression bounds desugar to bound-origin constraints, so an
-    inactive referenced param makes the coupling inapplicable — the target
-    ranges over its own envelope rather than raising."""
+    """Rule 7: an inactive bound reference makes the coupling inapplicable.
+
+    Expression bounds desugar to bound-origin constraints, so the target
+    ranges over its own envelope rather than raising.
+    """
 
     def test_inactive_bound_reference_is_inapplicable(self):
         space = ds.space(
@@ -249,13 +259,14 @@ class TestRule7BoundCouplingsFollowRule4:
 
 
 class TestRuntimeEqualityTypeTagging:
-    """API.md, "Runtime equality": `==`/`!=`/`.is_in()` compare `bool` by
-    type-tagged identity (`True ≠ 1` — bool is strict), `int`/`float`
-    numerically (`1 == 1.0`), and every other pair by exact type match —
-    deliberately distinct from Identity's declaration-time/fingerprint
-    tagging, which tags uniformly. M10.5's audit: stated in the
-    Expressions prose but never named in §Conformance Laws, and had no
-    test at all."""
+    """Runtime equality is type-tagged for bool and numeric for int and float.
+
+    API.md, "Runtime equality" has `==`, `!=` and `.is_in()` compare `bool`
+    by type-tagged identity, so `True` differs from `1`; compare `int`
+    against `float` numerically, so `1 == 1.0`; and compare every other pair
+    by exact type match. That is deliberately distinct from the uniform
+    tagging declaration time and the fingerprint apply.
+    """
 
     def test_bool_is_type_tagged_against_int(self):
         space = ds.space(ds.param("x").integer(0, 10))
@@ -289,9 +300,11 @@ class TestRuntimeEqualityTypeTagging:
 
 
 class TestOrdinalOrderingByDeclarationPosition:
-    """Ordinals compare by declaration position, not by the raw value —
-    this is the one place a bare Python `>`/`<` on the stored value would
-    give a silently wrong answer."""
+    """Ordinals compare by declaration position rather than by raw value.
+
+    This is the one place a bare Python `>` or `<` on the stored value gives
+    a silently wrong answer.
+    """
 
     def test_param_vs_literal(self):
         space = ds.space(ds.param("size").ordinal("s", "m", "l"))
@@ -321,13 +334,11 @@ class TestOrdinalOrderingByDeclarationPosition:
         assert evaluate_bool(ds.param("level") > 30, config, activity, space) is True
 
     def test_lift_element_vs_lift_element(self):
-        # A regression guard for a bracket-walk bug in
-        # `_resolve_param_domain` (live from M10.5 to M10.8): an ordinal
-        # lift's elements, compared via *instance paths*, silently fell
-        # back to raw-value comparison instead of declaration position —
-        # `_ordinal_domain_of` never found the OrdinalDomain to translate
-        # against, because the bracket walk computed it and then discarded
-        # it (`return None` instead of `return domain`).
+        # A guard on `_resolve_param_domain`'s bracket walk. If it computes
+        # the element domain and then discards it, `_ordinal_domain_of`
+        # never finds the OrdinalDomain to translate against, and an ordinal
+        # lift's elements compared through instance paths fall back to
+        # raw-value comparison.
         space = ds.space(ds.param("g").ordinal("a", "z", "m").repeat(2))
         config = {"g": ["m", "z"]}  # declared: a=0, z=1, m=2
         flat = flatten(config, space)

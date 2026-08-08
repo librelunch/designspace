@@ -1,17 +1,17 @@
-"""Conformance laws: margins (API.md, "Constraints and Feasibility" >
-"Margins"; "Conformance Laws" > "Margins").
+"""Conformance laws: margins.
 
-- Sign convention per comparison form.
-- Boolean composition preserves the satisfaction invariant (`&` holds iff
-  min(margin) >= 0, `|` holds iff max(margin) >= 0, `~p` negates), tested
-  with hypothesis over random expression trees — no forbid/encourage
-  wrapper, since margin is a structural property of the expression alone
-  (DECISIONS.md D-4).
-- `-0.0` never leaks out as a distinct sign from `0.0`.
-- `.forbid()`/`.encourage()` polarity (D-4): a forbid's stored predicate
-  names the *forbidden* state; a declared constraint's names the *desired*
-  state.
-- Continuous-`==` warning (row 25).
+See API.md, "Constraints and Feasibility" > "Margins".
+
+Laws enforced here: `margin_sign_convention`, `margin_composition_invariant`.
+
+The composition invariant is tested with hypothesis over random expression
+trees, with no forbid or encourage wrapper, since a margin is a structural
+property of the expression alone.
+
+Also asserted: `-0.0` never leaks out as a sign distinct from `0.0`; the
+`.forbid()` and `.encourage()` polarity, a forbid's stored predicate naming
+the forbidden state and a declared constraint's the desired state; and the
+continuous-equality warning of row 25.
 """
 
 from __future__ import annotations
@@ -38,8 +38,9 @@ def _margin_of(expr, config):
 class _FakeParamDef:
     """Stand-in with just enough shape for `_ordinal_domain_of`'s `.domain`
     lookup (`None` is not an `OrdinalDomain`, so it's a safe non-match) and
-    `compute_activity`'s M4 lift check (`type_kind` just needs to not be
-    `"list"`)."""
+    `compute_activity`'s lift check, where `type_kind` need only differ from
+    `"list"`.
+    """
 
     domain = None
     type_kind = "real"
@@ -160,9 +161,12 @@ def _leaf_and_margin(draw, suffix: str):
 
 @given(st.data())
 def test_composition_preserves_satisfaction_invariant(data):
-    """`&` holds iff min(margin) >= 0; `|` holds iff max(margin) >= 0;
-    `~p` holds iff margin(p) < 0 — random expression trees, per the
-    conformance gate ("composition preserves satisfaction invariant")."""
+    """Boolean composition preserves the satisfaction invariant.
+
+    `&` holds exactly when min(margin) >= 0, `|` exactly when
+    max(margin) >= 0, and `~p` exactly when margin(p) < 0, over random
+    expression trees.
+    """
     left_expr, left_cfg = data.draw(_leaf_and_margin(""))
     right_expr, right_cfg = data.draw(_leaf_and_margin("2"))
     config = {**left_cfg, **right_cfg}
@@ -187,8 +191,8 @@ def test_composition_preserves_satisfaction_invariant(data):
 
 
 class TestForbidEncouragePolarity:
-    """D-4: a forbid's predicate names the forbidden (bad) state; a
-    declared constraint's predicate names the desired (good) state."""
+    """A forbid's predicate names the forbidden state, a declared
+    constraint's the desired one."""
 
     def test_forbid_violated_when_predicate_true(self):
         space = ds.space(ds.param("lr").real(0.0, 1.0)).forbid(ds.param("lr") > 0.5)

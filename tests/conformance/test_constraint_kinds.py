@@ -1,20 +1,24 @@
-"""Conformance laws: the constraint quartet and its polarity accessors
-(API.md, "Constraints and Feasibility"; PLAN.md M7.6).
+"""Conformance laws: the constraint quartet and its polarity accessors.
 
-Two polarity pairs — hard `forbid`/`require`, soft `encourage`/`discourage` —
-read back through derived accessors so no consumer re-derives polarity from
-`(origin, hard)`:
+See API.md, "Constraints and Feasibility".
 
-- `Constraint.kind` names the verb; `Constraint.feasible_when_satisfied` is the
-  polarity (False only for the bad-state verbs forbid/discourage).
-- `ConstraintEval.violated` is polarity-correct across all four kinds.
-- `discourage` is the soft complement of `encourage` (== `encourage(~e)`): it
-  never affects feasibility, is *flagged* iff its predicate is satisfied (the
-  bad state), and — like `require` vs `forbid` — is fingerprint-equal to
-  `encourage(~e)` and fingerprint-distinct from `encourage(e)` (its preimage
-  canonicalizes to `Not(e)`, keeping the excluded `origin` non-load-bearing).
-- A `discourage` KA vector locks the new `origin="discourage"` frozen-format
-  value; all prior corpus + `require_demo` vectors stay byte-identical.
+Laws enforced here: `require_equivalence`.
+
+Two polarity pairs, hard `forbid` and `require` and soft `encourage` and
+`discourage`, are read back through derived accessors, so that no consumer
+re-derives polarity from `(origin, hard)`. `Constraint.kind` names the verb
+and `Constraint.feasible_when_satisfied` gives the polarity, false only for
+the bad-state verbs `forbid` and `discourage`. `ConstraintEval.violated` is
+polarity-correct across all four kinds.
+
+`discourage` is the soft complement of `encourage`, equal to
+`encourage(~e)`. It never affects feasibility, is flagged exactly when its
+predicate holds, and is fingerprint-equal to `encourage(~e)` and distinct
+from `encourage(e)`, its preimage canonicalizing to `Not(e)` so that the
+excluded `origin` stays non-load-bearing.
+
+A `discourage` known-answer vector locks the `origin="discourage"` format
+value, and every prior vector stays byte-identical.
 """
 
 from __future__ import annotations
@@ -175,7 +179,7 @@ def _load_vector() -> dict:
     path = VECTORS_DIR / "discourage_demo.json"
     if not path.exists():
         raise FileNotFoundError(
-            f"missing known-answer vector {path} — generate it with "
+            f"missing known-answer vector {path}; generate it with "
             "`uv run python tests/conformance/vectors/_generate.py` (deliberately)"
         )
     return json.loads(path.read_text())

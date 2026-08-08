@@ -1,14 +1,15 @@
-"""A small `.anchor()`/`.meta()`-using space for the M8 known-answer digest
-vector (PLAN.md M8 gate; DECISIONS.md D-40).
+"""A small `.anchor()` and `.meta()` space, for a known-answer digest vector.
 
-Not a corpus fixture, not collected by pytest (leading underscore) —
-parallels `_require_demo.py`/`_discourage_demo.py`. Kept apart from
-`tests/corpus/sat_solver.py` deliberately: adding anchors to that
-already-frozen fixture would change its committed KA vector, which the
-"add — never replace" discipline forbids (D-40). Exercises two named
-anchors (sorted by key in the preimage) and a space-level `.meta()` call
-with both a scalar and a nested-dict value, to lock the recursive
-type-tagging codec anchors/meta share with `default`/`ParamDef.meta`.
+Not a corpus fixture, and not collected by pytest, its name leading with an
+underscore. It parallels `_require_demo.py` and `_discourage_demo.py`, and
+is kept apart from `tests/corpus/sat_solver.py` deliberately: adding anchors
+to that already-frozen fixture would change its committed vector, which the
+add-never-replace discipline forbids.
+
+It exercises two named anchors, sorted by key in the preimage, and one
+space-level `.meta()` call carrying both a scalar and a nested-dict value,
+which locks the recursive type-tagging codec anchors and metadata share with
+`default` and `ParamDef.meta`.
 """
 
 from __future__ import annotations

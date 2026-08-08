@@ -1,16 +1,16 @@
-"""Known-answer digest vectors (PLAN.md M7 gate: "known-
-answer digest vectors ... for every corpus fixture").
+"""Known-answer digest vectors, one per corpus fixture.
 
-Purely read + assert — **never regenerates**. A missing vector file is a
-hard failure (`FileNotFoundError` propagates), not a silent "compute and
-write" fallback: that would make the vectors detect nothing. To add or
-update a vector deliberately (only per the version-bump protocol —
-PLAN.md: "bump the shared integer, add — never replace —
-known-answer vectors"), run `tests/conformance/vectors/_generate.py` by hand.
+Laws enforced here: `digest_known_answers`.
 
-The `to_json` vector is compared as a parsed dict, not a string — JCS (and
-therefore byte-stability) only governs the *digest* preimage, not this
-file's own JSON formatting.
+This module reads and asserts, and never regenerates. A missing vector file
+is a hard failure, `FileNotFoundError` propagating rather than a silent
+compute-and-write fallback, which would make the vectors detect nothing. To
+add or update a vector deliberately, under the version-bump protocol, run
+`tests/conformance/vectors/_generate.py` by hand.
+
+The `to_json` vector is compared as a parsed dict rather than as a string.
+JCS, and therefore byte-stability, governs the digest preimage rather than
+this file's own JSON formatting.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ def _load_vector(name: str) -> dict:
     path = VECTORS_DIR / f"{name}.json"
     if not path.exists():
         raise FileNotFoundError(
-            f"missing known-answer vector {path} — generate it with "
+            f"missing known-answer vector {path}; generate it with "
             "`uv run python tests/conformance/vectors/_generate.py` "
             "(deliberately, per the version-bump protocol; never auto-generated)"
         )

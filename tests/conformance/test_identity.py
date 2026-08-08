@@ -1,18 +1,17 @@
-"""Conformance laws: Identity and Serialization (API.md, "Identity and
-Serialization"; "Conformance Laws" > "Identity").
+"""Conformance laws: identity and serialization.
 
-- Sugar-equivalence pairs fingerprint-equal.
-- Bound-origin polarity (D-29(4)): fingerprint- and feasibility-equal to the
-  `.forbid(x > y)` manual expansion; fingerprint- and feasibility-*distinct*
-  from the feasibility-opposite `.forbid(x <= y)`.
-- Order-sensitivity: permuted declarations differ; `.when(a).when(b)` folds
-  in call order.
-- Scope monotonicity: meta/tags/declared-constraint changes are
-  `sampling`-equal, `full`-distinct (DECISIONS.md D-33: `quantized`/
-  `periodic` ride in *both* scopes despite the table's "domain, prior" row).
-- Round-trip law.
-- Mark-sentinel distinctness; type-tag distinctness; float edges.
-- `config_hash`/`config_diff` laws.
+See API.md, "Identity and Serialization".
+
+Laws enforced here: `sugar_equivalence`, `declaration_order_significant`,
+`scope_monotonicity`, `json_round_trip`, `mark_sentinel_distinctness`,
+`type_tag_distinctness`.
+
+Also asserted: bound-origin polarity, fingerprint- and feasibility-equal to
+the `.forbid(x > y)` manual expansion and distinct from the
+feasibility-opposite `.forbid(x <= y)`; that `.when(a).when(b)` folds in call
+order; that `quantized` and `periodic` ride in both fingerprint scopes,
+despite the scope table's "domain, prior" row; float edge cases; and the
+`config_hash` and `config_diff` laws.
 """
 
 from __future__ import annotations
@@ -24,8 +23,10 @@ from designspace import Space
 
 
 class _FakePrior:
-    """A minimal external `Prior` (ppf-only): opaque for identity purposes
-    (DECISIONS.md D-31) — no structural encoding."""
+    """A minimal external `Prior`, supplying `ppf` alone.
+
+    It is opaque for identity purposes, having no structural encoding.
+    """
 
     def ppf(self, q: float) -> float:
         return q
@@ -66,7 +67,7 @@ class TestSugarEquivalence:
         assert sugared.fingerprint() == manual.fingerprint()
 
 
-# -- Bound-origin polarity (D-29(4)) ---------------------------------------
+# -- Bound-origin polarity ---------------------------------------------------
 
 
 class TestBoundOriginPolarity:
@@ -118,7 +119,7 @@ class TestOrderSensitivity:
 
     def test_when_call_order_is_preserved(self):
         # `.when(a).when(b)` ANDs left-to-right; the operand order this
-        # produces is itself what "call order" means — swapping the calls
+        # produces is what "call order" means. Swapping the calls
         # swaps `BoolOp.children` order, which the AST codec preserves.
         cond_a = ds.param("t").real(0, 1) > 0.5
         cond_b = ds.param("u").bool()
@@ -172,8 +173,8 @@ class TestScopeMonotonicity:
         assert a.fingerprint("full") != b.fingerprint("full")
 
     def test_quantized_change_differs_at_both_scopes(self):
-        # DECISIONS.md D-33: chart geometry (quantized/periodic) rides in
-        # both scopes despite the scope table's "domain, prior" shorthand.
+        # Chart geometry, meaning quantized and periodic, rides in both
+        # scopes despite the scope table's "domain, prior" shorthand.
         a = ds.space(ds.param("x").real(0.0, 1.0))
         b = ds.space(ds.param("x").real(0.0, 1.0).quantized(step=0.1))
         assert a.fingerprint("full") != b.fingerprint("full")
@@ -228,7 +229,7 @@ class TestRoundTrip:
                 assert restored.validate(cfg).valid
 
 
-# -- Nested (list/dict-shaped) meta values (DECISIONS.md D-36) -------------
+# -- Nested, list- and dict-shaped meta values -------------------------------
 
 
 class TestNestedMetaValues:
@@ -382,7 +383,7 @@ class TestConfigDiff:
         assert ds.config_diff(cfg, dict(cfg), space) == []
 
     def test_int_and_float_equal_value_yields_empty_diff(self):
-        # DECISIONS.md D-35: config_diff uses plain Python equality (1 == 1.0),
-        # unlike config_hash/fingerprint's type-tagged distinctness.
+        # config_diff uses plain Python equality, under which 1 == 1.0,
+        # unlike config_hash and fingerprint's type-tagged distinctness.
         space = ds.space(ds.param("c").categorical(1, 1.0))
         assert ds.config_diff({"c": 1}, {"c": 1.0}, space) == []

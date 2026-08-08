@@ -1,14 +1,15 @@
-"""A small `require`-using space for the M7.5 known-answer digest vector
-(PLAN.md M7.5 gate: "new `require` KA vectors committed").
+"""A small `require`-using space, for a known-answer digest vector.
 
-Deliberately **not** a corpus fixture (no design-history provenance) and
-**not collected by pytest** (leading underscore, no `test_`/`Test` names):
-it exists only so `tests/conformance/vectors/require_demo.json` has a stable
-builder, kept apart from `tests/corpus/` so the "all corpus vectors stay
-byte-identical" check stays clean. It exercises the `require` fingerprint
-canonicalization on both a bare `Compare` (whole-expression negation of
-`x <= y`) and a composite `BoolOp` (`~(a & b)`), the two shapes the
-`Not`-wrap must handle.
+Deliberately not a corpus fixture, having no design-history provenance, and
+not collected by pytest, its name leading with an underscore and carrying no
+`test_` or `Test` names. It exists so that
+`tests/conformance/vectors/require_demo.json` has a stable builder, kept
+apart from `tests/corpus/` so that the check that every corpus vector stays
+byte-identical stays clean.
+
+It exercises the `require` fingerprint canonicalization on both a bare
+`Compare`, the whole-expression negation of `x <= y`, and a composite
+`BoolOp`, `~(a & b)`. Those are the two shapes the `Not` wrap must handle.
 """
 
 from __future__ import annotations

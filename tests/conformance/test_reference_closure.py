@@ -1,30 +1,30 @@
-"""Conformance law: **reference closure** — every param reference a space
-stores names something declared in that space.
+"""Conformance law: reference closure.
 
-This is the generic detector for the bug class D-91 and its siblings came
-from: a reference that lives somewhere the relocating code does not look,
-and so keeps a pre-relocation path after merging. Every instance of it
-fails the same way — the dangling path reads as Kleene-Unknown-from-
-inactivity, which is the *permissive* direction, so a count silently
-materializes `[]`, a hard per-element `.forbid()` silently stops deciding
-feasibility, and `validate()` still reports `valid`.
+Every param reference a space stores names something declared in that space.
 
-Stating it as one invariant over every reference store, swept across every
-corpus fixture and a generated grid of nesting routes, is what makes the
-class caught rather than its instances. The four stores:
+Laws enforced here: `reference_closure`, `owning_lift_resolution`.
 
-- `Space.conditions[].expr` and each `ParamDef.condition`
-- `Space.constraints[].expr`
-- `ListDomain.count` (D-21), at every lift level
-- `ListDomain.element_constraints[].expr` (D-20), at every lift level
+This is the generic detector for a bug class: a reference living somewhere
+the relocating code does not look, which then keeps its pre-relocation path
+after merging. Every instance fails the same way. The dangling path reads as
+Kleene Unknown from inactivity, which is the permissive direction, so a
+count silently materializes `[]`, a hard per-element `.forbid()` silently
+stops deciding feasibility, and `validate()` still reports `valid`.
 
-The predicate is the library's **own** `_is_declared` — the row-6 check —
-rather than a reimplementation. The invariant is then exactly "every stored
-reference would pass the reference check", and a second definition of
-"declared" cannot drift from it. (It has to admit more than `space.params`
-keys: an instance path `"stops[0].dwell"` resolves through its `"[]"`
-template, and a lifted choice's discriminator template `"pipe[]"` resolves
-through its owning lift, neither being a key of its own.)
+Stating the invariant once over every reference store, swept across every
+corpus fixture and a generated grid of nesting routes, is what catches the
+class rather than its instances. The four stores are
+`Space.conditions[].expr` and each `ParamDef.condition`,
+`Space.constraints[].expr`, `ListDomain.count` at every lift level, and
+`ListDomain.element_constraints[].expr` at every lift level.
+
+The predicate is the library's own `_is_declared`, the row-6 check, rather
+than a reimplementation, so the invariant is exactly "every stored reference
+would pass the reference check" and a second definition of "declared" cannot
+drift from it. It admits more than `space.params` keys: an instance path
+such as `"stops[0].dwell"` resolves through its `"[]"` template, and a
+lifted choice's discriminator template `"pipe[]"` resolves through its
+owning lift, neither being a key of its own.
 """
 
 from __future__ import annotations
@@ -200,8 +200,9 @@ ROUTES = [
 
 # A cell whose *shape* is unsupported rather than whose behaviour is wrong.
 # Placing a struct- or choice-elemented lift inside another lift's element
-# composes to D-24's boundary ("a struct/choice element nested under more
-# than one .repeat() level"), so the cell must raise — and asserting that it
+# composes to the boundary a struct or choice element nested under more
+# than one .repeat() level hits, so the cell must raise, and asserting that
+# it
 # raises is as much a law as the passing cells, since the alternative
 # discovered here was silently invalid configs.
 EXPECTED_D24 = {
@@ -243,7 +244,8 @@ class TestNestingGrid:
 class TestGridCatchesTheClass:
     """The grid earns its keep only if a cell actually fails when a
     reference dangles. Rather than trust that, break one on purpose and
-    assert the detector fires — the same shape every bug in this class had.
+    assert the detector fires, which is the shape every bug in this class
+    had.
     """
 
     def test_a_dangling_count_is_detected(self) -> None:
@@ -254,7 +256,7 @@ class TestGridCatchesTheClass:
 
         listed = space.params["g.xs"].domain
         assert isinstance(listed, ListDomain)
-        # Re-introduce exactly D-91's bug: the pre-relocation bare path.
+        # Re-introduce the bug: a count keeping its pre-relocation path.
         broken_domain = replace(listed, count=ds.param("n"))
         broken = replace(
             space,
@@ -272,7 +274,8 @@ class TestGridCatchesTheClass:
         listed = space.params["g.spans"].domain
         assert isinstance(listed, ListDomain)
         template = listed.element_constraints[0]
-        # D-20's bug: the template keeps its pre-relocation params.
+        # The bug: an element-constraint template keeps its pre-relocation
+        # params.
         broken_template = replace(template, params=frozenset({"spans[].lo", "spans[].hi"}))
         broken_domain = replace(listed, element_constraints=(broken_template,))
         broken = replace(

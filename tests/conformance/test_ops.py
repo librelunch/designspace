@@ -1,12 +1,12 @@
-"""Conformance laws: M8 cheap introspection accessors (API.md, "Space —
-Introspection"; DECISIONS.md D-43). `ops/_structural.py`'s structural
-operations join this file once Stage 5 implements them.
+"""Conformance laws: the cheap introspection accessors.
 
-Scope confirmed with the user: `.subspaces`, `.dependency_graph`,
-`.param_constraints`, `.param_conditions`, `.is_hierarchical`,
-`.has_variable_length`, `.is_finite`. `.cardinality()` and
-`.capability_report()` are deferred (D-43); `.has_nongenerative_params`
-defers to M9 alongside `.custom()`.
+See API.md, "Space: Introspection".
+
+Covered here: `.subspaces`, `.dependency_graph`, `.param_constraints`,
+`.param_conditions`, `.is_hierarchical`, `.has_variable_length` and
+`.is_finite`. `.cardinality()` and `.has_nongenerative_params` are covered
+by `test_custom.py`, alongside the surface that gives them something to
+report.
 """
 
 from __future__ import annotations

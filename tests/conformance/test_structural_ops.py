@@ -1,11 +1,15 @@
-"""Conformance laws: M8 structural operations (API.md, "Space: Structural
-Operations"; PLAN.md M8 gate; DECISIONS.md D-44).
+"""Conformance laws: structural operations.
 
-Gate items covered here: slice-substitution reaches conditions and
-constraint expressions incl. bound-origin and require-origin (envelope
-recompute test); select prefix-subtree brings variants; strict vs
-best-effort; `extend` identity with `ds.space()`; rebuilt (post-op) spaces
-fingerprint-equal to equivalent hand-built ones.
+See API.md, "Space: Structural Operations".
+
+Laws enforced here: `freeze_matches_static_spelling`.
+
+Also asserted: slice substitution reaches conditions and constraint
+expressions, bound-origin and require-origin ones included, with the
+envelope recomputed; `.select()` on a prefix subtree brings a choice's
+variants; the strict and best-effort modes differ as specified; `.extend()`
+with `ds.space()` is the identity; and a rebuilt, post-operation space is
+fingerprint-equal to an equivalent hand-built one.
 """
 
 from __future__ import annotations
@@ -95,7 +99,7 @@ class TestSlice:
         # "fingerprint()"): the sliced space still carries a (now
         # redundant-looking) bound-origin constraint from the original
         # expression bound, canonicalized by operator-flip like any other
-        # bound — so the equivalent hand-built space needs the matching
+        # bound, so the equivalent hand-built space needs the matching
         # `.forbid(y > 5.0)`, not bare literal bounds alone.
         sliced = ds.space(
             ds.param("x").real(0.0, 10.0), ds.param("y").real(0.0, ds.param("x"))
@@ -217,7 +221,7 @@ class TestFreezeAnchors:
         assert frozen.anchors == {"a": {"x": 5}}
 
 
-# -- freeze: subset / permutation / struct / choice / list (M9.5, DECISIONS.md D-50) --
+# -- freeze: subset, permutation, struct, choice and list --------------------
 
 
 class TestFreezeSubset:
@@ -303,7 +307,7 @@ class TestFreezeChoice:
         # only stand in for freeze's own pruning when the surviving variant
         # is the payload-bearing one being kept, not the bare one (whose
         # hand-written equivalent would need `ChoiceDomain` itself to omit
-        # "svm" — which freeze deliberately never does; see
+        # "svm", which freeze deliberately never does. See
         # test_bare_variant_prunes_payload_descendants below instead).
         space = self._build()
         frozen = space.freeze(algo="svm")
@@ -411,7 +415,7 @@ class TestFreezeList:
     def test_scalar_elements_pinned(self):
         # A discrete (categorical) domain, not real: an exact-equality pin
         # over a continuous domain is measure-zero under rejection sampling
-        # (API.md, "Continuous-equality warning") — orthogonal to freeze
+        # (API.md, "Continuous-equality warning"), which is orthogonal to freeze
         # itself (any hand-written `require(x == v)` over a continuous
         # param has the same property); a small discrete domain keeps this
         # test's sampling reliable.
@@ -424,8 +428,8 @@ class TestFreezeList:
     def test_element_pins_are_separate_require_constraints(self):
         # Each element is its own hard `require` pin (mirroring
         # `_require_pin`'s uniform shape across every freeze kind) rather
-        # than one combined expression — matching subset/permutation/
-        # choice's own per-item/per-position/per-instance pin shape.
+        # than one combined expression, matching subset, permutation and
+        # choice's own per-item, per-position and per-instance pin shape.
         frozen = ds.space(ds.param("xs").categorical("a", "b", "c").repeat(3)).freeze(
             xs=["a", "b", "c"]
         )
@@ -485,13 +489,13 @@ class TestFreezeList:
         space = self._pipeline_space(2)
         frozen = space.freeze(pipeline=["mutation", "local_search"])
         # Each instance uses only one of the two payload-bearing variants,
-        # but the union across both instances uses both — neither is
+        # but the union across both instances uses both, so neither is
         # pruned (the aggregation is over the whole call, not per-instance).
         assert "pipeline[].mutation.rate" in frozen.params
         assert "pipeline[].local_search.iters" in frozen.params
 
     def test_list_of_choice_prunes_even_when_uniformly_selected(self):
-        # Every instance picks the same variant — proving the union is
+        # Every instance picks the same variant, proving the union is
         # computed once over the whole call: the pruning of "mutation"
         # doesn't depend on any single instance "driving" it alone.
         space = self._pipeline_space(2)
@@ -579,7 +583,7 @@ class TestSelect:
     def test_prefix_subtree_brings_a_lifted_structs_element_templates(self):
         # A lifted struct's fields are relocated under a `"[]"`-bracketed
         # prefix, so they are descendants of the lift exactly as a
-        # variant's params are descendants of its choice — "prefix
+        # variant's params are descendants of its choice. "Prefix
         # subtree" has to bring them, or the selected lift keeps a
         # ListDomain whose element fields no longer exist.
         space = ds.space(

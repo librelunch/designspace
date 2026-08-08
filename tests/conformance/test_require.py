@@ -1,32 +1,32 @@
-"""Conformance laws: `space.require` (API.md, "Constraints and Feasibility"
-> "`require` — the positive complement"; "Identity — Normalization
-pipeline"; PLAN.md M7.5 gate).
+"""Conformance laws: `space.require`.
 
-`require(e)` stores the *desired (feasible)* predicate `e` and is evaluated
-feasible-iff-satisfied — the same convention a bound-origin constraint uses,
-`origin="require"`. The laws:
+See API.md, "Constraints and Feasibility" and "Identity and Serialization" >
+"Normalization pipeline".
 
-- **Fingerprint** (the strict identity law): `require(e)` is fingerprint-equal
-  to `.forbid(~e)` at both scopes (its preimage canonicalizes to the
-  whole-expression negation `~e` = `Not(stored_expr)`), and fingerprint-
-  *distinct* from the feasibility-opposite `.forbid(e)`.
-- **Semantic vs. syntactic (D-38):** `require(x<=y)` and `.forbid(x>y)` are
-  *feasibility*-equal but fingerprint-*distinct* — `require` canonicalizes to
-  `~(x<=y)` (`Not(Compare le)`), not the operator-flipped `x>y` that a *bound*
-  sugar uses. "Equal fingerprints ⇒ equal feasible sets" is one-way, so the
-  distinct fingerprint for identical feasibility is allowed.
-- **Feasibility / Kleene polarity:** violated iff `e` is definitely False;
-  `e` True ⇒ feasible; `e` Unknown ⇒ inapplicable (`margin is None`), feasible
-  — the same `applicable`/`is_violated` as `.forbid(~e)` (only `satisfied` and
-  the reported `margin` sign flip, since `require` reads in the user's terms).
-- **Margin:** `require(e)` reports `margin(e)` directly (positive is slack),
-  identical to a bound-origin constraint over the same predicate and the
-  *negation* of `.forbid(~e)`'s reported margin (API.md L331; this is the same
-  loose "margin-equal" shorthand the bound precedent uses).
-- **`remaining_domain`:** a `require`-origin constraint participates in the
-  one-unset-operand reduction identically to a bound.
-- **KA vector:** a `require`-using space fingerprints/serializes to a committed
-  byte-stable digest (the frozen format now carries `origin="require"`).
+Laws enforced here: `require_margin_equivalence`.
+
+`require(e)` stores the desired, feasible predicate `e` and is evaluated
+feasible exactly when satisfied, which is the convention a bound-origin
+constraint uses, under `origin="require"`.
+
+The fingerprint law: `require(e)` is fingerprint-equal to `.forbid(~e)` at
+both scopes, its preimage canonicalizing to the whole-expression negation
+`Not(stored_expr)`, and fingerprint-distinct from the feasibility-opposite
+`.forbid(e)`.
+
+Semantic against syntactic: `require(x <= y)` and `.forbid(x > y)` are
+feasibility-equal and fingerprint-distinct, `require` canonicalizing to
+`~(x <= y)` rather than to the operator-flipped `x > y` a bound sugar uses.
+"Equal fingerprints imply equal feasible sets" is one-way, so a distinct
+fingerprint for identical feasibility is allowed.
+
+Kleene polarity: violated exactly when `e` is definitely False; `e` True is
+feasible; `e` Unknown is inapplicable with `margin is None`, and feasible.
+`applicable` and `is_violated` match `.forbid(~e)`; only `satisfied` and the
+reported margin sign flip, `require` reading in the user's terms.
+
+`remaining_domain`: a `require`-origin constraint participates in the
+one-unset-operand reduction as a bound does.
 """
 
 from __future__ import annotations
@@ -87,8 +87,8 @@ class TestRequireFingerprint:
         assert require_le.fingerprint("sampling") != forbid_le.fingerprint("sampling")
 
     def test_semantic_not_syntactic_vs_forbid_gt(self):
-        # D-38: `require(x<=y)` and `.forbid(x>y)` are the SAME feasible set but
-        # DIFFERENT fingerprints — `require` negates the whole expression
+        # `require(x<=y)` and `.forbid(x>y)` name the same feasible set and
+        # differ in fingerprint: `require` negates the whole expression
         # (`~(x<=y)` = `Not(Compare le)`), not the operator-flipped `x>y`.
         require_le, _, _ = _xy()
         forbid_gt = ds.space(ds.param("x").real(0.0, 1.0), ds.param("y").real(0.0, 1.0)).forbid(
@@ -119,7 +119,8 @@ class TestRequireFeasibility:
 
     def test_kleene_true_false_unknown(self):
         # `g` gates `z`; when `g` is False, `z` is inactive and `z > 0.5` is
-        # Unknown — require then inapplicable (margin None), config feasible.
+        # Unknown, so require is inapplicable with margin None and the
+        # config is feasible.
         def base() -> Space:
             return ds.space(
                 ds.param("g").bool(),
@@ -188,7 +189,7 @@ class TestRequireSampling:
 class TestRequireRemainingDomain:
     def test_require_narrows_like_a_bound(self):
         # With `y` set, `require(x <= y)` narrows `x`'s remaining upper bound to
-        # `y` — the same one-unset-operand reduction a bound performs.
+        # `y`, the one-unset-operand reduction a bound also performs.
         require_le, _, _ = _xy()
         rd = require_le.remaining_domain("x", {"y": 0.4})
         assert isinstance(rd, RealRemaining)
@@ -216,7 +217,7 @@ def _load_vector() -> dict:
     path = VECTORS_DIR / "require_demo.json"
     if not path.exists():
         raise FileNotFoundError(
-            f"missing known-answer vector {path} — generate it with "
+            f"missing known-answer vector {path}; generate it with "
             "`uv run python tests/conformance/vectors/_generate.py` "
             "(deliberately; never auto-generated)"
         )

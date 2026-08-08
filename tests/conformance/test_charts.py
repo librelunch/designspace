@@ -1,13 +1,11 @@
-"""Conformance laws: charts (API.md, "Charts"; "Conformance Laws" > "Charts").
+"""Conformance laws: charts (API.md, "Charts").
 
-- Known-answer vectors for the four built-in families, including a
-  subnormal-range `Log` chart.
-- Floor-integer exact uniformity (chi-square, fixed seed).
-- Quantized cell measure (uniform prior => equiprobable grid points).
-- Grid canonicalization invariance under bit-different representations.
-- Power monotonicity domain (row 9, M4.5 faithfulness correction): a valid
-  `Power` chart is a monotone bijection onto `[lo, hi]`; every domain the
-  spec's "Requires" column rejects raises `ResolutionError`.
+Laws enforced here: `chart_known_answers`, `integer_floor_uniformity`,
+`quantized_cell_measure`, `grid_canonicalization_invariance`.
+
+Also asserted, from row 9's "Requires" column: a valid `Power` chart is a
+monotone bijection onto `[lo, hi]`, and every domain the column rejects
+raises `ResolutionError`.
 """
 
 from __future__ import annotations
@@ -124,10 +122,11 @@ class TestPowerKnownAnswer:
 
 
 class TestPowerMonotoneBijectionLaw:
-    """Row 9 (M4.5 faithfulness correction): every valid `Power` chart is a
-    strictly monotone bijection onto `[lo, hi]`; every domain the spec's
-    "Requires" column rejects raises `ResolutionError` (API.md,
-    "Charts" > "Built-in prior families")."""
+    """Row 9: every valid `Power` chart is a monotone bijection onto `[lo, hi]`.
+
+    Every domain the "Requires" column rejects raises `ResolutionError`.
+    See API.md, "Charts" > "Built-in prior families".
+    """
 
     @pytest.mark.parametrize(
         ("lo", "hi", "p"),

@@ -1,23 +1,23 @@
-"""Conformance law: immutability and copy-on-write (API.md, "Errors,
-Concurrency": "All public objects — expressions, spaces, IR dataclasses,
-charts — are immutable after construction and safe to share across threads.
-RNG state is passed explicitly; nothing mutates shared state.").
+"""Conformance law: immutability and copy-on-write.
+
+API.md, "Errors and Concurrency" states that "All public objects
+(expressions, spaces, IR dataclasses, charts) are immutable after
+construction and safe to share across threads. RNG state is passed
+explicitly; nothing mutates shared state."
 
 The thread-safety claim ships no locking, so there is nothing concurrent to
-test. Its entire content is structural, in two halves:
+test. The content is structural, in two halves.
 
-1. **Frozen** — no public object accepts attribute assignment, and the
-   mappings they expose are read-only views rather than live dicts.
-2. **Copy-on-write** — every chainable operation returns a *new* object and
-   leaves its receiver byte-identical. This is the half a caller actually
-   relies on when sharing one `Space` across threads: `space.forbid(...)`
-   handing back a new space is only safe if `space` itself is untouched.
+Frozen: no public object accepts attribute assignment, and the mappings they
+expose are read-only views rather than live dicts.
 
-Half 1 was asserted for expression nodes only (`tests/unit/test_expr.py`)
-and half 2 not systematically at all, so a newly added un-frozen IR
-dataclass, or an operation that mutated in place, would have passed. Both
-halves are swept over the exported surface here rather than spot-checked,
-so a new export inherits them.
+Copy-on-write: every chainable operation returns a new object and leaves its
+receiver byte-identical. That is the half a caller relies on when sharing
+one `Space` across threads, `space.forbid(...)` handing back a new space
+being safe only if `space` itself is untouched.
+
+Both halves are swept over the exported surface rather than spot-checked, so
+that a new export inherits them.
 """
 
 from __future__ import annotations
@@ -84,9 +84,12 @@ class TestSpaceIsFrozenAndExposesReadOnlyViews:
 
 
 class TestCopyOnWrite:
-    """Every chainable operation returns a new object and leaves the
-    receiver byte-identical — asserted through `fingerprint()`, which is
-    exactly "identical valid-config sets, measure, and document"."""
+    """Every chainable operation returns a new object, leaving its receiver
+    byte-identical.
+
+    The check runs through `fingerprint()`, which is exactly "identical
+    valid-config sets, measure, and document".
+    """
 
     @staticmethod
     def _unchanged(before: ds.Space, operation: Any) -> bool:

@@ -1,26 +1,24 @@
 """Conformance law: every param kind satisfies every stated cross-kind law.
 
-Pass 1's nesting grid crossed a *declaration* against its **nesting route**.
-This is the other axis: a representative space per param kind (including the
-domain-modifier variants that change chart or dtype behaviour — log-scaled,
-periodic, quantized — and each lift shape), crossed against the surfaces
-that carry a stated law:
+A representative space per param kind, including the domain-modifier
+variants that change chart or dtype behaviour, meaning log-scaled, periodic
+and quantized, and each lift shape, is crossed against the surfaces carrying
+a stated law:
 
 - `fingerprint()` is computable, and `Space.from_json(s.to_json())`
-  reproduces it (the round-trip law)
-- `unflatten(flatten(c)) == c` (Structure)
-- `config_hash` is computable; `config_diff(c, c) == []`
-- `apply_defaults` is idempotent (Defaults)
-- `validate(sample_one())` is valid
-- the induced representation's `check()` passes (Representation)
+  reproduces it, which is the round-trip law;
+- `unflatten(flatten(c)) == c`;
+- `config_hash` is computable, and `config_diff(c, c) == []`;
+- `apply_defaults` is idempotent;
+- `validate(sample_one())` is valid;
+- the induced representation's `check()` passes;
 - the DataFrame column dtype matches the "Config Representation" table,
-  including the `Array`-vs-`List` static/dynamic rule asserted per level
-- a non-generative kind raises `SamplingError` rather than materializing
+  including the `Array`-against-`List` static and dynamic rule per level;
+- a non-generative kind raises `SamplingError` rather than materializing.
 
-The value is regression coverage at the point a *new* kind or a *new*
-surface is added: every existing law is then asserted against it by
-construction rather than by remembering to. Adding a kind means adding one
-row here.
+The value is regression coverage at the point a new kind or a new surface is
+added: every existing law is then asserted against it by construction rather
+than by remembering to. Adding a kind means adding one row here.
 """
 
 from __future__ import annotations
@@ -96,8 +94,8 @@ KINDS: dict[str, tuple[Any, str]] = {
     "scalar_lift": (lambda: ds.param("p").real(0.0, 1.0).repeat(3), "Array(Float64, shape=(3,))"),
     # polars collapses a nested *static* lift into one multi-dimensional
     # Array rather than Array(Array(...)); the shape reads outermost-first,
-    # so `.repeat(2).repeat(3)` (outer 3, inner 2) is shape (3, 2) — the
-    # same convention `.repeat(*counts)`'s numpy-shape sugar desugars to.
+    # so `.repeat(2).repeat(3)`, outer 3 and inner 2, is shape (3, 2). That
+    # is the convention `.repeat(*counts)`'s numpy-shape sugar desugars to.
     "nested_lift": (
         lambda: ds.param("p").real(0.0, 1.0).repeat(2).repeat(3),
         "Array(Float64, shape=(3, 2))",
@@ -204,8 +202,11 @@ class TestNonGenerativeKinds:
 
     @pytest.mark.parametrize("kind", sorted(NON_GENERATIVE))
     def test_a_default_satisfies_materialization(self, kind: str) -> None:
-        """API.md: the `SamplingError` fires "iff it must materialize a
-        value" — a `.default()` is one of the three documented escapes."""
+        """A `.default()` satisfies the materialization obligation.
+
+        API.md says the `SamplingError` fires "iff it must materialize a
+        value", and a `.default()` is one of the three documented escapes.
+        """
         value = {"ast": {"var": "x"}} if kind == "symbolic" else {"source": "def f(x): return x"}
         space = ds.space(NON_GENERATIVE[kind]().default(value))
         assert space.sample_one(seed=0) == {"p": value}

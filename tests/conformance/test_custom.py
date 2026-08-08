@@ -1,19 +1,21 @@
-"""Conformance laws: M9 custom types (API.md, "Protocols" > "ParamType" +
-custom-type contract laws; ".custom()" both forms; ".prop()"; registry in
-`from_json`; error rows 16, 23, 27; Space: Introspection
-`.has_nongenerative_params` and `.cardinality()`; freeze-on-custom).
+"""Conformance laws: custom types.
 
-Gate items covered here: `factory(x.describe()) ≡ x`; `extract` only-after-
-validate; shorthand form poisoned for `to_json`/`fingerprint` (raise +
-mark); row 16 (undeclared property, non-scalar property type, comparison
-type mismatch); row 23 (non-JSON `describe()`); row 27 (missing
-`custom_types` entry); `.has_nongenerative_params`; `.cardinality()`;
-freeze-on-custom (fingerprint-equal to the hand-written pin; frozen space
-samples/validates only the fixed value; shorthand raises).
+See API.md, "Protocols" > "ParamType", the custom-type contract laws,
+`.custom()` in both forms, `.prop()`, the `from_json` registry, and error
+rows 16, 23 and 27.
 
-`vi_family` (tests/corpus/) covers the end-to-end happy path (sample,
-validate, round-trip, canonical-ordering law) — this file covers the
-laws and the misuse/error paths.
+Covered here: `factory(x.describe()) == x`; that `extract` runs only after
+`validate`; that the shorthand form is poisoned for `to_json` and
+`fingerprint`, under both raise and mark; row 16, for an undeclared
+property, a non-scalar property type and a comparison type mismatch; row 23,
+for a non-JSON `describe()`; row 27, for a missing `custom_types` entry;
+`.has_nongenerative_params`; `.cardinality()`; and freeze-on-custom, which
+is fingerprint-equal to the hand-written pin, samples and validates only the
+fixed value, and raises for the shorthand form.
+
+`tests/corpus/vi_family.py` covers the end-to-end happy path, meaning
+sample, validate, round-trip and the canonical-ordering law. This file
+covers the laws and the misuse paths.
 """
 
 from __future__ import annotations
@@ -29,8 +31,10 @@ from designspace.errors import ResolutionError, SamplingError, SerializationErro
 
 @dataclass(frozen=True)
 class Probability:
-    """A minimal full-protocol ParamType wrapping a float in [0, 1] —
-    generative, no declared properties."""
+    """A minimal full-protocol ParamType wrapping a float in [0, 1].
+
+    Generative, with no declared properties.
+    """
 
     @property
     def type_key(self) -> str:
@@ -101,7 +105,7 @@ def tagged_value_factory(described: dict[str, Any]) -> TaggedValue:
 @dataclass(frozen=True)
 class Unserializable:
     """A full-protocol type whose `describe()` output is not
-    JSON-serializable — row 23."""
+    JSON-serializable, which is row 23."""
 
     @property
     def type_key(self) -> str:
@@ -187,8 +191,9 @@ class TestExtractOnlyAfterValidate:
 
 class TestPropAsBoolExpr:
     """A bool-declared prop is dual-typed like a param reference itself
-    (`ParamExpr(ArithExpr, BoolExpr, VectorExpr)`) — usable directly as a
-    condition, not just wrapped in a `Compare`. Matches the codebase's
+    (`ParamExpr(ArithExpr, BoolExpr, VectorExpr)`), so it is usable
+    directly as a condition rather than only inside a `Compare`. This
+    matches the codebase's
     existing convention that a bare `BoolExpr` leaf coerces via
     `bool(value)`, with no extra "must be bool-declared" gate on that
     specific position (row 16's undeclared/non-scalar checks still apply
@@ -399,13 +404,14 @@ class TestHasNongenerativeParams:
 
 @dataclass(frozen=True)
 class Coin:
-    """A small, *discretely*-valued generative full-protocol type — freeze
-    pins via rejection (like bool: no domain to narrow for an opaque
-    value), which is only practical when the sample space is small enough
-    for rejection to reliably hit the pinned value within the retry
-    budget. A continuous-valued custom's freeze is validated structurally
-    instead (`TestFreezeOnCustom.test_frozen_space_validates_only_fixed_value`,
-    below) — see DECISIONS.md D-47."""
+    """A small, discretely valued generative full-protocol type.
+
+    Freeze pins it by rejection, as it does bool, an opaque value having no
+    domain to narrow. That is practical only when the sample space is small
+    enough for rejection to hit the pinned value within the retry budget. A
+    continuous-valued custom's freeze is validated structurally instead, in
+    `TestFreezeOnCustom.test_frozen_space_validates_only_fixed_value` below.
+    """
 
     @property
     def type_key(self) -> str:
@@ -429,11 +435,10 @@ class Coin:
 
 class TestFreezeOnCustom:
     def test_fingerprint_equal_to_hand_written_pin(self):
-        # `.freeze()` also sets `default = value` (DECISIONS.md D-47,
-        # diverging from bool's bare pin: unlike bool, a custom may be
-        # non-generative, and this is what makes ".freeze() removes the
-        # non-generative SamplingError" hold) — the hand-written
-        # equivalent matches that.
+        # `.freeze()` also sets `default = value`, diverging from bool's
+        # bare pin: unlike bool, a custom may be non-generative, and the
+        # default is what makes ".freeze() removes the non-generative
+        # SamplingError" hold. The hand-written equivalent matches that.
         space = ds.space(ds.param("p").custom(Coin()))
         frozen = space.freeze(p=1)
         hand_built = ds.space(ds.param("p").custom(Coin()).default(1)).require(ds.param("p") == 1)

@@ -1,26 +1,26 @@
-"""Conformance laws: expression bounds (API.md, "Constraints and
-Feasibility" > "Expression bounds are sugar"; "Conformance Laws" >
-"Sampling" — "tighten-not-reject on bound-origin constraints is
-distributionally identical to rejection").
+"""Conformance laws: expression bounds.
 
-- Bound-origin margin: the coupling yields a `y - x` margin (the sign the
-  spec states explicitly), computed via the ordinary margin machinery on
-  the constraint's stored (desired-state) predicate.
-- Structural/behavioral equivalence: the sugared param's envelope equals a
-  hand-written literal-bound param's domain, and the two spaces agree on
-  feasibility for every sampled config. (Not asserted: expr-equality against
-  a hand-written `.forbid()`. The bound-origin constraint stores the
-  *desired* predicate `x <= y` — required both by the margin sign above and
-  by fingerprint-equality with the manual expansion at M7, where `origin` is
-  excluded from the preimage but the expr shape is not. A hand-equivalent
-  built through the public API stores the *opposite* shape: `.forbid(x > y)`
-  — `.forbid()`'s own convention is "the argument is the forbidden state".
-  The two forms are deliberately non-identical in stored shape and margin
-  sign; comparing them structurally would be comparing the wrong things.)
-- Tighten-not-reject: the shipped sampler narrows a tightenable param's
-  chart in place (a white-box check on the mechanism itself) and produces a
-  distribution indistinguishable, by a two-sample KS test, from a reference
-  sampler that always draws from the full envelope and rejects.
+See API.md, "Constraints and Feasibility" > "Expression bounds are sugar".
+
+Laws enforced here: `polarity_tracks_feasibility`, `tighten_equals_reject`.
+
+Also asserted: the bound-origin coupling yields the `y - x` margin the spec
+states, computed through the ordinary margin machinery on the constraint's
+stored, desired-state predicate; and the sugared param's envelope equals a
+hand-written literal-bound param's domain, the two spaces agreeing on
+feasibility for every sampled config.
+
+Expression equality against a hand-written `.forbid()` is deliberately not
+asserted. A bound-origin constraint stores the desired predicate `x <= y`,
+which the margin sign above and fingerprint equality with the manual
+expansion both require. A hand-built equivalent stores the opposite shape,
+`.forbid(x > y)`, `.forbid()`'s convention being that its argument names the
+forbidden state. The two differ in stored shape and margin sign by design.
+
+`tighten_equals_reject` is checked both ways: a white-box check that the
+shipped sampler narrows a tightenable param's chart in place, and a
+two-sample KS test against a reference sampler that always draws from the
+full envelope and rejects.
 """
 
 from __future__ import annotations
@@ -94,10 +94,13 @@ class TestStructuralEquivalenceToHandWrittenExpansion:
 
 class TestTightenNotReject:
     def test_tighten_narrows_domain_and_chart_in_place(self):
-        """White-box: confirms the mechanism itself fires (not just that its
-        *result* is distributionally equivalent to rejection — the KS test
-        below can't distinguish "tightened" from "still rejecting, got
-        lucky", since both are draws from the same theoretical law)."""
+        """A white-box check that the tightening mechanism itself fires.
+
+        The KS test below checks only that the result is distributionally
+        equivalent to rejection, and cannot distinguish a tightened sampler
+        from one that is still rejecting and got lucky, both being draws
+        from the same theoretical law.
+        """
         space = ds.space(
             ds.param("y").real(10.0, 20.0),
             ds.param("x").real(0.0, ds.param("y")),
@@ -120,12 +123,14 @@ class TestTightenNotReject:
         assert not _tightenable(space.params["x"])
 
     def test_log_scaled_bound_expression_samples_feasibly(self):
-        """`_tightenable` also admits Log/Logit/Power (not just the default
-        uniform prior exercised elsewhere in this file) — exercise one of
-        them end-to-end so the sub-interval-preserves-the-family-requirement
-        argument in DECISIONS.md D-29 is checked empirically, not just
-        reasoned to on paper (`Log` needs `lo > 0`; a tightened `[1, y]` for
-        `y` in `[1, 100]` always does)."""
+        """A log-scaled bound expression samples feasibly.
+
+        `_tightenable` admits `Log`, `Logit` and `Power` as well as the
+        default uniform prior exercised elsewhere in this file. Exercising
+        one end-to-end checks empirically that a sub-interval preserves the
+        family's own requirement. `Log` needs `lo > 0`, and a tightened
+        `[1, y]` for `y` in `[1, 100]` always satisfies that.
+        """
         space = ds.space(
             ds.param("y").real(1.0, 100.0),
             ds.param("x").real(1.0, ds.param("y")).log_scale(),
@@ -138,8 +143,9 @@ class TestTightenNotReject:
         """`x`'s envelope is pinned to `y`'s declared hi (20.0), but every
         draw of `y` is confined to a narrow window near the envelope's low
         end. Confirms tightening (not luck) is what keeps this cheap and
-        reliable across many draws — see the white-box test above for the
-        direct mechanism check."""
+        reliable across many draws. The white-box test above checks the
+        mechanism directly.
+        """
         space = ds.space(
             ds.param("y").real(10.0, 10.01),
             ds.param("x").real(0.0, ds.param("y")),
@@ -156,13 +162,14 @@ class TestTightenNotReject:
         return float(np.max(np.abs(cdf_a - cdf_b)))
 
     def test_tighten_vs_reject_distributional_equivalence(self):
-        """Truncation ≡ conditioning (API.md, "All charts are static"):
-        the shipped (tightening) sampler and a naive reference sampler that
-        always draws `x` from the full envelope and rejects `x > y` are two
-        Monte Carlo estimates of the *same* theoretical law — a two-sample
-        KS test should find no significant difference. Fixed seeds make this
-        deterministic, not flaky; the critical value is the standard
-        two-sample asymptotic KS formula at alpha=0.01
+        """Truncation equals conditioning (API.md, "All charts are static").
+
+        The shipped, tightening sampler and a reference sampler that always
+        draws `x` from the full envelope and rejects `x > y` are two Monte
+        Carlo estimates of the same theoretical law, so a two-sample KS test
+        finds no significant difference. Fixed seeds make this deterministic
+        rather than flaky. The critical value is the standard two-sample
+        asymptotic KS formula at alpha=0.01
         (`D_crit = 1.63 * sqrt((n1+n2)/(n1*n2))`).
         """
         space = ds.space(

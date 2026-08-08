@@ -1,34 +1,35 @@
-"""Conformance laws: `.slice()`/`.freeze()` statically resolve the derived
-structure a fixed value determines (API.md, "Space: Structural
-Operations"; DECISIONS.md D-92).
+"""Conformance laws: `.slice()` and `.freeze()` fold determined structure.
+
+See API.md, "Space: Structural Operations".
+
+Laws enforced here: `count_folds_to_int`, `condition_folds_to_none`,
+`fold_reach_differs`, `fold_is_best_effort`.
 
 Both operations already substitute a fixed value at its reference sites.
-What they additionally owe is the *fold*: once every param a piece of
-derived structure reads is determined, that structure is no longer
-derived, and leaving it in expression form makes the resulting space
-misreport itself.
+What they additionally owe is the fold: once every param a piece of derived
+structure reads is determined, that structure is no longer derived, and
+leaving it in expression form makes the resulting space misreport itself.
 
-- A `.repeat()` count is a reference site like a condition or a bound, so
-  `.slice()` removes the count param and leaves a **static `int`** count.
-  This is the only route from a dynamic-count space to a fixed layout.
-- `.freeze()` folds the same way but only where the frozen param's
-  **domain** admits a single value — API.md's "conditions resolve
-  statically", extended to counts by D-92. Freeze keeps the param, and the
-  kinds it pins by a hard `require` instead of by domain narrowing (bool,
-  choice, subset, permutation, custom, program) keep a domain admitting
-  their other values, so folding against the pinned value would misreport
-  activity on a config that merely fails the pin. `.slice()`, having
-  removed the param, faces no such config and folds unconditionally.
-- Folding to `int` rather than to a constant expression is the operative
-  part: every static-ness surface (`has_variable_length`,
-  `coordinate_paths()`, `cardinality()`, the `Array`-vs-`List` dtype rule)
-  tests `isinstance(count, int)`.
-- A condition folding to literal `True` becomes no condition at all.
-  Literal `False` is deliberately **not** pruned — that would remove a
-  declared name from the path namespace.
-- The fold is best-effort over a closed set: anything outside it stays an
-  expression, which is always sound (an unfolded count is merely still
-  "dynamic").
+A `.repeat()` count is a reference site like a condition or a bound, so
+`.slice()` removes the count param and leaves a static `int` count. That is
+the only route from a dynamic-count space to a fixed layout.
+
+`.freeze()` folds only where the frozen param's domain admits a single
+value. Freeze keeps the param, and the kinds it pins by a hard `require`
+rather than by domain narrowing, meaning bool, choice, subset, permutation,
+custom and program, keep a domain admitting their other values. Folding
+against the pinned value would then misreport activity on a config that
+merely fails the pin. `.slice()`, having removed the param, faces no such
+config and folds unconditionally.
+
+Folding to `int` rather than to a constant expression is the operative part:
+every static-ness surface, meaning `has_variable_length`,
+`coordinate_paths()`, `cardinality()` and the `Array`-against-`List` dtype
+rule, tests `isinstance(count, int)`.
+
+A condition folding to literal `True` becomes no condition at all. Literal
+`False` is deliberately not pruned, since that would remove a declared name
+from the path namespace.
 """
 
 from __future__ import annotations
@@ -47,8 +48,10 @@ def _count_of(space: ds.Space, path: str) -> object:
 
 
 class TestSliceFoldsACount:
-    """`.slice()` on a count param removes it and leaves a static count —
-    the same substitution it already performs for a bound reference."""
+    """`.slice()` on a count param removes it and leaves a static count.
+
+    This is the substitution it already performs for a bound reference.
+    """
 
     @staticmethod
     def _space() -> ds.Space:
@@ -113,8 +116,11 @@ class TestSliceFoldsACount:
 
 
 class TestFreezeFoldsACount:
-    """`.freeze()` folds the same structure while *keeping* the param —
-    its domain narrowed to the single value, so the fold is sound."""
+    """`.freeze()` folds the same structure while keeping the param.
+
+    Its domain is narrowed to the single value, which is what makes the fold
+    sound.
+    """
 
     @staticmethod
     def _space() -> ds.Space:
@@ -142,9 +148,12 @@ class TestFreezeFoldsACount:
             assert frozen.validate(config).valid
 
     def test_fingerprint_equals_the_hand_written_static_space(self) -> None:
-        """Equal fingerprints must mean identical valid-config sets — and
-        these two spaces have exactly that, so equality is the correct
-        outcome of folding, not an accident."""
+        """The folded space fingerprints equal to the hand-written static one.
+
+        Equal fingerprints must mean identical valid-config sets, and these
+        two spaces have exactly that, so the equality is the correct outcome
+        of folding rather than an accident.
+        """
         frozen = self._space().freeze(n=3)
         hand = ds.space(
             ds.param("n").integer(3, 3).default(3),
@@ -202,7 +211,7 @@ class TestConditionsResolveStatically:
         admits the other values: a config may hold one and merely be
         infeasible. Folding there would report `y` active in a config where
         evaluation says it is not. `.slice()`, having removed the param,
-        has no such config to worry about — hence it folds and freeze does
+        has no such config to worry about, so it folds where freeze does
         not.
         """
         frozen = self._space().freeze(flag=True)

@@ -1,32 +1,27 @@
-"""Conformance laws: a lift's *domain-carried* references survive
-relocation (API.md, "Paths and Scoping" — "Composed spaces are therefore
-*relocatable*: nesting a space under a variant or struct never rewrites
-its internal references").
+"""Conformance laws: a lift's domain-carried references survive relocation.
+
+API.md, "Paths and Scoping" states that "Composed spaces are therefore
+*relocatable*: nesting a space under a variant or struct never rewrites its
+internal references".
+
+Laws enforced here: `relocation_preserves_count`,
+`relocation_preserves_element_constraints`, `finalization_enforces_row_6`,
+`enclosing_count_reference_deferred`.
 
 `ParamDef.condition` and `Space.constraints` are not the only places a
-param's references live. DECISIONS.md D-18/D-21 put a lift's `count`
-expression, and D-20 its per-element constraint templates, inside
-`ListDomain` — so relocating a child `Space` under a struct/variant/lift
-prefix must rewrite *those* too, or they keep pre-relocation paths that
-bind to nothing in the merged space. Both then degrade silently rather
-than raising: a dangling count reads as Kleene-Unknown-from-inactivity,
-which the Defaults count rule turns into `0` (every list materializes as
-`[]`), and a dangling element constraint goes inapplicable under Kleene
-rule 4 — the permissive direction, so a hard `.forbid()` stops enforcing
-while `validate()` still reports `valid`.
+param's references live. A lift's `count` expression and its per-element
+constraint templates live inside `ListDomain`, so relocating a child `Space`
+under a struct, variant or lift prefix must rewrite those too, or they keep
+pre-relocation paths that bind to nothing in the merged space.
 
-- A `.repeat()` count referencing a sibling keeps referencing that
-  sibling through every relocation route (struct body, choice variant
-  payload, lifted-struct element), and the realized length equals the
-  count param's value.
-- `dependency_graph` names only real `space.params` keys — a dangling
-  reference is observable there before it is observable in a sample.
-- A per-element constraint template keeps biting after relocation.
-- Row 6 is enforced over both stores at finalization, so a genuine typo
-  in either raises instead of silently going Unknown.
-- A count referencing an *enclosing* scope's param is deferred, not
-  eagerly rejected — it behaves "exactly as a condition does" (API.md,
-  "Modifiers and Layering"; DECISIONS.md D-91).
+Both then degrade silently rather than raising. A dangling count reads as
+Kleene Unknown from inactivity, which the Defaults count rule turns into
+`0`, so every list materializes as `[]`. A dangling element constraint goes
+inapplicable under Kleene rule 4, the permissive direction, so a hard
+`.forbid()` stops enforcing while `validate()` still reports `valid`.
+
+Also asserted: `dependency_graph` names only real `space.params` keys, so a
+dangling reference is observable there before it is observable in a sample.
 """
 
 from __future__ import annotations
@@ -39,9 +34,11 @@ from designspace.ir import ListDomain
 
 
 def _span_element() -> ds.Space:
-    """A prebuilt element `Space` carrying its own per-element forbid —
-    the only route to a per-element constraint (API.md: "the inline form
-    has nowhere to hang a `.forbid`")."""
+    """A prebuilt element `Space` carrying its own per-element forbid.
+
+    This is the only route to a per-element constraint; API.md notes that
+    "the inline form has nowhere to hang a `.forbid`".
+    """
     return ds.space(
         ds.param("lo").integer(0, 5),
         ds.param("hi").integer(0, 5),
@@ -131,7 +128,7 @@ class TestCountReferenceSurvivesRelocation:
 
 class TestLiftedChoiceSurvivesRelocation:
     """A lifted choice's **discriminator template** (`"pipe[]"`) is not a
-    `space.params` key — the lift itself is `"pipe"`, and the variant
+    `space.params` key. The lift itself is `"pipe"`, and the variant
     payloads relocate to `"pipe[].b.w"`. It is nonetheless referenced, by
     the discriminator-equality condition folded into each payload at
     relocation, so a rename map derived from `params` keys alone misses it
@@ -282,10 +279,12 @@ class TestRow6OverDomainCarriedStores:
 
 
 class TestCrossScopeCountIsDeferred:
-    """A count referencing an *enclosing* scope's param resolves like a
-    condition — tolerated per-scope, bound at finalization (D-91). Unlike
-    an expression bound, a count is runtime-evaluated, so nothing needs it
-    resolved while the declaring scope builds its charts."""
+    """A count referencing an enclosing scope's param resolves like a
+    condition: tolerated per-scope, bound at finalization.
+
+    Unlike an expression bound, a count is evaluated at runtime, so nothing
+    needs it resolved while the declaring scope builds its charts.
+    """
 
     def test_struct_body_up_reference(self) -> None:
         space = ds.space(

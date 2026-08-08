@@ -1,18 +1,18 @@
-"""A small induced-representation target for the M11 known-answer digest
-vector (PLAN.md M11 gate) — freezes `identity/_tags.py`'s `ChartApply`
-codec (Stage 1) the same way `_anchor_demo.py`/`_require_demo.py`/
-`_discourage_demo.py` freeze their own M8/M7.5/M7.6 additions.
+"""A small induced-representation target, for a known-answer digest vector.
 
-Not a corpus fixture, not collected by pytest (leading underscore). The
-source space mirrors `flat_hpo`'s own shape deliberately (a log-scaled real
-plus a plain real, one `.forbid()` and one `.encourage()` each referencing
-a chart-bearing param) without importing it, so this file stays a
-self-contained fixture like its demo siblings: `build_space()` returns the
-*induced representation's target* — an ordinary `Space` whose `.forbid()`/
-`.encourage()` expressions carry `ChartApply` nodes wrapping both a plain
-and a log-scaled chart, wrapped in `+`/`Compare` (structural transport,
-never opaque) — exactly the additive, ChartApply-bearing shape the codec
-needs a frozen byte-identical digest for.
+It freezes the `ChartApply` codec in `identity/_tags.py`, as
+`_anchor_demo.py`, `_require_demo.py` and `_discourage_demo.py` freeze their
+own additions. Not a corpus fixture, and not collected by pytest.
+
+The source space mirrors `flat_hpo`'s shape deliberately, carrying a
+log-scaled real, a plain real, and one `.forbid()` and one `.encourage()`
+each referencing a chart-bearing param, without importing it, so that this
+file stays self-contained like its demo siblings.
+
+`build_space()` returns the induced representation's target: an ordinary
+`Space` whose `.forbid()` and `.encourage()` expressions carry `ChartApply`
+nodes wrapping both a plain and a log-scaled chart, inside `+` and `Compare`
+so transport is structural rather than opaque.
 """
 
 from __future__ import annotations

@@ -1,14 +1,8 @@
-"""Conformance laws: Space: Partial Configs (API.md, "Space: Partial
-Configs"; "Conformance Laws" > "Partial Configs").
+"""Conformance laws: partial configs (API.md, "Space: Partial Configs").
 
-- Three-valued activity collapses to binary activity under `unknown -> inactive`.
-- The driver-loop coincidence: `next_assignable(c) == [] <=> is_complete(c)`.
-- `remaining_domain` soundness (never excludes a still-feasible value; every
-  descriptor value validates against the declared domain).
-- The one-unset-operand reducer: positive (bound and single-forbid narrowing
-  across kinds) and negative (a two-unset-operand implication is not
-  propagated).
-- The `PartialEval` evaluable/pending partition.
+Laws enforced here: `activity_collapse`, `driver_loop_coincidence`,
+`remaining_domain_soundness`, `one_unset_operand_reduction`,
+`no_multi_operand_propagation`, `partial_eval_partition`.
 """
 
 from __future__ import annotations
@@ -53,11 +47,11 @@ class TestCollapseToBinary:
         binary = compute_activity(space, flat)
         partial = compute_activity_partial(space, flat)
         collapsed = {p: (s in ("set", "active_unset")) for p, s in partial.status.items()}
-        # `compute_activity` (existing, pre-M6) also assigns a (harmless,
-        # unused) activity entry to lift descendant *templates* themselves
-        # (e.g. "stops[].location") since its own topological walk doesn't
-        # filter them; the partial status map -- meant for real params and
-        # instances only -- correctly omits them. Compare over the params
+        # `compute_activity` also assigns a harmless, unused activity entry
+        # to a lift descendant template itself, such as "stops[].location",
+        # its topological walk not filtering them. The partial status map,
+        # which covers real params and instances only, omits them. Compare
+        # over the params
         # both sides actually agree are real.
         binary_real = {p: v for p, v in binary.items() if "[]" not in p}
         assert collapsed == binary_real
@@ -227,15 +221,19 @@ class TestPartialEvalPartition:
         assert len(pe.evaluable_constraints) == 0
 
     def test_pending_over_a_lift_aggregate_with_unset_instances(self):
-        """M10.5/D-71: a constraint aggregating over an *active* lift whose
-        own count is determined but whose instance leaves are still unset
-        must land in `pending_constraints`, not `evaluable_constraints`
-        with `applicable=False`. `c.params` for `bufs.sum() <= 10` holds
-        only the *definition* path `"bufs"` (status `"set"` once the count
-        is known) — never the `active_unset` instance paths — so the old
-        syntactic `status.get(d) in _PENDING_STATUSES for d in c.params`
-        scan could never see this case; Unknown's own provenance (rule 5)
-        now carries the signal directly."""
+        """An aggregate over unset instance leaves is pending, not evaluable.
+
+        A constraint aggregating over an active lift whose own count is
+        determined but whose instance leaves are still unset lands in
+        `pending_constraints` rather than in `evaluable_constraints` with
+        `applicable=False`.
+
+        A syntactic scan over `c.params` cannot see this case: for
+        `bufs.sum() <= 10` that holds only the definition path `"bufs"`,
+        whose status is `"set"` once the count is known, and never the
+        `active_unset` instance paths. Unknown's own provenance, under rule
+        5, carries the signal instead.
+        """
         space = ds.space(
             ds.param("n").integer(1, 4),
             ds.param("bufs").integer(0, 100).repeat(ds.param("n")),

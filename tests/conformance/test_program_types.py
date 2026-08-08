@@ -1,18 +1,15 @@
-"""Conformance laws: M12 program types (`.symbolic()`/`.code()`; API.md,
-"Parameter Types" > "Program"; "Support Types"; DECISIONS.md D-83…D-90).
+"""Conformance laws: program types, `.symbolic()` and `.code()`.
 
-Gate items covered here (Stage 1 — declaration, AST/value validation,
-generativity): the rewritten error row 15 (DECISIONS.md D-90 — the fixed
-built-in primitive list is dropped, a user-directed change to a stated
-law: declaration checks left are shape/duplicate/arity, never vocabulary
-membership); AST structural validation (D-83); arity binds only where a
-`Primitive` declares one (D-89); validators run after the structural
-check and never escape a public call; `.symbolic()`/`.code()`
-generativity and `has_nongenerative_params` (incl. under `.repeat()`).
+See API.md, "Parameter Types" > "Program" and "Support Types".
 
-Identity/serialization, freeze/slice, and downstream-surface laws (Stage
-2) and the corpus fixture + known-answer vector (Stage 3) live in their
-own sections of this file, added as those stages land.
+Laws enforced here: `symbolic_value_validity`,
+`open_vocabulary_checked_at_value_time`, `arity_binds_where_declared`,
+`validators_run_after_structure`, `program_generativity`,
+`per_field_opacity`, `program_freeze_and_slice`.
+
+Row 15's declaration checks cover shape, duplicates and arity, never
+vocabulary membership: core assigns a primitive name no arity or meaning, so
+there is no fixed built-in list to check against.
 """
 
 from __future__ import annotations
@@ -54,13 +51,13 @@ def _cooling_value() -> dict[str, Any]:
     return {"ast": _cooling_ast(), "source": "cos(pi * step / total)"}
 
 
-# -- 1. Declaration: the rewritten row 15 (D-90) -----------------------------
+# -- 1. Declaration: row 15 --------------------------------------------------
 
 
 class TestDeclarationRewrittenRow15:
     def test_open_vocabulary_resolves(self):
-        # The law D-90 turns on: no name is "unknown" at declaration time —
-        # a closed built-in set no longer exists.
+        # No name is "unknown" at declaration time: there is no closed
+        # built-in set to check against.
         space = ds.space(
             ds.param("sched").symbolic(
                 _cooling_signature(), ["sqrt", "where", "cso", "anything"], 3
@@ -123,8 +120,8 @@ class TestDeclarationRewrittenRow15:
             )
 
     def test_primitive_shadowing_a_common_name_resolves(self):
-        # Shadowing is legal — it is the supported mechanism for pinning an
-        # otherwise-unchecked name's arity (D-89/D-90).
+        # Shadowing is legal, and is the supported mechanism for pinning an
+        # otherwise unchecked name's arity.
         space = ds.space(
             ds.param("sched").symbolic(_cooling_signature(), [ds.Primitive("cos", 1)], 3)
         )
@@ -143,7 +140,7 @@ class TestDeclarationRewrittenRow15:
             ds.space(ds.param("p").code(ds.Signature({"1bad": int}, "bool")))
 
 
-# -- 2. AST structural validation (D-83) -------------------------------------
+# -- 2. AST structural validation --------------------------------------------
 
 
 class TestAstValidation:
@@ -190,8 +187,8 @@ class TestAstValidation:
         assert not space.validate({"sched": value}).valid
 
     def test_vocabulary_still_checked_at_value_time(self):
-        # D-90 dropped declaration-time vocabulary checking, not value-time
-        # checking: an op the param never declared is still invalid.
+        # Vocabulary is unchecked at declaration time and checked at value
+        # time: an op the param never declared is still invalid.
         space = ds.space(ds.param("sched").symbolic(_cooling_signature(), ["cso"], 3))
         value = {"ast": {"op": "cos", "args": []}}
         assert not space.validate({"sched": value}).valid
@@ -209,7 +206,7 @@ class TestAstValidation:
         assert space.validate({"p": {"source": "x > 0"}}).valid
 
 
-# -- 3. Arity binds only where declared (D-89) -------------------------------
+# -- 3. Arity binds only where declared --------------------------------------
 
 
 class TestArityBindsOnlyWhereDeclared:
@@ -243,9 +240,9 @@ class TestArityBindsOnlyWhereDeclared:
         assert space.validate({"sched": {"ast": self._ast(2)}}).valid
         assert not space.validate({"sched": {"ast": self._ast(3)}}).valid
 
-    # `Primitive("+", 2)` vs `Primitive("+", (2, 2))` fingerprint-equality
-    # (the arity sugar-equivalence law) needs identity/serialization
-    # support for the new domain kinds — see TestIdentity, added in Stage 2.
+    # `Primitive("+", 2)` against `Primitive("+", (2, 2))` fingerprint
+    # equality, the arity sugar-equivalence law, is asserted in TestIdentity
+    # below, where the identity surface is already in scope.
 
 
 # -- 4. Validators run after the structural check, never escape -------------
@@ -337,11 +334,11 @@ class TestGenerativity:
         space = ds.space(ds.param("p").code(ds.Signature({}, "bool")).default({"source": "True"}))
         assert space.sample_one(seed=0) == {"p": {"source": "True"}}
 
-    # `freeze` satisfying the non-generative obligation (D-87) needs
-    # `ops/_structural.py::_pin_program` — see TestFreeze, added in Stage 2.
-    # `.slice()`'s D-87 asymmetry (supported, unlike custom) needs no new
-    # code — `_validate_fixed_value` already routes through
-    # `program_value_error` (Stage 1) — so its law is testable now.
+    # `freeze` satisfying the non-generative obligation runs through
+    # `_pin_program` in `ops/_structural.py`, and is asserted in TestFreeze
+    # below. `.slice()` on a program param is supported, unlike on a custom
+    # one, `_validate_fixed_value` already routing through
+    # `program_value_error`.
 
     def test_slice_removes_the_nongenerative_param(self):
         space = ds.space(
@@ -359,8 +356,9 @@ class TestGenerativity:
             .symbolic(_cooling_signature(), _cooling_primitives(), 4)
             .when(ds.param("flag") == True),  # noqa: E712
         )
-        # An *active* draw legitimately raises (no default/sampler) — that
-        # is `test_symbolic_without_default_or_sampler_raises`'s law. What
+        # An active draw legitimately raises, having no default and no
+        # sampler, which is
+        # `test_symbolic_without_default_or_sampler_raises`'s law. What
         # this law asserts is narrower: at least one *inactive* draw must
         # complete with no error and no "sched" key at all.
         found_inactive = False
@@ -407,7 +405,7 @@ class TestGenerativity:
         assert space.has_nongenerative_params is False
 
 
-# -- 6. Identity: round-trip, sugar-equivalence, per-field opacity (D-88) ----
+# -- 6. Identity: round-trip, sugar-equivalence, per-field opacity -----------
 
 
 class TestIdentity:
@@ -444,8 +442,8 @@ class TestIdentity:
         assert forward.fingerprint("full") != backward.fingerprint("full")
 
     def test_exact_int_arity_fingerprint_equal_to_equivalent_range(self):
-        # The sugar-equivalence law D-89 promises: Primitive("+", 2) and
-        # Primitive("+", (2, 2)) are the same declaration, just spelled
+        # The arity sugar-equivalence law: Primitive("+", 2) and
+        # Primitive("+", (2, 2)) are the same declaration, spelled
         # differently.
         space_int = ds.space(
             ds.param("sched").symbolic(_cooling_signature(), [ds.Primitive("+", 2)], 3)
@@ -472,9 +470,12 @@ class TestIdentity:
 
 
 class TestOpacityRaiseMarkDrop:
-    """Per-field opacity (DECISIONS.md D-88): `validators`/`sampler`/
-    `Primitive.fn` ride raise/mark/drop *in place* — never poisoning the
-    whole domain the way `.custom(sampler, validator)`'s shorthand does."""
+    """Per-field opacity: an opaque field degrades in place.
+
+    `validators`, `sampler` and `Primitive.fn` each ride raise, mark and
+    drop in place, never poisoning the whole domain the way
+    `.custom(sampler, validator)`'s shorthand does.
+    """
 
     def test_validators_raise_by_default(self):
         space = ds.space(
@@ -577,7 +578,7 @@ class TestOpacityRaiseMarkDrop:
         assert prim_entry["arity"] == {"lo": 1, "hi": 1}
 
 
-# -- 7. Freeze / slice (D-87) -------------------------------------------------
+# -- 7. Freeze and slice ------------------------------------------------------
 
 
 class TestFreeze:

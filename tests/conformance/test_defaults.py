@@ -1,15 +1,12 @@
-"""Conformance laws: Defaults (API.md, "Defaults"; "Conformance Laws" >
-"Defaults").
+"""Conformance laws: defaults (API.md, "Defaults").
 
-- `apply_defaults` is idempotent and monotone (never overwrites, never
-  removes) — hypothesis over partial slices of sampled configs.
-- Completeness postcondition: `is_complete(apply_defaults(c))` iff every
-  active param under the filled config has a default or was supplied.
-- Activity-respecting fill: an inactive param's default is never filled
-  (the spec's own `turbo`/`chassis` history — reproduced verbatim here).
-- Element/list default exclusivity (row 21).
-- The defaulted-count-param cascade under fill-only output.
-- Field-wise choice/struct fill.
+Laws enforced here: `apply_defaults_operator`, `completeness_postcondition`,
+`element_list_default_exclusivity`, `field_wise_fill`,
+`defaulted_count_cascade`.
+
+The operator law runs under hypothesis, over partial slices of sampled
+configs. Activity-respecting fill is asserted through the spec's own worked
+example, which never fills an inactive param's default.
 """
 
 from __future__ import annotations
@@ -175,16 +172,19 @@ class TestDefaultedCountParamCascade:
 
 
 class TestStaticCountLiftLeftImplicit:
-    """The dynamic-count analogue above (`test_no_element_defaults_leaves_
-    lift_implicit`) is silent on a *literal* `.repeat(n)` count: there, the
-    count needs no default of its own to be "determined" (API.md, "Defaults"
-    > "Counts and lifts" — a static integer count is determined
-    unconditionally), so `apply_defaults` decides to leave the list
-    implicit with nothing else in play. `unflatten`'s static-count fallback
-    (M10.7, D-75) previously assumed a literal count with no bookkeeping key
-    always meant a full coordinate vector was supplied and tried to
-    reconstruct every element, raising an uncaught `KeyError` instead of
-    reproducing this same "left implicit" law."""
+    """A static-count lift with no element default is left implicit.
+
+    The dynamic-count analogue above,
+    `test_no_element_defaults_leaves_lift_implicit`, is silent on a literal
+    `.repeat(n)` count. There the count needs no default of its own to be
+    determined, API.md, "Defaults" > "Counts and lifts" making a static
+    integer count determined unconditionally, so `apply_defaults` leaves the
+    list implicit when nothing else is in play.
+
+    `unflatten`'s static-count fallback must not read the absent bookkeeping
+    key as a full coordinate vector and try to reconstruct every element,
+    which raises an uncaught `KeyError` rather than reproducing this law.
+    """
 
     def test_scalar_lift_with_no_default_leaves_lift_implicit(self):
         space = ds.space(ds.param("weights").real(-1.0, 1.0).repeat(4))
@@ -227,9 +227,12 @@ class TestFieldWiseFill:
         assert space.apply_defaults({}) == {"heating": {"gas": {"pilot_light": True}}}
 
     def test_supplied_variant_wins_and_is_filled_field_wise(self):
-        """ "If a config already supplies a choice's variant, partial input
-        wins — that variant's payload is filled from its own members'
-        defaults."" (API.md, "Defaults")."""
+        """A supplied variant wins, and its payload fills field-wise.
+
+        API.md, "Defaults" says that "If a config already supplies a
+        choice's variant, partial input wins: that variant's payload is
+        filled from its own members' defaults."
+        """
         space = ds.space(
             ds.param("heating")
             .choice(

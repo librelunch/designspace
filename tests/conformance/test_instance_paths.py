@@ -1,11 +1,12 @@
-"""Conformance laws: M10.5 items 2-8 — expression and validation hygiene
-around instance-path indexing, repeat-count typing, boolean/choice
-misuse, and space_from_ir's anchor check (API.md, "Expressions" §instance
-paths; "Modifiers and Layering" §the lift; error-table rows 6, 12, 22, 29).
+"""Conformance laws: expression and validation hygiene around instance paths.
 
-All eight are pre-existing defects that failed *silently* — none crashed,
-each returned a confident wrong answer — until this milestone. Every test
-below fails against the pre-M10.5 tree.
+The surface covered is instance-path indexing, repeat-count typing, boolean
+and choice misuse, and `space_from_ir`'s anchor check. See API.md,
+"Expressions" on instance paths, "Modifiers and Layering" on the lift, and
+error-table rows 6, 12, 22 and 29.
+
+Each law here guards a failure mode that is silent rather than loud: none
+crashes, and each returns a confident wrong answer.
 """
 
 from __future__ import annotations
@@ -17,10 +18,12 @@ from designspace.errors import ResolutionError
 
 
 class TestStaticOutOfRangeIndexIsResolutionError:
-    """Item 2, row 29: against a *static* count the length is known at
-    resolution, so an out-of-range index is a resolution error — not a
-    silently inapplicable constraint (that stays the *dynamic*-count rule).
-    Before M10.5 this resolved clean and made every config feasible."""
+    """Row 29: an out-of-range index against a static count raises.
+
+    The length is known at resolution, so the index is a resolution error
+    rather than a silently inapplicable constraint. The latter stays the
+    dynamic-count rule.
+    """
 
     def test_positive_out_of_range_raises(self):
         space = ds.space(ds.param("y").real(0.0, 1.0).repeat(3))
@@ -48,10 +51,14 @@ class TestStaticOutOfRangeIndexIsResolutionError:
 
 
 class TestNestedAndMixedInstanceIndexing:
-    """Item 3: `g[0][1]` (chained scalar nesting, arbitrary depth) and
-    `layers[2].act[1]` (mixed struct-lift + scalar-lift) both resolve —
-    `_is_declared`/`_resolve_entry` used to strip only a single trailing
-    bracket group, so both raised a spurious row-6 "undeclared param"."""
+    """Nested and mixed instance indexing both resolve.
+
+    `g[0][1]` is chained scalar nesting at arbitrary depth, and
+    `layers[2].act[1]` mixes a struct lift with a scalar lift.
+    `_is_declared` and `_resolve_entry` must consume every trailing bracket
+    group rather than one, or both raise a spurious row-6 "undeclared
+    param".
+    """
 
     def test_nested_scalar_lift(self):
         space = ds.space(ds.param("g").real(0.0, 1.0).repeat(2, 2)).require(
@@ -68,7 +75,7 @@ class TestNestedAndMixedInstanceIndexing:
         assert not space.is_feasible({"layers": [{"act": [0.9, 0.1]}, {"act": [0.1, 0.1]}]})
 
     def test_plain_single_level_instance_path_still_works(self):
-        # The M3/M4 baseline case must stay green -- pure regression guard.
+        # The single-level baseline case, kept as a regression guard.
         stop = ds.space(ds.param("dwell_min").integer(5, 30))
         space = ds.space(ds.param("stops").space(stop).repeat(3)).require(
             ds.param("stops[0].dwell_min") < 10
@@ -78,10 +85,13 @@ class TestNestedAndMixedInstanceIndexing:
 
 
 class TestNegativeIndexResolvesAtEvaluation:
-    """Item 4: `x[-1]` resolves against the lift's own realized length —
-    the only way to name a dynamic lift's last element. Before M10.5 it
-    resolved but was vacuous (`applicable=False` regardless of the
-    referenced value), since no config key is ever literally `"x[-1]"`."""
+    """`x[-1]` resolves against the lift's own realized length.
+
+    That is the only way to name a dynamic lift's last element. Resolution
+    has to happen at evaluation, no config key ever being literally
+    `"x[-1]"`, or the reference is vacuous with `applicable=False` whatever
+    the referenced value.
+    """
 
     def test_last_element_is_feasibility_load_bearing(self):
         space = ds.space(ds.param("x").real(0.0, 1.0).repeat(3)).require(ds.param("x[-1]") > 0.5)
@@ -98,12 +108,13 @@ class TestNegativeIndexResolvesAtEvaluation:
 
 
 class TestResultTypedRepeatCounts:
-    """Item 5/D-72: a `.repeat()` count may be any integer-*valued*
-    expression whose references resolve, not only a bare integer param —
-    `Sum` over an integer- or bool-leaved lift, `Min`/`Max` over an
-    integer-leaved lift only (the deliberate asymmetry: `sum([True, False])`
-    is `int`, `min([True, False])` is `bool`). Before M10.5 `.sum()` over a
-    bool lift raised row 12 even though the aggregate is itself int-valued."""
+    """A `.repeat()` count may be any integer-valued expression.
+
+    It need not be a bare integer param. `Sum` over an integer- or
+    bool-leaved lift qualifies, and `Min` and `Max` over an integer-leaved
+    lift only. The asymmetry is deliberate: `sum([True, False])` is `int`
+    while `min([True, False])` is `bool`.
+    """
 
     def test_sum_over_bool_lift_drives_a_count(self):
         space = ds.space(
@@ -155,10 +166,13 @@ class TestResultTypedRepeatCounts:
 
 
 class TestBooleanOperatorOnLiftValuedOperandIsResolutionError:
-    """Item 6, row 29: `~`/`&`/`|` (or a bare condition/constraint) applied
-    to an operand that is still list-typed. Before M10.5, `~g[0]` on a
-    `repeat(4, 4)` bool lift resolved, then coerced by truthiness (`g[0]`
-    is the *inner* list's own count) and made every config infeasible."""
+    """Row 29: a boolean operator on a still-list-typed operand raises.
+
+    The operators are `~`, `&`, `|` and a bare condition or constraint.
+    Without the check, `~g[0]` on a `repeat(4, 4)` bool lift resolves and
+    is then coerced by truthiness, `g[0]` being the inner list's own count,
+    which makes every config infeasible.
+    """
 
     def test_not_over_still_list_typed_operand_raises(self):
         with pytest.raises(ResolutionError, match=r"still a lift.*row 29"):
@@ -184,10 +198,12 @@ class TestBooleanOperatorOnLiftValuedOperandIsResolutionError:
 
 
 class TestChoicePayloadMustBeASpace:
-    """Item 7, row 29: a `.choice()` payload that is not a `Space` used to
-    reach `relocate_child` and raise an opaque `AttributeError` (`Space`'s
-    `Mapping` vs. an `Expr`'s `frozenset`) — now a path-named
-    `ResolutionError`."""
+    """Row 29: a `.choice()` payload that is not a `Space` raises.
+
+    The error is a path-named `ResolutionError`. Unchecked, the payload
+    reaches `relocate_child` and raises an opaque `AttributeError`, a
+    `Space` having the `Mapping` an `Expr`'s frozenset does not.
+    """
 
     def test_bare_param_expr_payload_raises(self):
         with pytest.raises(ResolutionError, match=r"must be a Space.*row 29"):
@@ -199,9 +215,12 @@ class TestChoicePayloadMustBeASpace:
 
 
 class TestSpaceFromIrValidatesAnchors:
-    """Item 8, row 22: `space_from_ir`'s anchors used to bypass row 22
-    entirely (`.anchor()` on a builder-built `Space` already raised it) —
-    silently accepted, unlike every other entry point."""
+    """Row 22: `space_from_ir` validates its anchors like every other entry
+    point.
+
+    `.anchor()` on a builder-built `Space` already raises; the raw-IR route
+    must not accept silently.
+    """
 
     def _base(self) -> ds.Space:
         return ds.space(ds.param("x").real(0.0, 1.0))
@@ -222,13 +241,14 @@ class TestSpaceFromIrValidatesAnchors:
 
 
 class TestCheckFullyResolvedAlsoWalksConstraints:
-    """The metaprogramming hole adjacent to item 8: `check_fully_resolved`
-    used to re-check only `space.conditions`, never `space.constraints` —
-    a builder-built space is already strict at `add_constraints`, so this
-    was invisible there, but a raw-IR constraint arriving through
-    `space_from_ir` was never expression-checked at all, making items 2/3/
-    4/6's new row-29 rejections bypassable through the metaprogramming
-    surface."""
+    """`check_fully_resolved` re-checks constraints as well as conditions.
+
+    A builder-built space is already strict at `add_constraints`, so
+    checking conditions alone is invisible there. A raw-IR constraint
+    arriving through `space_from_ir` is otherwise never expression-checked
+    at all, which makes the row-29 rejections above bypassable through the
+    metaprogramming surface.
+    """
 
     def test_static_out_of_range_constraint_rejected_via_space_from_ir(self):
         from designspace import ParamExpr
