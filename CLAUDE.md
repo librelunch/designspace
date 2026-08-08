@@ -78,20 +78,20 @@ Read a failure from that file as a rule, not as a lint to satisfy narrowly.
 
 ## Commit gates
 
-Before every commit, run these exact commands from the repository root:
+Before every commit, run the gates from the repository root:
 
 ```console
-uv run ruff check
-uv run ruff format --check
-uv run mypy --strict src/
-uv run pytest -q
-uv run pytest -q --doctest-modules --doctest-glob='*.md' src docs
-uv run --extra docs sphinx-build -b html -W docs docs/_build
+just gates
 ```
 
-All six must pass. Do not skip a gate, weaken strictness, add broad ignores,
-hide a failure, or change these commands to make a commit pass. The same
-commands must run in CI.
+That runs six recipes: `lint`, `format`, `types`, `test`, `doctest` and `docs`.
+All six must pass. `just check` is the first three, which is what the
+pre-commit hook runs; the full set runs before a push.
+
+The `justfile` is the one definition of every gate. CI calls the same recipes,
+so a gate cannot differ between a working copy and CI. Do not skip a gate,
+weaken strictness, add broad ignores, hide a failure, or change a recipe to
+make a commit pass.
 
 
 ## Additional instructions

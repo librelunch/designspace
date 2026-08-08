@@ -59,11 +59,14 @@ pip install "designspace[polars]"
 
 ## Development
 
-Install all dependencies with Nix:
+Enter the development environment with [devenv](https://devenv.sh):
 
-```shell
-nix develop --no-pure-eval
+```console
+devenv shell
 ```
+
+The commit gates install as git hooks on first entry: a fast subset on commit,
+the full set before a push. Run them by hand with `just gates`.
 
 ## License
 

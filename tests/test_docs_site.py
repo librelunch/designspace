@@ -79,6 +79,11 @@ _CONFIG = [
     _ROOT / "pyproject.toml",
     _ROOT / ".github" / "workflows" / "ci.yml",
     _DOCS / "conf.py",
+    # The gate commands moved out of `ci.yml` and into the justfile, which is
+    # now their one definition. Leaving it out would quietly shrink what the
+    # prose laws cover by exactly the text that was taken out of a file they
+    # already cover.
+    _ROOT / "justfile",
 ]
 
 # Every tree the prose laws cover.
