@@ -130,25 +130,6 @@ sample 200, validate all, round-trip once serialization exists).
 
 ## Milestones
 
-### M13.8: Source and test prose
-
-**Spec:** apply `CLAUDE.md`'s prose standards to `src/` and `tests/`, which the
-design documents already follow. The public surface moves to NumPy/SciPy
-register: a one-line summary, a factual description, and the standard sections.
-Module docstrings state what the module does rather than which milestone added
-it. Comments keep the reason and lose the citation.
-
-**Build:** no runtime change and no public-surface change. Docstring text only,
-plus comments. The docstring gates in `tests/test_docs.py` (coverage, NumPy
-parse, documented parameters, examples) continue to pass unchanged, since they
-check structure rather than register.
-
-**Gate:** the six commit gates. `_PROSE_SOURCES` in `tests/test_docs_site.py`
-grows to cover `src/` and `tests/`, so the em-dash law reaches both trees and
-neither cites a decision entry by number or names a milestone. Every existing
-doctest still runs and passes; docstring examples are the one part of a
-docstring this milestone may not silently alter.
-
 ### M14: v0.1 release
 
 **Spec:** no new runtime surface; release packaging only. `pyproject.toml` gains

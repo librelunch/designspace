@@ -1,13 +1,14 @@
-"""M4.6 gate: "a static-typing negative check proving each view omits the
-type methods and the wrong-type modifiers (e.g. a `type: ignore[attr-defined]`
-round-trip on `.real(0,1).bool()` and `.categorical(...).log_scale()`)"
-(PLAN.md).
+"""A static-typing negative check over the builder views.
 
-Runs `mypy --strict` over `src/` together with the fixture in one
-invocation — a standalone file has no `py.typed` marker for mypy to resolve
-`designspace`'s real types against (it would see everything as `Any` and
-never flag `attr-defined`), so it must be checked in the same run as the
-source tree, exactly as `uv run mypy --strict src/` already does in CI.
+Each view must omit the type methods and the wrong-type modifiers, so that
+`.real(0, 1).bool()` and `.categorical(...).log_scale()` are both
+`attr-defined` errors.
+
+`mypy --strict` runs over `src/` together with the fixture in one
+invocation. A standalone file has no `py.typed` marker for mypy to resolve
+`designspace`'s real types against, so it would see everything as `Any` and
+never flag `attr-defined`. It must therefore be checked in the same run as
+the source tree, as `uv run mypy --strict src/` already is.
 """
 
 from __future__ import annotations

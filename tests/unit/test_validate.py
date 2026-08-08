@@ -1,9 +1,11 @@
-"""M2 gate: `.validate()` / `.validate_param()` / `.is_feasible()` /
-`.infeasibility_reasons()` / `.evaluate_constraints()` (API.md,
-"Space: Validation").
+"""Unit tests for the validation surface.
 
-`ParamError.reason` values: "missing", "out_of_bounds", "wrong_type",
-"inactive_but_present", "not_on_grid".
+That is `.validate()`, `.validate_param()`, `.is_feasible()`,
+`.infeasibility_reasons()` and `.evaluate_constraints()`; see API.md,
+"Space: Validation".
+
+The `ParamError.reason` values are "missing", "out_of_bounds",
+"wrong_type", "inactive_but_present" and "not_on_grid".
 """
 
 from __future__ import annotations

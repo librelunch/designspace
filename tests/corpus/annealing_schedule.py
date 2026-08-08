@@ -1,13 +1,15 @@
-"""`annealing_schedule` corpus fixture (PLAN.md M12 corpus table).
+"""`annealing_schedule` corpus fixture.
 
-Exercises: `.symbolic()` + `.code()` definitions (validation only — no
-generation, tree/program generation is Out of Scope). A simulated-annealing
-configurator: the usual scalar knobs, an optional custom cooling curve
-(a `.symbolic()` expression tree, active only when `use_custom_schedule`
-is set — Kleene rule 3), and an acceptance predicate authored as freeform
-source (`.code()`, always active). Both program params are non-generative
-and carry a `.default()`, so they resolve, sample, and round-trip cleanly
-without a sampler.
+Exercises `.symbolic()` and `.code()` definitions, which core validates
+without generating: tree and program generation are out of scope.
+
+A simulated-annealing configurator with the usual scalar knobs, an optional
+custom cooling curve, and an acceptance predicate. The cooling curve is a
+`.symbolic()` expression tree, active only when `use_custom_schedule` is
+set, under Kleene rule 3. The acceptance predicate is freeform source, a
+`.code()` param, always active. Both program params are non-generative and
+carry a `.default()`, so they resolve, sample and round-trip cleanly with no
+sampler.
 """
 
 from __future__ import annotations
@@ -17,10 +19,10 @@ from designspace import Space
 
 SCHEDULE_SIGNATURE = ds.Signature({"step": int, "total": int}, float)
 
-# Bare strings (`cos`, `exp`, `pi`, `/` — unchecked arity, D-89/D-90) mixed
-# with pinned `Primitive`s (`fn=None` so the fixture stays fully
-# serializable — `Primitive.fn` is part of the closed non-serializable
-# set, D-88).
+# Bare strings, `cos`, `exp`, `pi` and `/`, whose arity is unchecked, mixed
+# with pinned `Primitive` objects. Each carries `fn=None`, so the fixture
+# stays fully serializable, `Primitive.fn` belonging to the closed
+# non-serializable set.
 SCHEDULE_PRIMITIVES: list[str | ds.Primitive | ds.FloatLiteral] = [
     "cos",
     "exp",

@@ -1,7 +1,9 @@
-"""Every file under `examples/` must run to completion. Nothing else
-exercises them — CLAUDE.md's commit gates only type-check `src/` — so this
-is what catches an example rotting after a milestone changes the surface it
-demonstrates. Glob-driven: a new example is covered the moment it lands.
+"""Every file under `examples/` must run to completion.
+
+Nothing else exercises them, the commit gates type-checking `src/` alone, so
+this is what catches an example rotting after a change to the surface it
+demonstrates. It is glob-driven, so a new example is covered the moment it
+lands.
 """
 
 from __future__ import annotations

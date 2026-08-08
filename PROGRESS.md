@@ -1,6 +1,6 @@
 # Progress
 
-Current milestone: **M13.8 (open)**
+Current milestone: **M14 (open)**
 
 One row per completed milestone: date and total test count at completion. A
 milestone's section is deleted from `PLAN.md` when its exit criteria pass, so
@@ -42,6 +42,7 @@ Rows before that date are single totals under the old arrangement.
 | M13.5: Documentation site (Sphinx, PyData theme, `designspace[docs]`; `__all__` 91 to 96) | 2026-08-04 | 2491 |
 | M13.6: Executable tutorials and documentation prose (myst-nb, Tutorials and Design notes tabs) | 2026-08-05 | 2389 + 123 |
 | M13.7: Design-document consolidation (`API.md` restructured, prose standards, four prose laws) | 2026-08-06 | 2447 + 123 |
+| M13.8: Source and test prose (`src/` and `tests/` to the standard; prose laws widened; two new laws) | 2026-08-08 | 3156 + 123 |
 
 ## Out-of-band fixes
 

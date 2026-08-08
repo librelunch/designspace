@@ -1,11 +1,13 @@
-"""M5 gate: expression-bounds desugaring mechanics (API.md, "Constraints
-and Feasibility" > "Expression bounds are sugar").
+"""Unit tests for expression-bounds desugaring mechanics.
 
-The milestone's *laws* (bound-origin margins, structural/behavioral
-equivalence to the hand-written expansion, tighten-vs-reject distributional
-equivalence) live in tests/conformance/test_bounds.py. This file covers the
-mechanics: envelope arithmetic per op, row 6/7/14/20 message-content tests,
-the dependency-order/cycle interaction, and the lift-element scope boundary.
+See API.md, "Constraints and Feasibility" > "Expression bounds are sugar".
+
+The laws, meaning bound-origin margins, structural and behavioural
+equivalence to the hand-written expansion, and tighten-against-reject
+distributional equivalence, live in `tests/conformance/test_bounds.py`.
+This file covers the mechanics: envelope arithmetic per operator, the
+message content of rows 6, 7, 14 and 20, the dependency-order and cycle
+interaction, and the lift-element scope boundary.
 """
 
 from __future__ import annotations

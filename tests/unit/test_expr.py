@@ -1,8 +1,9 @@
-"""M0 gate: expression-node construction, guardrails, all_/any_/count, hash/immutability.
+"""Unit tests for expression-node construction.
 
-No evaluation or resolution is exercised here — these nodes are pure, unresolved
-AST fragments built directly against designspace.expr (ds.param does not exist
-until M1's builder/).
+Covers the guardrails, `all_`, `any_` and `count`, and hashing and
+immutability. Nothing here evaluates or resolves: these nodes are pure,
+unresolved AST fragments, built directly against `designspace.expr` rather
+than through `ds.param`.
 """
 
 from __future__ import annotations
@@ -266,12 +267,15 @@ class TestIfInactive:
 
 
 class TestValueConstruction:
-    """`ds.value(fn, *operands, returns=type)` — the second (and, per API.md's
-    Out of Scope list, final) opaque expression leaf, dual-typed like `Prop`.
-    Row 30's error paths (non-scalar `returns`, a non-expression operand)
-    and every evaluation/resolution/identity law live in
-    tests/conformance/test_opaque_values.py; this file stays scoped to M0's
-    "construction only" surface."""
+    """`ds.value(fn, *operands, returns=type)`, the opaque expression leaf.
+
+    It is dual-typed like `Prop`, and API.md's out-of-scope list makes it
+    the last node the expression language grows. Row 30's error paths, a
+    non-scalar `returns` and a non-expression operand, and every evaluation,
+    resolution and identity law live in
+    `tests/conformance/test_opaque_values.py`. This file covers construction
+    alone.
+    """
 
     def test_builds_node(self):
         a, b = lit(1.0), lit(2.0)
@@ -365,8 +369,8 @@ class TestAllAny:
 
 class TestParams:
     def test_params_empty_without_param_refs(self):
-        # M0 has no param-referencing leaf (that lands in builder/ at M1);
-        # params is exercised here only for the empty case.
+        # `designspace.expr` has no param-referencing leaf; `ds.param` is
+        # `builder/`'s. `params` is exercised here for the empty case only.
         node = (lit(1.0) + lit(2.0)) > 3
         assert node.params == frozenset()
 

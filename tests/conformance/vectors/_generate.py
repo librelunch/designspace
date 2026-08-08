@@ -1,20 +1,20 @@
-"""One-shot generator for the known-answer digest vectors under
-`tests/conformance/vectors/*.json` (PLAN.md M7 gate:
-"known-answer digest vectors ... for every corpus fixture").
+"""The one-shot generator for the known-answer digest vectors.
 
-**Not collected by pytest** (leading underscore) and **not called by any
-test** — `test_vectors.py` only reads the committed files and fails loudly
-if one is missing, never regenerates. Run this by hand, deliberately, only
-when the version-bump protocol says a new vector should be *added*
-(PLAN.md: "bump the shared integer, add — never replace —
-known-answer vectors"):
+The vectors live under `tests/conformance/vectors/*.json`, one per corpus
+fixture.
+
+This module is not collected by pytest, its name leading with an underscore,
+and no test calls it. `test_vectors.py` reads the committed files and fails
+loudly when one is missing, and never regenerates. Run this by hand,
+deliberately, only when the version-bump protocol calls for a new vector to
+be added rather than an existing one replaced:
 
     uv run python tests/conformance/vectors/_generate.py
 
-Confirms every corpus fixture is fully serializable (no `dropped` manifest
-entries — i.e. no fixture secretly depends on an opaque external prior)
-before writing, so a frozen vector can never silently bake in a mark/drop
-artifact.
+Before writing, it confirms that every corpus fixture is fully
+serializable, carrying no `dropped` manifest entries, so that no fixture
+secretly depends on an opaque external prior and no frozen vector bakes in a
+mark or drop artifact.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ FIXTURES = [
 def _write_vector(name: str, space: object) -> None:
     doc = space.to_json()  # type: ignore[attr-defined]
     assert "dropped" not in doc, (
-        f"{name}: to_json() carries a 'dropped' manifest — a vector fixture must be "
+        f"{name}: to_json() carries a 'dropped' manifest; a vector fixture must be "
         "fully serializable, or it would freeze a mark/drop artifact into the vectors"
     )
     vector = {
@@ -70,12 +70,12 @@ def main() -> None:
     for name in FIXTURES:
         _write_vector(name, importlib.import_module(name).build_space())
 
-    # Non-corpus demo vectors kept apart from the corpus loop so the corpus
-    # vectors stay a clean byte-identity check. Added — never replace a corpus
-    # vector. `require_demo` (M7.5), `discourage_demo` (M7.6), `anchor_demo`
-    # (M8, DECISIONS.md D-40 — kept out of `sat_solver` to avoid replacing
-    # its already-committed vector), `chart_apply_demo` (M11 — freezes the
-    # ChartApply expression codec via an induced representation's target).
+    # Non-corpus demo vectors, kept apart from the corpus loop so that the
+    # corpus vectors stay a clean byte-identity check. Each was added rather
+    # than replacing a corpus vector: `anchor_demo` is kept out of
+    # `sat_solver` for exactly that reason, and `chart_apply_demo` freezes
+    # the ChartApply expression codec through an induced representation's
+    # target.
     import _anchor_demo
     import _chart_apply_demo
     import _discourage_demo

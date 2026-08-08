@@ -56,7 +56,7 @@ def test_round_trips():
         assert restored.validate(cfg).valid
 
 
-# -- DataFrame output (M10) ---------------------------------------------------
+# -- DataFrame output ---------------------------------------------------------
 
 
 def test_dataframe_dtypes_per_kind():

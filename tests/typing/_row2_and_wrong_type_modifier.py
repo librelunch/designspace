@@ -1,10 +1,10 @@
-"""Static-typing fixture for the M4.6 gate (API.md, "Builder view types").
+"""The static-typing fixture (API.md, "Builder view types").
 
-Not collected by pytest as a test module — it is fed to `mypy --strict` by
-test_static_typing.py. Each `# type: ignore[attr-defined]` below is only
-valid if the named method is genuinely absent from that view's static type;
-`mypy --strict` bundles `--warn-unused-ignores`, so an unused (i.e. no
-longer load-bearing) ignore comment fails the check on its own.
+Not collected by pytest as a test module; `test_static_typing.py` feeds it
+to `mypy --strict`. Each `# type: ignore[attr-defined]` below is valid only
+if the named method is genuinely absent from that view's static type.
+`mypy --strict` bundles `--warn-unused-ignores`, so an ignore comment that
+has stopped being load-bearing fails the check on its own.
 """
 
 import designspace as ds
@@ -17,13 +17,13 @@ ds.param("x").real(0.0, 1.0).bool()  # type: ignore[attr-defined]
 # `.log_scale()` attribute at all.
 ds.param("y").categorical("a", "b").log_scale()  # type: ignore[attr-defined]
 
-# Row 2, M9: `.custom()` narrows to CustomParamExpr, which has no `.real()`
+# Row 2: `.custom()` narrows to CustomParamExpr, which has no `.real()`
 # (or any other type method) either.
 _w = ds.param("w").custom(sampler=lambda rng: 0.5, validator=lambda v: True)
 _w.real(0.0, 1.0)  # type: ignore[attr-defined]
 
 # Positive control: a legitimate chain interleaving a universal modifier
 # (`.tag()`) between numeric-only ones must still type-check as
-# RealParamExpr — the whole point of `_as()`/`Self` is that this stays
-# valid and narrowed, not merely that the wrong chains get rejected above.
+# RealParamExpr. `_as()` and `Self` exist so that this stays valid and
+# narrowed, not merely so that the wrong chains above get rejected.
 _ok: ds.RealParamExpr = ds.param("z").real(0.0, 1.0).log_scale().tag("t").quantized(step=0.1)

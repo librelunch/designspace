@@ -1,7 +1,6 @@
-"""`flow_chemistry` corpus fixture (PLAN.md corpus table,
-added M3).
+"""`flow_chemistry` corpus fixture.
 
-Exercises: subset inclusion priors, `contains`, `sum_over`, implications.
+Exercises subset inclusion priors, `contains`, `sum_over` and implications.
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ COSTS = {"acid": 2.0, "base": 1.5, "catalyst": 10.0, "solvent": 0.5, "oxidizer":
 
 
 def build_space() -> Space:
-    # A `.forbid()` predicate names the *forbidden* (bad) state (D-4), so
+    # A `.forbid()` predicate names the forbidden state, so
     # "oxidizer implies acid" is enforced by forbidding its negation
     # (oxidizer present, acid absent) -- not by forbidding the implication
     # itself, which would forbid the *desired* state instead.

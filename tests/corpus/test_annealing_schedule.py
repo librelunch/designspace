@@ -1,6 +1,7 @@
-"""Corpus: `annealing_schedule` end-to-end (resolve -> sample 200 ->
-validate all -> round-trip); also exercises the M12 gate items this
-fixture was built for.
+"""Corpus: `annealing_schedule`, end-to-end.
+
+Resolve, sample 200, validate all, round-trip, plus the program-type
+surface this fixture was built for.
 """
 
 from __future__ import annotations

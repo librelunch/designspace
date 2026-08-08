@@ -11,7 +11,7 @@ dependencies = [
 
 [project.optional-dependencies]
 polars = ["polars>=1.0"]
-# Docs-only, never core (M13.5). Core stays numpy + rfc8785.
+# Docs-only, never core. Core stays numpy + rfc8785.
 docs = [
     "sphinx>=8",
     "pydata-sphinx-theme>=0.16",
@@ -32,8 +32,9 @@ dev = [
     "ruff>=0.5",
     "polars>=1.0",
     # Drives the docstring gates in tests/test_docs.py. It is the only tool that
-    # computes publicity from `__all__`, which is the scoping M13 requires: ruff's
-    # D1xx rules never fire here because every implementation module is private.
+    # computes publicity from `__all__`, which is the scoping those gates
+    # need: ruff's D1xx rules never fire here, every implementation module
+    # being private.
     "griffe>=2.0",
 ]
 
@@ -61,11 +62,11 @@ python_version = "3.12"
 # `pytest tests/unit/test_frame.py` collects that file and nothing more.
 testpaths = ["tests"]
 # Applies to the doctest gate, which runs `--doctest-modules --doctest-glob=*.md`
-# over `src` and `docs`: every `>>>` in a docstring is a test (M13) and so is
-# every `>>>` on a design-note page (M13.5).
+# over `src` and `docs`: every `>>>` in a docstring is a test, and so is
+# every `>>>` on a design-note page.
 doctest_optionflags = ["ELLIPSIS", "NORMALIZE_WHITESPACE"]
 # No `norecursedirs` override. It was restated here without "build" because the
-# builder package used to be named `src/designspace/build/`, which collides with
-# pytest's default entry for setuptools output: M13 collected zero doctests from
-# it and `pytest -q` reported green throughout. The package is `builder/` as of
-# 2026-08-06, so pytest's defaults are correct as they ship.
+# builder package was once named `src/designspace/build/`, which collides
+# with pytest's default entry for setuptools output, so the doctest gate
+# collected nothing from it while reporting green. The package is `builder/`
+# as of 2026-08-06, so pytest's defaults are correct as they ship.

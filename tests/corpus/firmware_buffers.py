@@ -1,10 +1,11 @@
-"""`firmware_buffers` corpus fixture (PLAN.md corpus table, M5).
+"""`firmware_buffers` corpus fixture.
 
-Exercises: expression bounds, envelopes, bound-origin margins. Three ring
-buffers are carved out of a fixed RAM budget in sequence — each buffer's
-capacity is bounded above by whatever the previous ones left behind, a
-chained dependency along the resolution's bound-envelope DAG (`total_ram`,
-then `buf_a`, then `buf_b`, then `buf_c`).
+Exercises expression bounds, envelopes and bound-origin margins.
+
+Three ring buffers are carved out of a fixed RAM budget in sequence, each
+buffer's capacity bounded above by whatever the previous ones left behind.
+That makes a chained dependency along resolution's bound-envelope DAG, from
+`total_ram` through `buf_a` and `buf_b` to `buf_c`.
 """
 
 from __future__ import annotations

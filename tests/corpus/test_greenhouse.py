@@ -42,9 +42,7 @@ def test_zone_struct_always_present():
 
 
 def test_defaults_cascade():
-    """M6: `.default()` was accepted and resolution-validated since M1
-    (see this fixture's own module docstring); `apply_defaults` itself is
-    M6's cascade over it."""
+    """`apply_defaults` cascades over the declared defaults."""
     space = build_space()
 
     # Neither choice names its own default variant, and struct/variant
@@ -83,10 +81,10 @@ def test_round_trips():
         assert restored.validate(cfg).valid
 
 
-# -- freeze-ablation: struct (M9.5, PLAN.md corpus table; DECISIONS.md D-50) --
+# -- freeze-ablation: struct ------------------------------------------------
 #
 # `build_space()` itself stays untouched -- these operate on a *derived*
-# frozen space in-test (D-40's discipline, extended to container freeze).
+# frozen space, built in-test, under the same discipline.
 
 
 def test_freeze_zone_struct_fans_out_to_per_field_freeze():

@@ -1,11 +1,14 @@
-"""`pump_configurator` corpus fixture (PLAN.md corpus table, M6).
+"""`pump_configurator` corpus fixture.
 
-Exercises: the driver loop — `next_assignable` + `remaining_domain`. A
-bound-origin coupling (`impeller_diameter_mm` <= `flow_rate_lpm`, `max_pressure_bar`
-<= `num_stages * 10`), a single-forbid value exclusion (`seal_type != "packing"`),
-and a subset with a `contains`-forbid (reducible) alongside a compound
-seal/cert forbid (deliberately *not* one-unset-operand reducible — the
-descriptor stays sound, not complete, for that coupling).
+Exercises the driver loop, meaning `next_assignable` with
+`remaining_domain`.
+
+It carries a bound-origin coupling, `impeller_diameter_mm` bounded by
+`flow_rate_lpm` and `max_pressure_bar` by `num_stages * 10`; a single-forbid
+value exclusion, `seal_type != "packing"`; and a subset with a
+`contains`-forbid, which is reducible, alongside a compound seal and
+certification forbid, which deliberately is not one-unset-operand reducible.
+The descriptor stays sound rather than complete for that coupling.
 """
 
 from __future__ import annotations

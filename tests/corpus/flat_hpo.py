@@ -1,8 +1,8 @@
-"""`flat_hpo` corpus fixture (PLAN.md corpus table, added M2).
+"""`flat_hpo` corpus fixture.
 
-Exercises: reals/ints/categorical, log_scale, quantized, `when`, forbid
-margins. Reused end-to-end by every milestone from here on (round-trip
-joins once serialization exists, M7).
+Exercises reals, integers and categoricals, `log_scale`, `quantized`,
+`when`, and forbid margins. Reused end-to-end by every suite that walks the
+corpus.
 """
 
 from __future__ import annotations

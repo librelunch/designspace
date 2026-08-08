@@ -1,19 +1,19 @@
-"""Documentation gates for the public surface (PLAN.md, M13).
+"""Documentation gates for the public surface.
 
-Five laws, all scoped to exactly what `designspace.__all__` exports. The
-scoping is why these run on griffe rather than ruff or `__doc__`:
+Five laws, each scoped to exactly what `designspace.__all__` exports. The
+scoping is why they run on griffe rather than on ruff or `__doc__`:
 
 - **Ruff cannot express it.** Ruff's `D1xx` missing-docstring rules never
-  fire in this repo, because every implementation module is private
-  (`builder/_space.py`, `ir/_domain.py`, ...) and ruff treats members of a
+  fire in this repo, because every implementation module is private, as
+  `builder/_space.py` and `ir/_domain.py` are, and ruff treats a member of a
   private module as non-public. Ruff is also file-local, so it could never
   learn that `Space` is public by way of `designspace/__init__.py`'s
-  `__all__`. Measured at M13's open: `ruff check --select D1 src/` reports
-  zero findings against a surface that was 124 docstrings short.
+  `__all__`. Measured: `ruff check --select D1 src/` reported zero findings
+  against a surface that was 124 docstrings short.
 - **A runtime `__doc__` scan cannot either.** `@dataclass` synthesizes a
   `__doc__` from the signature, so `ds.Space.__doc__` is a truthy
   `"Space(params: ...)"` string even with no class docstring. Griffe reads
-  source statically and reports the absence.
+  the source statically and reports the absence.
 
 What each member owes, by category:
 
@@ -25,10 +25,10 @@ What each member owes, by category:
 | public instance attribute | an entry in the owner's `Attributes` section |
 | `ClassVar` discriminator | nothing |
 
-The last row is the view types' `type_kind`. API.md ("Builder view types")
+The last row is the view types' `type_kind`. API.md, "Builder view types"
 says the views "add no state beyond `ParamExpr`, have no serialized
-footprint, and do not appear in the IR" — the attribute is build-layer
-plumbing, not surface a user reads or sets.
+footprint, and do not appear in the IR", so the attribute is build-layer
+plumbing rather than surface a user reads or sets.
 """
 
 from __future__ import annotations
@@ -58,9 +58,9 @@ def _exports() -> Iterator[tuple[str, Any]]:
     """Yield `(name, griffe object)` for every export except `__version__`.
 
     Iterating `ds.__all__` rather than griffe's own `is_public` is
-    deliberate: griffe additionally counts the 21 subpackages (`build`,
-    `ir`, ...) as public members of the package, and those are internal
-    structure, not surface.
+    deliberate: griffe additionally counts each subpackage, `builder` and
+    `ir` among them, as a public member of the package, and those are
+    internal structure rather than surface.
     """
     for name in sorted(ds.__all__):
         if name == "__version__":
@@ -106,11 +106,11 @@ def _build_targets() -> tuple[list[tuple[str, Any]], list[tuple[str, Any]], dict
             callables.append((name, obj))
         if not obj.is_class:
             continue
-        # A Protocol's members have no body to demonstrate — the worked
+        # A Protocol's members have no body to demonstrate. The worked
         # example belongs on the protocol class, showing an implementation
-        # of the whole thing, which is what an author actually needs. Its
-        # members still owe a docstring; they are exempt only from the
-        # example law, and the class itself is not exempt.
+        # of the whole thing, which is what an author needs. Its members
+        # still owe a docstring; they are exempt from the example law alone,
+        # and the class itself is not exempt.
         protocol = _is_protocol(obj)
         for member_name, member in _public_members(obj):
             label = f"{name}.{member_name}"
@@ -189,7 +189,7 @@ def test_public_surface_is_documented(label: str, obj: Any) -> None:
     """Every exported name, public method, and public property has a docstring."""
     assert _documented(obj), (
         f"{label} is exported (or is a public member of an exported class) but has "
-        f"no docstring. The public surface is user documentation; see PLAN.md M13."
+        f"no docstring. The public surface is user documentation."
     )
 
 
@@ -198,8 +198,8 @@ def test_public_attributes_are_documented(owner: str) -> None:
     """Every public instance attribute appears in its class's `Attributes` section.
 
     NumPy style documents dataclass fields on the class rather than one
-    docstring per field, so this is the coverage check for the 82 fields
-    across the IR data model.
+    docstring per field, so this is the coverage check for every field of
+    the IR data model.
     """
     obj = PACKAGE[owner]
     documented = _documented_names(obj, griffe.DocstringSectionKind.attributes)
@@ -214,7 +214,7 @@ def test_docstrings_parse_as_numpy(label: str, obj: Any) -> None:
     """No docstring produces a griffe parse warning.
 
     This catches a `Parameters` entry naming something the signature does
-    not have — the way a NumPy block silently rots after a rename — plus
+    not have, which is how a NumPy block silently rots after a rename, and
     malformed section syntax.
     """
     if not _documented(obj):
@@ -247,11 +247,10 @@ def test_signature_parameters_are_documented(label: str, obj: Any) -> None:
 def test_every_export_has_an_example() -> None:
     """Every callable a user invokes carries a runnable `>>>` example.
 
-    Scoped to callables by the M13 decision: an example on an IR dataclass
-    would only echo a repr, and `repr(Space)` is a multi-line `mappingproxy`
-    blob that is both unreadable and brittle as expected output. The
-    examples themselves are executed by `--doctest-modules`, not here; this
-    law only asserts that they exist.
+    Scoped to callables. An example on an IR dataclass would only echo a
+    repr, and `repr(Space)` is a multi-line `mappingproxy` blob that is both
+    unreadable and brittle as expected output. `--doctest-modules` executes
+    the examples; this law asserts only that they exist.
     """
     missing = [
         label for label, obj in CALLABLES if _documented(obj) and ">>>" not in obj.docstring.value
@@ -269,8 +268,9 @@ def test_every_export_has_an_example() -> None:
 def test_every_protocol_has_an_implementation_example(label: str, obj: Any) -> None:
     """Every protocol shows a worked implementation on the class itself.
 
-    Protocol *members* are exempt from the example law — a `...` body has
-    nothing to demonstrate — so the obligation moves here, where an author
+    A Protocol's members are exempt from the example law, a `...` body
+    having nothing to demonstrate, so the obligation moves here, where an
+    author
     can see a whole implementation at once. Without this the exemption
     would silently lose the examples that matter most.
     """

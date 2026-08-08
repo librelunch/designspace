@@ -1,31 +1,21 @@
-"""M10.7 refactor-safety checks: the two things that make the traversal
-extraction auditable rather than merely green.
+"""Two agreement checks over the shared traversal helpers.
 
-1. `Space._direct_children`'s cached index agrees with the pre-M10.7
-   per-call scan predicate, over every corpus fixture and every prefix
-   the five space-guided walkers actually construct.
-2. `definition_form` (the canonical, parsing grammar helper) agrees with
-   `paths/_grammar._INDEX_RE` -- a cheap, non-raising alternative for
-   stripping concrete indices, on every well-formed path the corpus
-   produces -- confirming the *construction* sweep (which did replace
-   every `f"...[]."` / `f"...[{i}]."` / `rindex("[")` idiom with
-   `paths/_grammar.py` helpers) lost nothing. `_INDEX_RE` itself was
-   independently compiled in `validate/_validate.py` and
-   `ops/_structural.py` before M10.7 consolidated it into one shared
-   definition (`import re` had no other purpose in either file); this test
-   predates that consolidation and was updated to import the shared
-   constant rather than keep a third private copy of its own.
+First, `Space._direct_children`'s cached index agrees with the equivalent
+per-call scan predicate, over every corpus fixture and every prefix the five
+space-guided walkers construct.
 
-   `_INDEX_RE`'s *usage* was deliberately **not** swapped for
-   `definition_form`: `re.sub`/`re.search` never raise on a malformed
-   path, while `definition_form` parses via `parse_path` and raises
-   `ResolutionError` on one. `validate/_validate.py::_lookup_param_shape`
-   backs the public `.validate_param()`/`.remaining_domain()` surface,
-   whose `path` argument is user-supplied and not guaranteed grammar-clean
-   -- swapping the exception type/timing for malformed input is a public
-   misuse-error contract change, not a pure refactor, so it stays out of
-   this milestone's scope (PLAN.md's own contingency: "if any call site
-   can receive a non-grammar path, leave the regex and say so").
+Second, `definition_form`, the parsing grammar helper, agrees with
+`paths/_grammar._INDEX_RE`, the cheap non-raising alternative for stripping
+concrete indices, over every well-formed path the corpus produces.
+
+`_INDEX_RE`'s usage is deliberately not swapped for `definition_form`.
+`re.sub` and `re.search` never raise on a malformed path, while
+`definition_form` parses through `parse_path` and raises `ResolutionError`
+on one. `_lookup_param_shape` in `validate/_validate.py` backs the public
+`.validate_param()` and `.remaining_domain()` surface, whose `path` argument
+is user-supplied and not guaranteed grammar-clean, so swapping the exception
+type and timing for malformed input would be a change to a public
+misuse-error contract rather than a refactor.
 """
 
 from __future__ import annotations
@@ -66,9 +56,11 @@ def _build(name: str):
 
 
 def _old_direct_children(space, prefix: str) -> list[str]:
-    """The pre-M10.7 `config/_flatten.py::_direct_children` predicate,
-    reimplemented standalone (the original was removed in favor of the
-    indexed method) so the index can be checked against it."""
+    """The per-call scan predicate, reimplemented standalone.
+
+    The original lived in `config/_flatten.py` and was replaced by the
+    indexed method, so the index is checked against this copy.
+    """
     result = []
     for path in space.params:
         if not path.startswith(prefix):

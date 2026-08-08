@@ -1,19 +1,17 @@
-"""M6 gate: completed row-21 default validation (API.md, "Defaults";
-error table row 21).
+"""Unit tests for row-21 default validation (API.md, "Defaults").
 
-The milestone's *laws* (idempotence/monotonicity, completeness postcondition,
-activity-respecting fill, the driver-loop coincidence, reducer sound/negative)
-live in tests/conformance/test_defaults.py and tests/conformance/test_partial.py.
-This file covers the mechanics: message-content tests for the row-21 cases
-M6 completed in code (choice/subset/permutation default validation; struct
-defaults rejected regardless of `.repeat()` position; a quantized real/
-integer's *domain* is its grid, not the raw `[lo, hi]` interval, and a
-periodic real's is the half-open `[lo, hi)` — a default outside either was
-previously accepted silently at resolution and only surfaced later as a
-`validate()` failure on `apply_defaults`'s own output); and a *list*
-default's per-item domain validity (previously not checked at all — an
-out-of-bounds, off-grid, or malformed struct/choice item in a
-`.repeat(n).default([...])` resolved silently).
+The laws, meaning idempotence and monotonicity, the completeness
+postcondition, activity-respecting fill, the driver-loop coincidence, and
+the reducer's sound and negative cases, live in
+`tests/conformance/test_defaults.py` and
+`tests/conformance/test_partial.py`.
+
+This file covers the mechanics, as message-content tests over the row-21
+cases: choice, subset and permutation default validation; struct defaults
+rejected whatever the `.repeat()` position; a quantized real's or integer's
+domain being its grid rather than the raw `[lo, hi]` interval, and a
+periodic real's the half-open `[lo, hi)`; and a list default's per-item
+domain validity.
 """
 
 from __future__ import annotations
@@ -148,13 +146,14 @@ class TestPeriodicDefaultValidation:
 
 
 class TestListDefaultItemValidation:
-    """A `.repeat(n).default([...])` list default is a literal phenotype
-    value per index — previously only its *length* was checked (row 21's
-    "list default length must match"); no item was ever validated against
-    the element's own domain, so an out-of-bounds/off-grid/malformed item
-    resolved silently and only surfaced later as a `validate()` failure on
-    `apply_defaults`'s own output (the same shape of bug as the scalar
-    default gap above, one level up through `.repeat()`)."""
+    """Each item of a `.repeat(n).default([...])` is validated.
+
+    The list default is a literal phenotype value per index. Row 21's "list
+    default length must match" governs the length; each item must
+    additionally be a member of the element's own domain, or an
+    out-of-bounds, off-grid or malformed item resolves silently and surfaces
+    only later, as a `validate()` failure on `apply_defaults`'s own output.
+    """
 
     def test_out_of_bounds_item_rejected(self):
         with pytest.raises(ResolutionError, match=r"'x'.*list default.*outside its domain"):
@@ -218,16 +217,19 @@ class TestListDefaultItemValidation:
 
 
 class TestIntermediateListDefaultItemValidation:
-    """The deferred gap (PLAN.md M6, `4fda87b`): a
-    `list_default` set at an *intermediate* nesting level of a chained lift
-    (`.repeat(a).default([...]).repeat(b)`) was still only shape/length-
-    checked, not deep-item-validated, because `list_default[i]` at that
-    depth doesn't correspond 1:1 to a real instance path — the same literal
-    default applies identically to every outer instance. Chained lifts only
-    ever wrap scalar/subset/permutation elements (D-24 rejects struct/choice
-    nested under more than one `.repeat()`), so no descendant-template
-    plumbing is needed — only recursion through `ListDomain.element_domain`
-    under a synthesized placeholder outer index."""
+    """A `list_default` at an intermediate nesting level is item-validated too.
+
+    An intermediate level of a chained lift, as in
+    `.repeat(a).default([...]).repeat(b)`, has no `list_default[i]`
+    corresponding one-to-one to a real instance path: the same literal
+    default applies identically to every outer instance.
+
+    A chained lift only ever wraps a scalar, subset or permutation element,
+    a struct or choice element being rejected under more than one
+    `.repeat()`, so no descendant-template plumbing is needed. Recursion
+    through `ListDomain.element_domain` under a synthesized placeholder
+    outer index suffices.
+    """
 
     def test_documented_repro_rejected(self):
         with pytest.raises(ResolutionError, match=r"'x'.*list default.*outside its domain"):
@@ -246,9 +248,11 @@ class TestIntermediateListDefaultItemValidation:
         assert space.validate(filled).valid
 
     def test_multi_level_simultaneous_defaults_inner_invalid_rejected(self):
-        """Independent `list_default`s at both the inner and outer level —
-        each level must be checked against its own `flat` dict, with no
-        collision between the synthetic outer-index prefixes."""
+        """Independent `list_default` values at the inner and outer levels.
+
+        Each level is checked against its own `flat` dict, with no collision
+        between the synthetic outer-index prefixes.
+        """
         with pytest.raises(ResolutionError, match=r"'x'.*list default.*outside its domain"):
             ds.space(
                 ds.param("x")
@@ -285,10 +289,11 @@ class TestIntermediateListDefaultItemValidation:
             )
 
     def test_struct_nested_chained_lift_invalid_default_rejected(self):
-        """A chained lift *inside* a lifted struct's `.space(...)` — the
-        struct's sub-`resolve_space` call runs this same check on its own
-        contents, so the fix propagates here automatically without any
-        extra plumbing."""
+        """A chained lift inside a lifted struct's `.space(...)`.
+
+        The struct's own `resolve_space` call runs this same check over its
+        contents, so the behaviour reaches here with no extra plumbing.
+        """
         with pytest.raises(ResolutionError, match=r"'sizes'.*list default.*outside its domain"):
             ds.space(
                 ds.param("g")

@@ -1,7 +1,7 @@
-"""M2 gate: `.sample_one()` / `.sample_dicts()` (API.md, "Sampling and
-Generativity").
+"""Unit tests for `.sample_one()` and `.sample_dicts()`.
 
-Row 26 (V): sampling retry exhaustion, naming the dominant constraint(s).
+See API.md, "Sampling and Generativity". Row 26 covers sampling retry
+exhaustion, whose message names the dominant constraints.
 """
 
 from __future__ import annotations

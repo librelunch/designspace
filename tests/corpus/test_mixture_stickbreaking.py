@@ -1,7 +1,7 @@
-"""Corpus: `mixture_stickbreaking` end-to-end (resolve -> sample 200 ->
-validate all -> round-trip), plus the M11 gate items this fixture was
-built for: a consumer-authored representation morphism, mixed genotypes,
-and the custom-to-u-space bridge.
+"""Corpus: `mixture_stickbreaking`, end-to-end.
+
+Resolve, sample 200, validate all, round-trip, plus the representation
+surface this fixture was built for.
 """
 
 from __future__ import annotations
@@ -51,8 +51,10 @@ def test_describe_round_trip_law():
 
 
 class TestRepresentationMorphism:
-    """The M11-specific exercises: a chosen (never core-shipped) morphism,
-    mixed genotypes, and the custom->u-space bridge."""
+    """A chosen morphism, mixed genotypes, and the custom-to-u-space bridge.
+
+    Core ships none of the three.
+    """
 
     def test_only_weights_is_encoded(self):
         space = build_space()

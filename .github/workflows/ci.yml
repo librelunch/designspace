@@ -35,7 +35,7 @@ jobs:
     # Proves the core install path (numpy + rfc8785 only, no `polars` extra)
     # actually works rather than assuming it from the guarded import in
     # frame/_frame.py. Excludes the test files that call `space.sample()`
-    # or import polars directly — they need the extra and are already
+    # or import polars directly; those need the extra and are already
     # covered by the `checks` matrix above.
     runs-on: ubuntu-latest
     steps:
@@ -50,7 +50,7 @@ jobs:
       # core: the DataFrame tutorial among eleven pages and three unrelated
       # laws, and the two dtype laws among 146 kind-by-surface tests. Ignoring
       # either file would drop the rest. Same reasoning that kept
-      # `builder/_space.py`'s doctests in this job at M13, where one example
+      # `builder/_space.py`'s doctests in this job, where one example
       # carries `+SKIP` instead.
       - run: >
           uv run pytest -q

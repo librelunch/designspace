@@ -1,9 +1,9 @@
-"""Corpus: `nested_survey` end-to-end — the relocated param-driven count.
+"""Corpus: `nested_survey`, end-to-end, over a relocated param-driven count.
 
-The assertions that matter are the ones tying a *realized list length* to
-its count param's *value* through each relocation route. Under D-91's bug
-every one of these lists came back `[]` while the count param sampled a
-perfectly good positive integer, and nothing raised.
+The assertions that matter tie a realized list length to its count param's
+value through each relocation route. Where relocation misses a count
+expression, every such list comes back `[]` while the count param samples a
+perfectly good positive integer, and nothing raises.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ def test_resolves() -> None:
     # The count references must name the *relocated* params.
     assert space.dependency_graph["core.items"] == frozenset({"core.n_items"})
     assert space.dependency_graph["mode.deep.probes"] >= frozenset({"mode.deep.n_probes"})
-    # ... and the cross-scope one still names the enclosing param (D-91).
+    # ... and the cross-scope one still names the enclosing param.
     assert "n_repeats" in space.dependency_graph["mode.deep.reps"]
 
 
@@ -65,8 +65,7 @@ def test_sample_and_validate_all() -> None:
 
 
 def test_violating_config_is_rejected() -> None:
-    """The per-item forbid decides feasibility — the property that silently
-    evaporated under relocation."""
+    """The per-item forbid decides feasibility, after relocation as before."""
     space = build_space()
     config = {
         "n_repeats": 1,

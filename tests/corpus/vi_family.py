@@ -1,18 +1,18 @@
-"""`vi_family` corpus fixture (PLAN.md M9 corpus table).
+"""`vi_family` corpus fixture.
 
-Exercises: **custom type** (`.custom()`, both `ParamType`s below); the
-**`describe()`/factory round-trip** (`GraphTopology`/`FixedTopology` are
-frozen dataclasses — the canonical M9 authoring template, API.md
-"Protocols": `describe()` = `asdict(self)`, factory = `cls(**d)`, so
-`factory(x.describe()) ≡ x` holds by construction); **`.prop()`
-constraints** (`n_edges`, `is_connected`); the **canonical-ordering law**
-(`.repeat(ds.param("topology").prop("n_edges"))` — a prop-driven lift
-count); and the **first non-generative param** in the corpus
-(`FixedTopology` has no `sample()`).
+Exercises a custom type through `.custom()`, in both `ParamType` forms
+below; the `describe()` and factory round-trip, `GraphTopology` and
+`FixedTopology` being frozen dataclasses, which is the canonical authoring
+template API.md, "Protocols" gives, with `describe()` as `asdict(self)` and
+the factory as `cls(**d)`, so that `factory(x.describe()) == x` holds by
+construction; `.prop()` constraints over `n_edges` and `is_connected`; the
+canonical-ordering law, through the prop-driven lift count
+`.repeat(ds.param("topology").prop("n_edges"))`; and the corpus's one
+non-generative param, `FixedTopology` supplying no `sample()`.
 
-A "topology" here is a small undirected graph over `n_nodes` nodes,
-represented (natively) as a sorted `list[tuple[int, int]]` of edges and
-(as phenotype — DECISIONS.md D-46) as `list[list[int]]`.
+A topology here is a small undirected graph over `n_nodes` nodes,
+represented natively as a sorted `list[tuple[int, int]]` of edges, and as a
+phenotype as `list[list[int]]`.
 """
 
 from __future__ import annotations
@@ -47,8 +47,10 @@ def _is_connected(n_nodes: int, edges: list[tuple[int, int]]) -> bool:
 class GraphTopology:
     """Generative full-protocol `ParamType`: a graph topology, constructed
     to respect `max_degree` and (optionally) connectivity. Chainable,
-    immutable config via `dataclasses.replace` — the M9 authoring template
-    (API.md, "Protocols" — custom-type contract laws)."""
+    immutable configuration through `dataclasses.replace`, which is the
+    authoring template API.md, "Protocols" gives with its custom-type
+    contract laws.
+    """
 
     n_nodes: int = 4
     max_degree: int = 2
@@ -65,13 +67,16 @@ class GraphTopology:
         return replace(self, connected=connected)
 
     def sample(self, rng: Any) -> list[tuple[int, int]]:
-        """Constructive draw (API.md, "Solver Integration" — tier 3: enforce
-        a global invariant *inside* the type rather than reject-and-retry):
-        a random-permutation *path* spanning tree guarantees connectivity
-        with every degree <= 2, always constructible given `max_degree >=
-        2`; extra edges are then layered on only where both endpoints have
-        spare degree — connectivity, once established, can only be added
-        to, never broken, by what follows."""
+        """A constructive draw, enforcing the global invariant inside the type.
+
+        API.md, "Solver Integration" calls this the third tier, against
+        reject-and-retry. A random-permutation path spanning tree guarantees
+        connectivity with every degree at most 2, and is always
+        constructible given `max_degree >= 2`. Extra edges are then layered
+        on only where both endpoints have spare degree, so connectivity,
+        once established, can only be added to and never broken by what
+        follows.
+        """
         degree = [0] * self.n_nodes
         edges: list[tuple[int, int]] = []
         if self.connected and self.n_nodes > 1:
@@ -142,11 +147,14 @@ def graph_topology_factory(described: dict[str, Any]) -> GraphTopology:
 
 @dataclass(frozen=True)
 class FixedTopology:
-    """Non-generative sibling: describes a topology's shape but declares no
-    `sample()` — M9's first non-generative param (`has_nongenerative_params`,
-    `SamplingError`-unless-`.default()`/`.freeze()`, API.md "Sampling and
-    Generativity"). Still full-protocol (serializable) and equality-capable
-    (freezable) via `to_json`/`from_json`."""
+    """A non-generative sibling: a topology's shape, with no `sample()`.
+
+    It is the corpus's non-generative param, so it exercises
+    `has_nongenerative_params` and the `SamplingError` that fires unless a
+    `.default()` or a `.freeze()` covers it, under API.md, "Sampling and
+    Generativity". It is still full-protocol, and therefore serializable and
+    freezable, through `to_json` and `from_json`.
+    """
 
     n_nodes: int = 3
 
@@ -197,9 +205,11 @@ def build_space() -> Space:
 
 
 def build_finite_space() -> Space:
-    """A small, fully finite space (for `.cardinality()`'s exact-count gate)
-    — a fixed-cardinality custom (`cardinality()` declared) alongside plain
-    finite params."""
+    """A small, fully finite space, for `.cardinality()`'s exact-count gate.
+
+    It pairs a fixed-cardinality custom, one declaring `cardinality()`, with
+    plain finite params.
+    """
     topology = FixedFamily(n_nodes=3)
     return ds.space(
         ds.param("family").custom(topology),
@@ -209,9 +219,12 @@ def build_finite_space() -> Space:
 
 @dataclass(frozen=True)
 class FixedFamily:
-    """A tiny generative custom with a *declared* `cardinality()` — every
-    edge subset over `n_nodes` nodes is a legal value (no connectivity/
-    degree constraint), so the count is closed-form: `2 ** C(n_nodes, 2)`."""
+    """A tiny generative custom declaring a `cardinality()`.
+
+    Every edge subset over `n_nodes` nodes is a legal value, there being no
+    connectivity or degree constraint, so the count is closed-form at
+    `2 ** C(n_nodes, 2)`.
+    """
 
     n_nodes: int = 3
 

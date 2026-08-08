@@ -1,12 +1,11 @@
-"""M4.6 gate: build-layer view types (API.md, "Builder view types";
-DECISIONS.md D-27, D-28).
+"""Unit tests for the build-layer view types (API.md, "Builder view types").
 
-Pure build-layer typing sugar — no observable value, JSON format,
-fingerprint, chart, or conformance-law change. These tests check the
-class-shape guarantees (which view each type method/`.repeat()` returns,
-that a second type method is a path-named `ResolutionError` "however it
-was built", and that ordinary modifiers preserve the caller's view) that
-M4.5-and-earlier tests never needed to assert.
+The views are typing sugar at the build layer, with no observable value,
+JSON format, fingerprint, chart or conformance-law consequence. These tests
+check the class-shape guarantees: which view each type method and
+`.repeat()` returns, that a second type method is a path-named
+`ResolutionError` however it was built, and that an ordinary modifier
+preserves the caller's view.
 """
 
 from __future__ import annotations
@@ -123,12 +122,12 @@ class TestRow2SecondTypeMethod:
     """API.md, "Builder view types": choosing a second type still raises
     the path-named row-2 ResolutionError, caught immediately on the fluent
     route (before any `ds.space()` call, since the narrowed view simply
-    lacks the method). The "however it was built" half of the law — a
-    hand-built definition that bypasses the fluent builder — is covered
-    more strongly in TestTypeKindIsNotAConstructorArgument below: since
-    DECISIONS.md D-28, there is no longer a resolution-time check to test,
-    because there is no longer any way to *construct* such an object at
-    all."""
+    lacks the method). The "however it was built" half of the law, over a
+    hand-built definition that bypasses the fluent builder, is covered more
+    strongly in TestTypeKindIsNotAConstructorArgument below. There is no
+    resolution-time check left to test there, because there is no way to
+    construct such an object at all.
+    """
 
     def test_fluent_second_type_method_raises_immediately(self):
         with pytest.raises(ResolutionError, match="'x'"):
@@ -139,22 +138,23 @@ class TestRow2SecondTypeMethod:
             ds.param("x").categorical("a", "b").integer(0, 5)
 
     def test_fluent_still_raises_when_wrapped_in_space(self):
-        # Existing M1 test shape (tests/unit/test_build_resolve.py) keeps
-        # passing: the exception now fires while the argument expression is
-        # evaluated, before ds.space() is even called, but pytest.raises
-        # wraps the whole statement so this is unobservable from outside.
+        # The exception fires while the argument expression is evaluated,
+        # before ds.space() is called, but pytest.raises wraps the whole
+        # statement so that is unobservable from outside. The equivalent
+        # test in tests/unit/test_build_resolve.py keeps passing.
         with pytest.raises(ResolutionError, match="'x'"):
             ds.space(ds.param("x").real(0.0, 1.0).integer(0, 5))
 
 
 class TestTypeKindIsNotAConstructorArgument:
-    """DECISIONS.md D-28: `type_kind` moved from a plain field to a
-    `ClassVar` fixed per view, excluded from `__init__` everywhere in the
-    hierarchy. This makes row 2's "however it was built" guarantee
-    structural rather than checked: there is no longer any way — fluent or
-    hand-built — to construct an object whose `type_kind` disagrees with
-    its class, so `ParamExpr(type_kind=...)` fails before resolution (or
-    `_check_types_and_names`) ever runs."""
+    """`type_kind` is a `ClassVar` fixed per view, not a constructor argument.
+
+    It is excluded from `__init__` everywhere in the hierarchy, which makes
+    row 2's "however it was built" guarantee structural rather than checked.
+    There is no way, fluent or hand-built, to construct an object whose
+    `type_kind` disagrees with its class, so `ParamExpr(type_kind=...)`
+    fails before resolution, and before `_check_types_and_names`, ever runs.
+    """
 
     def test_base_paramexpr_rejects_type_kind_kwarg(self):
         with pytest.raises(TypeError):
@@ -177,10 +177,10 @@ class TestTypeKindIsNotAConstructorArgument:
 class TestRow11WrongTypeModifierIsStaticallyHidden:
     """The Gate's `.categorical(...).log_scale()` example: `.log_scale()`/
     `.quantized()` are removed from every view but Real/Integer (required
-    for the static-typing check in test_static_typing.py), so misuse now
-    surfaces through `__getattr__` — which must still raise row 11's
-    ResolutionError, not degrade to a bare AttributeError (DECISIONS.md
-    D-28)."""
+    for the static-typing check in test_static_typing.py), so misuse
+    surfaces through `__getattr__`. That must still raise row 11's
+    `ResolutionError` rather than degrade to a bare `AttributeError`.
+    """
 
     def test_log_scale_on_categorical_raises_resolution_error(self):
         with pytest.raises(ResolutionError, match="'x'"):
@@ -203,9 +203,9 @@ class TestRow11WrongTypeModifierIsStaticallyHidden:
             ds.param("x").real(0.0, 1.0).repeat(4).quantized(step=0.1)
 
     def test_programmatically_built_quantized_on_categorical_raises(self):
-        # _check_modifier_placement's backstop, unaffected by D-28: unlike
-        # type_kind, quantized_spec remains a plain, freely-settable field
-        # on every view — .quantized() just isn't the route to it here. A
+        # `_check_modifier_placement`'s backstop. Unlike type_kind,
+        # quantized_spec is a plain, freely settable field on every view;
+        # .quantized() is simply not the route to it here. A
         # CategoricalParamExpr built directly (bypassing .quantized(),
         # which doesn't exist on this view) can still carry one, and
         # resolution still has to catch it.

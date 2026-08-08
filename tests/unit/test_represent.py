@@ -1,13 +1,13 @@
-"""M11 Stage 1 unit tests: the `ChartApply` expression node's own shape and
-evaluation semantics, the `Encoding` protocol's `hasattr` predicates, and
-`Representation`'s value-level algebra (`__post_init__`'s `invertible`
-derivation, `then`, `check`) — everything that does not yet need the
-derived tier (`represent()` itself, built at Stage 2).
+"""Unit tests for the representation layer's value-level pieces.
 
-`ChartApply` is not user-constructible (API.md: emitted only by
-`represent/_transport.py`), so it is built directly here against the
-internal AST/eval modules, mirroring how M0's `test_expr.py` builds nodes
-directly before any builder existed to produce them.
+Covered: the `ChartApply` expression node's own shape and evaluation
+semantics, the `Encoding` protocol's `hasattr` predicates, and
+`Representation`'s value-level algebra, meaning `__post_init__`'s
+`invertible` derivation, `then` and `check`.
+
+`ChartApply` is not user-constructible, API.md having `represent/_transport.py`
+emit it, so it is built directly here against the internal AST and
+evaluation modules, as `test_expr.py` builds expression nodes directly.
 """
 
 from __future__ import annotations
@@ -59,10 +59,12 @@ class TestChartApplyNodeShape:
 
 
 class TestVectorBaseUnwrapsChartApply:
-    """The `resolve/_expr_checks.py::_vector_base` fix M11 requires: without
-    it, a transported aggregate over an encoded param (`Sum(ChartApply(...))`
-    or `Sum(ChartApply(Field(...)))`) fails `_referenced_domain`'s bare-
-    reference check on its own decode."""
+    """`_vector_base` unwraps a `ChartApply`.
+
+    Without that, a transported aggregate over an encoded param, whether
+    `Sum(ChartApply(...))` or `Sum(ChartApply(Field(...)))`, fails
+    `_referenced_domain`'s bare-reference check on its own decode.
+    """
 
     def test_unwraps_bare_reference(self):
         ref = ParamExpr(path="dropout")
@@ -170,7 +172,7 @@ class TestEncodingPredicates:
         assert not has_decode_expr(bare)
         assert not has_prop_expr(bare)
         assert not has_rewrite(bare)
-        assert is_measure_preserving(bare) is False  # absent -> False, D-56
+        assert is_measure_preserving(bare) is False  # absent reads as False
 
     def test_each_capability_detected_independently(self):
         assert can_encode(_WithEncode())

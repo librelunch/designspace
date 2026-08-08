@@ -1,8 +1,6 @@
-"""`greenhouse` corpus fixture (PLAN.md corpus table, added M3).
+"""`greenhouse` corpus fixture.
 
-Exercises: choice, nested values, defaults cascade (`.default()` accepted
-and resolution-validated since M1; `apply_defaults()` itself is M6 — see
-PROGRESS.md/DECISIONS.md for the same pattern this fixture's forbears use).
+Exercises choice, nested values and the defaults cascade.
 """
 
 from __future__ import annotations

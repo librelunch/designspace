@@ -40,7 +40,7 @@ def test_depot_stops_are_quick():
 def test_total_dwell_within_budget_under_reject_soft():
     # The budget is a `.encourage()` (declared, not feasibility-affecting)
     # per API.md: ".encourage() ... never affects feasibility or the
-    # reference measure" — the default sampler may exceed it; only
+    # reference measure", so the default sampler may exceed it and only
     # `reject_soft=True` rejects on it.
     space = build_space()
     for cfg in space.sample_dicts(200, seed=3, reject_soft=True):
@@ -74,8 +74,8 @@ def test_per_instance_constraint_violation_is_localized():
 
 
 def test_out_of_range_instance_forbid_is_inapplicable_when_n_stops_is_zero_length_impossible():
-    # n_stops has a lower bound of 1, so stops[0] is always in range —
-    # confirm the root-level instance-path forbid still evaluates normally.
+    # n_stops has a lower bound of 1, so stops[0] is always in range. This
+    # confirms the root-level instance-path forbid still evaluates normally.
     space = build_space()
     result = space.validate({"n_stops": 1, "stops": [{"location": 0, "dwell_min": 5}]})
     assert result.valid
@@ -90,8 +90,7 @@ def test_round_trips():
         assert restored.validate(cfg).valid
 
 
-# -- freeze-ablation: list-of-struct, dynamic count (M9.5, PLAN.md corpus
-# table; DECISIONS.md D-50) --------------------------------------------------
+# -- freeze-ablation: list-of-struct, dynamic count --------------------------
 #
 # `build_space()` itself stays untouched -- these operate on a *derived*
 # frozen space in-test. Wide integer ranges (location 0-9, dwell_min 5-30)
@@ -122,7 +121,7 @@ def test_freeze_stops_rejects_a_config_violating_the_fixed_route():
     assert not frozen.validate({"n_stops": 2, "stops": other}).valid
 
 
-# -- DataFrame output (M10): dynamic-count struct lift -> List(Struct) -------
+# -- DataFrame output: a dynamic-count struct lift gives List(Struct) --------
 
 
 def test_dataframe_stops_is_dynamic_list_of_struct():

@@ -82,8 +82,7 @@ def test_round_trips():
         assert restored.validate(cfg).valid
 
 
-# -- freeze-ablation: list-of-choice, the union pruning rule (M9.5,
-# PLAN.md corpus table; DECISIONS.md D-50) -----------------------------------
+# -- freeze-ablation: list-of-choice, the union pruning rule -----------------
 #
 # `build_space()` itself stays untouched -- these operate on a *derived*
 # frozen space in-test.
@@ -113,7 +112,7 @@ def test_freeze_pipeline_union_rule_keeps_both_payload_variants_when_both_used()
         assert set(cfg["pipeline"][1]) == {"local_search"}
 
 
-# -- DataFrame output (M10): lifted choice -> List(Struct{variant, ...}) -----
+# -- DataFrame output: a lifted choice gives List(Struct{variant, ...}) ------
 
 
 def test_dataframe_pipeline_is_list_of_variant_struct():

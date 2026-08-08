@@ -1,7 +1,7 @@
-"""`memetic_pipeline` corpus fixture (PLAN.md corpus table, M4).
+"""`memetic_pipeline` corpus fixture.
 
-Exercises: lifted choice, `count_of`, list element forms (bare variant
-strings alongside parameterized ones in the same list).
+Exercises a lifted choice, `count_of`, and list element forms, with bare
+variant strings alongside parameterized ones in one list.
 """
 
 from __future__ import annotations

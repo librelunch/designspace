@@ -39,7 +39,8 @@ def test_active_empty_worker_pool_vs_inactive_lift():
     """The spec's own worked example, applied: `.if_inactive(0)` coalesces
     the *inactive* case to a concrete value, so both the inactive-lift and
     the active-empty-list branches end up with an applicable, satisfied
-    (not-violated) forbid — but for different underlying reasons."""
+    forbid that is not violated, for different underlying reasons.
+    """
     space = build_space()
     base = {
         "use_cplex": True,

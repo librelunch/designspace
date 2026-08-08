@@ -157,7 +157,8 @@ class Constraint:
         dispatch: ``"forbid"`` | ``"require"`` | ``"encourage"`` |
         ``"discourage"`` | ``"bound"`` (the last is the implicit constraint an
         expression bound desugars to). Derived from ``(origin, hard)`` so
-        consumers never re-derive polarity by hand (API.md, "Constraints")."""
+        consumers never re-derive polarity by hand (API.md, "Constraints
+        and Feasibility")."""
         if self.origin == "bound":
             return "bound"
         if self.origin == "require":

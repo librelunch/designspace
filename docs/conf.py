@@ -1,15 +1,15 @@
-"""Sphinx configuration for the designspace documentation site (PLAN.md, M13.5).
+"""Sphinx configuration for the designspace documentation site.
 
-The API reference is generated from the docstrings M13 wrote; this file adds no
-prose of its own. Two things here are load-bearing and should not be relaxed
-without reading M13.5 in `PLAN.md`:
+The API reference is generated from the docstrings, and this file adds no
+prose of its own. Two things here are load-bearing and should not be
+relaxed:
 
-- `nitpicky` is on and the build runs under `-W`. Measured at M13.5's open: a
-  default-level build was already clean over all 90 exports, so it could never
-  have caught anything. Nitpicky found a docstring that napoleon renders with
-  the wrong type, which griffe's gate structurally cannot see.
-- every `nitpick_ignore` entry carries the reason it is there. An unexplained
-  ignore is indistinguishable from a bug someone silenced.
+- `nitpicky` is on and the build runs under `-W`. A default-level build was
+  already clean over every export when this was set, so it could never have
+  caught anything. Nitpicky found a docstring that napoleon renders with the
+  wrong type, which griffe's gate structurally cannot see.
+- Every `nitpick_ignore` entry carries the reason it is there. An
+  unexplained ignore is indistinguishable from a bug someone silenced.
 """
 
 from __future__ import annotations
@@ -43,8 +43,9 @@ exclude_patterns = [
     ".jupyter_cache",
 ]
 
-# M13 chose NumPy-style sections; Google style is off so a malformed NumPy
-# block cannot be silently reinterpreted as a valid Google one.
+# The docstrings use NumPy-style sections. Google style is off, so that a
+# malformed NumPy block cannot be silently reinterpreted as a valid Google
+# one.
 napoleon_numpy_docstring = True
 napoleon_google_docstring = False
 
@@ -102,8 +103,8 @@ nitpick_ignore = [
 
 nitpick_ignore_regex = [
     # Private types reachable from a public annotation. `_ElementSnapshot` is
-    # the one M13 deliberately left private (builder state behind
-    # `ParamExpr.lift`); `_NumericParamExpr` is a shared base of the real and
+    # deliberately private, being builder state behind `ParamExpr.lift`,
+    # and `_NumericParamExpr` is a shared base of the real and
     # integer view types, surfaced by `:show-inheritance:`.
     (r"py:.*", r"designspace\..*\._.*"),
     # `{"raise", "mark", "drop"}` is the canonical NumPy "one of" spelling and

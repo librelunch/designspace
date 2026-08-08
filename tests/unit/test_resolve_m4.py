@@ -1,9 +1,6 @@
-"""M4 gate: builder + resolve mechanics for `.repeat()` and vector
-aggregates not already covered by tests/conformance/test_lifts.py.
+"""Unit tests for `.repeat()` and vector-aggregate mechanics.
 
-The D-19 aggregate plain-propagation law (interior-Unknown handling inside
-a non-empty aggregate) now lives in tests/conformance/test_lifts.py — it
-was a judgment call at M4 but is normative spec text as of M4.5.
+Covers what `tests/conformance/test_lifts.py` does not.
 """
 
 from __future__ import annotations
@@ -157,9 +154,9 @@ class TestRow21Defaults:
         assert space.params["x"].domain.element_default == 0.5
 
 
-class TestD24NestedStructChoiceLiftBoundary:
-    """DECISIONS.md D-24: a struct/choice element nested under more than
-    one `.repeat()` level is rejected at resolution, not silently wrong."""
+class TestNestedStructChoiceLiftBoundary:
+    """A struct or choice element under more than one `.repeat()` level is
+    rejected at resolution rather than left silently wrong."""
 
     def test_double_nested_struct_element_raises(self):
         with pytest.raises(ResolutionError, match="nested under more than one"):
@@ -168,14 +165,13 @@ class TestD24NestedStructChoiceLiftBoundary:
     def test_double_nested_scalar_element_is_fine(self):
         ds.space(ds.param("mask").bool().repeat(3).repeat(2))
 
-    # The boundary is about the *shape* — a struct/choice element under two
-    # lift levels — not about the syntax that reaches it. Declaring the
-    # inner lift inside the outer lift's element `Space` composes to the
+    # The boundary is about the shape, a struct or choice element under two
+    # lift levels, rather than about the syntax that reaches it. Declaring
+    # the inner lift inside the outer lift's element `Space` composes to the
     # same `"row[].spans[].lo"` template as the chained spelling, so it is
-    # the same unsupported shape and must be rejected the same way. It
-    # previously fell through the guard and produced silently invalid
-    # configs: empty element dicts for a struct, and — worse — an empty
-    # payload that `validate()` accepted for a choice.
+    # the same unsupported shape and is rejected the same way. Unguarded, it
+    # produces silently invalid configs: empty element dicts for a struct,
+    # and an empty payload that `validate()` accepts for a choice.
 
     def test_struct_lift_inside_a_struct_lift_element_raises(self):
         inner = ds.space(ds.param("spans").space(ds.space(ds.param("v").integer(0, 5))).repeat(2))
@@ -200,8 +196,8 @@ class TestD24NestedStructChoiceLiftBoundary:
             ds.space(ds.param("row").space(inner).repeat(2))
 
     def test_scalar_lift_inside_a_struct_lift_element_is_fine(self):
-        """The supported neighbour: only *struct/choice* elements are
-        bounded — a scalar lift nests arbitrarily."""
+        """The supported neighbour: only a struct or choice element is
+        bounded, a scalar lift nesting arbitrarily."""
         inner = ds.space(ds.param("xs").real(0.0, 1.0).repeat(2))
         space = ds.space(ds.param("row").space(inner).repeat(2))
         config = space.sample_one(seed=0)
@@ -209,8 +205,8 @@ class TestD24NestedStructChoiceLiftBoundary:
         assert space.validate(config).valid
 
     def test_struct_lift_in_a_non_lifted_container_is_fine(self):
-        """Equally, the boundary is two *lift* levels — a struct lift inside
-        a plain struct or a choice variant is one, and stays supported."""
+        """Equally, the boundary is two lift levels. A struct lift inside a
+        plain struct or a choice variant is one, and stays supported."""
         inner = ds.space(ds.param("s").space(ds.space(ds.param("v").integer(0, 5))).repeat(2))
         for space in (
             ds.space(ds.param("g").space(inner)),
@@ -277,12 +273,14 @@ class TestValidateParamOnInstancePaths:
 
 
 class TestStructLiftElementFieldIsItselfAnIndependentLift:
-    """A struct-lift element whose own field is an independent scalar
-    lift (`.space(...).repeat(n)` where a field of the inner space is
-    itself `.repeat()`-ed) — not rejected by D-24 (that boundary is only
-    about a struct/choice element nested under *more than one* `.repeat()`
-    level; a scalar-lift field nested one level inside a struct element is
-    a different shape) and not exercised by any named M4 fixture."""
+    """A struct-lift element whose own field is an independent scalar lift.
+
+    The shape is `.space(...).repeat(n)` where a field of the inner space is
+    itself `.repeat()`-ed. The two-lift-level boundary does not reject it:
+    that boundary covers a struct or choice element nested under more than
+    one `.repeat()`, and a scalar-lift field one level inside a struct
+    element is a different shape.
+    """
 
     def _space(self):
         row = ds.space(

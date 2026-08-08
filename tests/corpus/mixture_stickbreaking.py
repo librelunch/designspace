@@ -1,24 +1,27 @@
-"""`mixture_stickbreaking` corpus fixture (PLAN.md M11 corpus table).
+"""`mixture_stickbreaking` corpus fixture.
 
-Exercises: a genuinely **chosen** representation morphism (API.md, "The
-Representation Layer": "stick-breaking ... supplied by a consumer or a
-type author" — never core), **mixed genotypes** (one param bridged to
-u-space, the rest passed through untouched, since `represent()` given an
-explicit rule never falls back to the induced rule for what it misses),
-and a **custom-to-u-space bridge**: `weights`' native form is a `k`-length
-list of mixture weights summing to 1; its stick-breaking `Encoding`
-(`StickBreakingEncoding`, below — never in `src/`, per the milestone's own
-"zero chosen encodings in core" gate) targets a `k - 1`-length list of
-independent `real(0, 1)` breaking fractions at that same path (D-53: one
-source param, one target `ParamDef`, dimensionality unconstrained).
+Exercises a genuinely chosen representation morphism, mixed genotypes, and a
+custom-to-u-space bridge.
 
-Stick-breaking (GEM) construction: given fractions `v_1..v_{k-1}`,
-`w_i = v_i * prod_{j<i}(1 - v_j)`, `w_k = prod_{j<k}(1 - v_j)` — telescopes
-to `sum(w) == 1` exactly (up to floating point). The inverse recovers each
-`v_i = w_i / (1 - sum(w_1..w_{i-1}))`, well-defined whenever every fraction
-is strictly interior to `(0, 1)` (true with probability 1 under continuous
-sampling from the induced-uniform target `StickBreakingEncoding.target()`
-declares).
+API.md, "The Representation Layer" places "stick-breaking ... supplied by a
+consumer or a type author", never in core, which is why
+`StickBreakingEncoding` below lives here rather than in `src/`. The
+genotypes are mixed: one param is bridged to u-space and the rest pass
+through untouched, since `represent()` given an explicit rule never falls
+back to the induced rule for what that rule misses.
+
+`weights`' native form is a `k`-length list of mixture weights summing to 1.
+Its stick-breaking `Encoding` targets a `k - 1`-length list of independent
+`real(0, 1)` breaking fractions at that same path: one source param, one
+target `ParamDef`, with dimensionality unconstrained.
+
+The stick-breaking, or GEM, construction: given fractions `v_1..v_{k-1}`,
+`w_i = v_i * prod_{j<i}(1 - v_j)` and `w_k = prod_{j<k}(1 - v_j)`, which
+telescopes to `sum(w) == 1` exactly, up to floating point. The inverse
+recovers each `v_i = w_i / (1 - sum(w_1..w_{i-1}))`, well defined whenever
+every fraction is strictly interior to `(0, 1)`, which holds with
+probability 1 under continuous sampling from the induced-uniform target
+`StickBreakingEncoding.target()` declares.
 """
 
 from __future__ import annotations
@@ -46,9 +49,10 @@ class MixtureWeights:
 
     def sample(self, rng: Any) -> Any:
         """Generative via the same GEM construction `StickBreakingEncoding`
-        bridges to explicitly — this is the type's own baseline generative
-        capability (every corpus fixture but `vi_family`'s `FixedTopology`
-        has one), independent of any representation."""
+        bridges to explicitly. This is the type's own baseline generative
+        capability, independent of any representation; every corpus fixture
+        but `vi_family`'s `FixedTopology` has one.
+        """
         remaining = 1.0
         weights: list[float] = []
         for v in rng.random(self.k - 1).tolist():
@@ -85,8 +89,10 @@ CUSTOM_TYPES: dict[str, Any] = {"mixture_weights": mixture_weights_factory}
 
 
 class StickBreakingEncoding:
-    """The chosen morphism itself — a consumer-authored `Encoding`, never
-    shipped by core. `target()` replaces `weights`' `CustomDomain` with a
+    """The chosen morphism itself, a consumer-authored `Encoding` that core
+    never ships.
+
+    `target()` replaces `weights`' `CustomDomain` with a
     `k - 1`-length `real(0, 1)` list at the same path; `decode`/`encode`
     apply the GEM construction and its inverse, element-wise handled
     trivially since both operate on the whole list at once (mirroring how

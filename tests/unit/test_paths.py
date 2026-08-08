@@ -1,8 +1,8 @@
-"""paths/ grammar unit tests (API.md, "Paths and Scoping").
+"""Unit tests for the path grammar (API.md, "Paths and Scoping").
 
-Segment := name ("[" i "]")* (instance) | name ("[]")* (definition). No
-lift lands until M4, so brackets are never produced by resolution yet —
-this exercises the parser directly, "multi-index ready" ahead of need.
+A segment is `name ("[" i "]")*` for an instance path, or `name ("[]")*`
+for a definition path. This exercises the parser directly, at every bracket
+depth.
 """
 
 from __future__ import annotations
@@ -94,8 +94,10 @@ class TestIsDefinitionPath:
 
 
 class TestDefinitionForm:
-    """`definition_form` (M10.6): blank every concrete index to `"[]"` —
-    the inverse of `split_instance_path`'s peel."""
+    """`definition_form`: blank every concrete index to `"[]"`.
+
+    This is the opposite direction from `split_instance_path`'s peel.
+    """
 
     def test_plain_name_is_its_own_definition_form(self):
         assert definition_form("algo.svm.gamma") == "algo.svm.gamma"
@@ -118,10 +120,10 @@ class TestDefinitionForm:
 
 
 class TestStripLastIndex:
-    """`strip_last_index` (M10.7): peel one trailing `"[i]"` bracket group,
-    the "which lift does this concrete sibling belong to" step re-derived
-    by hand (`path[: path.rindex("[")]`) in half a dozen modules before
-    M10.7's traversal-extraction milestone."""
+    """`strip_last_index`: peel one trailing `"[i]"` bracket group.
+
+    This is the step that answers which lift a concrete sibling belongs to.
+    """
 
     def test_single_index(self):
         assert strip_last_index("stops[3]") == "stops"
@@ -134,11 +136,13 @@ class TestStripLastIndex:
 
 
 class TestElementPrefix:
-    """`element_prefix` (M10.7): the lift's element-template prefix, unifying
-    the two idioms every space-guided walker rederived: a bare definition
-    path gets `"[]."` appended; an existing `"[]."`/`"[i]."`-terminated
-    prefix gets its trailing dot dropped before another bracket group is
-    appended (one level deeper, for a chained `.repeat().repeat()`)."""
+    """`element_prefix`: the lift's element-template prefix.
+
+    It unifies the two idioms every space-guided walker needs. A bare
+    definition path gets `"[]."` appended. An existing prefix ending in
+    `"[]."` or `"[i]."` has its trailing dot dropped before another bracket
+    group is appended, one level deeper, for a chained `.repeat().repeat()`.
+    """
 
     def test_bare_path(self):
         assert element_prefix("edges") == "edges[]."

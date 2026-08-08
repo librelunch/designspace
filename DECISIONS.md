@@ -349,7 +349,7 @@ stated rule.
 
 *Modifiers and Layering* gains the one-lift-level statement for container
 elements, naming both routes; the error table gains row 34. Conformance laws
-live in `tests/unit/test_resolve_m4.py::TestD24NestedStructChoiceLiftBoundary`
+live in `tests/unit/test_resolve_m4.py::TestNestedStructChoiceLiftBoundary`
 and as expected-error cells of the nesting grid in
 `tests/conformance/test_reference_closure.py`.
 

@@ -49,10 +49,10 @@ def test_round_trips():
         assert restored.validate(cfg).valid
 
 
-# -- freeze-ablation (M8, PLAN.md corpus table; DECISIONS.md D-40) ----------
+# -- freeze-ablation ---------------------------------------------------------
 #
 # `build_space()` itself stays untouched (byte-identical known-answer
-# vector) — these operate on a *derived* frozen space in-test.
+# vector); each operates on a derived frozen space, built in-test.
 
 
 def test_freeze_long_timeout_keeps_debug_feasible():
@@ -75,17 +75,17 @@ def test_freeze_short_timeout_ablates_debug_verbosity():
 
 
 def test_freeze_verbosity_ablation_forces_long_timeout():
-    # M10.5 closed the "metaprogramming hole" (check_fully_resolved now also
-    # re-checks space.constraints, not just conditions, over the space
-    # .freeze() rebuilds via space_from_ir). Freezing "verbosity" narrows its
-    # OrdinalDomain to the single fixed value (ops/_structural.py's ordinal
-    # freeze mechanism), which drops "silent" from the declared values the
-    # fixture's own `.encourage(verbosity > "silent", tags=("observability",))`
-    # references -- row 18 ("ordinal comparison against a literal that is not
-    # a declared value") now correctly catches it, where it used to pass
-    # through silently. That encourage constraint is unrelated to what this
-    # test checks (the forbid-driven timeout escalation), so it is dropped
-    # by tag before freezing, exactly as `.without_constraints()` exists for.
+    # Freezing "verbosity" narrows its OrdinalDomain to the single fixed
+    # value, through the ordinal freeze mechanism in ops/_structural.py.
+    # That drops "silent" from the declared values the fixture's own
+    # `.encourage(verbosity > "silent", tags=("observability",))`
+    # references, and row 18, "ordinal comparison against a literal that is
+    # not a declared value", catches it over the space .freeze() rebuilds
+    # through space_from_ir.
+    #
+    # That encourage constraint is unrelated to what this test checks, the
+    # forbid-driven timeout escalation, so it is dropped by tag before
+    # freezing, which is what `.without_constraints()` exists for.
     space = build_space()
     with pytest.raises(ResolutionError, match=r"not a declared value"):
         space.freeze(verbosity="debug")
@@ -96,10 +96,10 @@ def test_freeze_verbosity_ablation_forces_long_timeout():
         assert cfg["timeout_s"] >= 60
 
 
-# -- freeze-ablation: choice (M9.5, PLAN.md corpus table; DECISIONS.md D-50) --
+# -- freeze-ablation: choice ------------------------------------------------
 #
 # `build_space()` itself stays untouched -- these operate on a *derived*
-# frozen space in-test (same D-40 discipline as the M8 freeze-ablation
+# frozen space, built in-test, under the same discipline as the
 # tests above, extended to this milestone's container-freeze completion).
 
 

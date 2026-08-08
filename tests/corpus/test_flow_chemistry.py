@@ -67,10 +67,10 @@ def test_round_trips():
         assert restored.validate(cfg).valid
 
 
-# -- freeze-ablation (M9.5, PLAN.md corpus table; DECISIONS.md D-50) --------
+# -- freeze-ablation ---------------------------------------------------------
 #
 # `build_space()` itself stays untouched (byte-identical known-answer
-# vector) — these operate on a *derived* frozen space in-test.
+# vector); each operates on a derived frozen space, built in-test.
 
 
 def test_freeze_reagents_to_a_fixed_membership():

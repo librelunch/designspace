@@ -47,10 +47,14 @@ class TestFlattenUnflatten:
 
 
 class TestUnflattenStaticCountFallback:
-    """M10.7 (API.md, "The fixed leaf layout"): "for a static count [unflatten]
-    recovers the length from the ListDomain rather than requiring the
-    bookkeeping key." A present key still wins; a dynamic-and-absent count
-    is unchanged (outer omits, nested raises `KeyError`)."""
+    """`unflatten`'s static-count fallback.
+
+    API.md, "The fixed leaf layout" says that "for a static count
+    [unflatten] recovers the length from the ListDomain rather than
+    requiring the bookkeeping key." A present key still wins. A dynamic
+    count that is absent stays unrecoverable: the outer level omits the
+    list, and a nested level raises `KeyError`.
+    """
 
     def _static_space(self):
         return ds.space(
@@ -137,8 +141,9 @@ class TestVariantPayloadDestructure:
 
 class TestInstancePathVariantPayloadDestructure:
     """API.md, "Config Utilities": `variant`/`payload`/`destructure` accept
-    instance paths (`pipeline[1]`) into a lifted choice; the bare list path is
-    a misuse error naming the indexed form (PLAN.md M7.5)."""
+    instance paths such as `pipeline[1]` into a lifted choice. The bare list
+    path is a misuse error whose message names the indexed form.
+    """
 
     def _cfg(self) -> dict:
         # A lifted-choice config: bare variants alongside parameterized ones.

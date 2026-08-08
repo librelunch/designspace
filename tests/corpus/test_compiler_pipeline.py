@@ -1,6 +1,8 @@
-"""Corpus: `compiler_pipeline` end-to-end (resolve -> sample 200 -> validate
-all); also exercises `.map_params()` (M8 gate: "map_params coarsening
-example from the spec history")."""
+"""Corpus: `compiler_pipeline`, end-to-end.
+
+Resolve, sample 200, validate all, plus `.map_params()` as a coarsening
+rewrite over the registry-generated params.
+"""
 
 from __future__ import annotations
 

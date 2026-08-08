@@ -1,6 +1,6 @@
 """Conformance laws: custom types.
 
-See API.md, "Protocols" > "ParamType", the custom-type contract laws,
+See API.md, "Protocols" for `ParamType` and the custom-type contract laws,
 `.custom()` in both forms, `.prop()`, the `from_json` registry, and error
 rows 16, 23 and 27.
 

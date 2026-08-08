@@ -1,6 +1,7 @@
-"""`delivery_routes` corpus fixture (PLAN.md corpus table, M4).
+"""`delivery_routes` corpus fixture.
 
-Exercises: struct lifts, instance paths, per-instance constraints, aggregates.
+Exercises struct lifts, instance paths, per-instance constraints and
+aggregates.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ def build_space() -> Space:
         ds.param("location").integer(0, N_LOCATIONS - 1),
         ds.param("dwell_min").integer(5, 30),
     ).forbid(
-        # The depot (location 0) is a quick stop only — a per-instance
+        # The depot, location 0, is a quick stop only. This is a per-instance
         # constraint, instantiated once per stop.
         (ds.param("location") == 0) & (ds.param("dwell_min") > 10),
     )

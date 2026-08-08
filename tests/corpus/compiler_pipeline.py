@@ -1,15 +1,20 @@
-"""`compiler_pipeline` corpus fixture (PLAN.md M8 corpus table).
+"""`compiler_pipeline` corpus fixture.
 
-Exercises: **registry-driven generation** — a catalog of optimization
-passes, each with declared prerequisite passes, turned into `.bool()`
-params and `require(pass.implies(all_(*prereqs)))` constraints by looping
-over the registry rather than hand-typing each one; **`ds.all_()`** — both
-as a genuine multi-operand fold (`register_allocation`'s two prerequisites)
-and its zero-operand identity (a prerequisite-free pass's `all_(*())`
-folds to the literal `True`, so its `.implies()` is trivially satisfied —
-**degenerate arities**, Degeneracy Table: "`ds.all_()` | Literal `True`").
-`.map_params()` (M8) is exercised in `test_compiler_pipeline.py`, not here
-— a coarsening rewrite over these registry-generated params.
+Exercises registry-driven generation, `ds.all_()` and degenerate arities.
+
+A catalogue of optimization passes, each with declared prerequisites, is
+turned into `.bool()` params and `require(pass.implies(all_(*prereqs)))`
+constraints by looping over the registry rather than by hand-typing each
+one.
+
+`ds.all_()` appears both as a genuine multi-operand fold, over
+`register_allocation`'s two prerequisites, and at its zero-operand identity:
+a prerequisite-free pass's `all_(*())` folds to the literal `True`, so its
+`.implies()` is trivially satisfied. The Degeneracy Table gives that as
+"`ds.all_()` | Literal `True`".
+
+`test_compiler_pipeline.py` exercises `.map_params()` over these
+registry-generated params, as a coarsening rewrite.
 """
 
 from __future__ import annotations

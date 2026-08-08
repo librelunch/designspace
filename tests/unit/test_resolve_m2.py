@@ -1,9 +1,11 @@
-"""M2 gate: chart-family domain errors (row 9), external-prior support (row
-19), and `.forbid()`/`.encourage()` resolution (rows 6/14 generalized to
-constraints, row 23 tags/meta).
+"""Unit tests for chart-family domain errors and constraint resolution.
 
-Per milestone gate: every implemented error-table row has a test asserting
-the error class *and* that the message names the offending path.
+Covered: row 9's chart-family domain errors, row 19's external-prior
+support, and `.forbid()` and `.encourage()` resolution, meaning rows 6 and
+14 generalized to constraints and row 23 over tags and metadata.
+
+Every error-table row here has a test asserting both the error class and
+that the message names the offending path.
 """
 
 from __future__ import annotations
@@ -116,10 +118,10 @@ class TestRow23ForbidEncourageTagsMeta:
             space.encourage(ds.param("x") > 0.5, meta={"k": object()})
 
     def test_list_meta_value_is_accepted(self):
-        # DECISIONS.md D-36 (corrected): row 23 gates "JSON-serializable"
-        # (a list passes that bar), not "scalar" — a nested list/dict meta
-        # value recurses through the same codec as `default`/`list_default`
-        # (see tests/conformance/test_identity.py for the round-trip law).
+        # Row 23 gates "JSON-serializable" rather than "scalar", and a
+        # list clears that bar. A nested list or dict meta value recurses
+        # through the codec `default` and `list_default` use;
+        # tests/conformance/test_identity.py holds the round-trip law.
         space = ds.space(ds.param("x").real(0.0, 1.0)).encourage(
             ds.param("x") > 0.5, meta={"k": [1, 2]}
         )
@@ -133,9 +135,9 @@ class TestRow23ForbidEncourageTagsMeta:
 
     def test_tuple_meta_value_raises(self):
         # A tuple round-trips unfaithfully (comes back as a list), unlike
-        # json.dumps's lenient array coercion — rejected at construction,
-        # not left to crash later at fingerprint()/to_json() (DECISIONS.md
-        # D-36).
+        # json.dumps's lenient array coercion. It is rejected at
+        # construction rather than left to crash later at fingerprint() or
+        # to_json().
         space = ds.space(ds.param("x").real(0.0, 1.0))
         with pytest.raises(ResolutionError, match="encourage"):
             space.encourage(ds.param("x") > 0.5, meta={"k": (1, 2)})
@@ -147,9 +149,9 @@ class TestRow23ForbidEncourageTagsMeta:
 
     def test_dollar_prefixed_meta_key_raises(self):
         # A "$"-prefixed key collides with the identity tag micro-format
-        # ({"$t": ..., "v": ...}) when nested inside a meta value — rejected
-        # at construction rather than crashing from_json with a bare
-        # KeyError later (DECISIONS.md D-36).
+        # ({"$t": ..., "v": ...}) when nested inside a meta value, and is
+        # rejected at construction rather than crashing from_json with a
+        # bare KeyError later.
         space = ds.space(ds.param("x").real(0.0, 1.0))
         with pytest.raises(ResolutionError, match="encourage"):
             space.encourage(ds.param("x") > 0.5, meta={"cfg": {"$t": "oops"}})

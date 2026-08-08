@@ -1,11 +1,14 @@
-"""M10: `frame/` — DataFrame output (API.md, "Config Representation" ->
-"DataFrame output"). Covers what no corpus fixture exercises: the
-static-count `Array` dtype rule (nested `List(Array(...))` for an
-outer-dynamic-inner-static lift) and the polars-absent error path. The
-per-kind dtype table and null-for-inactive cross-fixture laws live in
-tests/conformance/test_dataframe.py; bespoke container-shaped-column
-checks live in tests/corpus/test_delivery_routes.py and
-tests/corpus/test_memetic_pipeline.py.
+"""Unit tests for `frame/`, the DataFrame output.
+
+See API.md, "Config Representation" > "DataFrame output". This covers what
+no corpus fixture exercises: the static-count `Array` dtype rule, including
+the nested `List(Array(...))` an outer-dynamic, inner-static lift produces,
+and the polars-absent error path.
+
+The per-kind dtype table and the null-for-inactive cross-fixture laws live
+in `tests/conformance/test_dataframe.py`. Bespoke container-shaped column
+checks live in `tests/corpus/test_delivery_routes.py` and
+`tests/corpus/test_memetic_pipeline.py`.
 """
 
 from __future__ import annotations

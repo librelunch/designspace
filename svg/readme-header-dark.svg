@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="240" viewBox="0 0 1000 240">
+  <rect width="1000" height="240" fill="#26241f"></rect>
+  <g transform="translate(72 68) scale(2.1667)">
+    <rect x="2.6" y="2.6" width="42.8" height="42.8" rx="11.5" fill="none" stroke="#eeece7" stroke-width="3.2"></rect>
+    <rect x="13.4" y="13.4" width="27" height="27" rx="7.4" fill="none" stroke="#8aa8f2" stroke-width="3.2"></rect>
+    <circle cx="26.9" cy="26.9" r="4.6" fill="#8aa8f2"></circle>
+  </g>
+  <text x="210" y="118" font-family="IBM Plex Mono, ui-monospace, monospace" font-weight="600" font-size="54" letter-spacing="-1.62" fill="#eeece7">design</text>
+  <text x="394.68" y="118" font-family="IBM Plex Mono, ui-monospace, monospace" font-weight="600" font-size="54" letter-spacing="-1.62" fill="#8aa8f2">space</text>
+  <rect x="210" y="126" width="28.78" height="4" fill="#8aa8f2"></rect>
+  <rect x="394.68" y="126" width="28.78" height="4" fill="#eeece7"></rect>
+  <text x="210" y="160" font-family="IBM Plex Sans, system-ui, sans-serif" font-size="19" fill="#a8a49b">Declarative design spaces. Search strategy not included.</text>
+</svg>

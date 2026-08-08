@@ -742,7 +742,8 @@ def _evaluate_is_active(
     """Evaluate `is_active()`, which is total only under full evaluation.
 
     Under full evaluation every param has a determined binary activity, by
-    rule 1. Under partial evaluation it does not: API.md, "Partial Configs"
+    rule 1. Under partial evaluation it does not: API.md, "Space: Partial
+    Configs"
     says `is_active(p)` is "determined for a determined `p`, Unknown for an
     `unknown` one".
 
@@ -992,7 +993,8 @@ def classify_condition(
 ) -> str:
     """One param's own condition as `"active"`, `"inactive"` or `"unknown"`.
 
-    This applies API.md, "Partial Configs"' pending-dependency rule,
+    This applies the pending-dependency rule of API.md, "Space: Partial
+    Configs",
     evaluating against the status already computed for the condition's
     dependencies; topological order guarantees they precede it.
 
@@ -1133,7 +1135,8 @@ def _resolve_list_status(
     """Assign a list container's partial status.
 
     A list container is `"set"`, `"unknown"` or `"inactive"`, and never
-    `"active_unset"` (API.md, "Partial Configs"). There is no value to await
+    `"active_unset"` (API.md, "Space: Partial Configs"). There is no value
+    to await
     for the container itself, only for its count param, which appears
     elsewhere in `topological_order`, and for its instance leaves, expanded
     below once the count is known.

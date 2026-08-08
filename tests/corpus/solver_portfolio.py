@@ -1,8 +1,8 @@
-"""`solver_portfolio` corpus fixture (PLAN.md corpus table, M4).
+"""`solver_portfolio` corpus fixture.
 
-Exercises: bool + `ds.count()`, `if_inactive`, inactive-vs-empty (the
-spec's own worked example pattern, API.md "Three-valued semantics"
-lines 295-298).
+Exercises bool with `ds.count()`, `if_inactive`, and the distinction
+between inactive and empty, which is the spec's own worked example under
+API.md, "Three-valued semantics".
 """
 
 from __future__ import annotations
@@ -29,7 +29,8 @@ def build_space() -> Space:
             .when(ds.param("use_ensemble")),
         )
         .forbid(
-            # At least one solver must be enabled — a forbid (feasibility),
+            # At least one solver must be enabled. This is a forbid, and so
+            # decides feasibility,
             # so the reference sampler actually respects it.
             ds.count(*solver_flags) < 1,
         )

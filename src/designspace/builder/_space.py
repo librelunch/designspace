@@ -1,4 +1,5 @@
-"""`Space`: the resolved container `ds.space()` returns (API.md, "Space").
+"""`Space`: the resolved container `ds.space()` returns (API.md,
+"Construction").
 
 A `Space` holds the resolved parameters, the activity conditions, the
 feasibility constraints, the named reference configurations `.anchor()`

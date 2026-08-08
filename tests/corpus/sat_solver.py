@@ -1,14 +1,13 @@
-"""`sat_solver` corpus fixture (PLAN.md corpus table, added
-M3).
+"""`sat_solver` corpus fixture.
 
-Exercises: choice+ordinal, ordinal comparisons. `build_space()` stays
-byte-identical to its M7 committed known-answer vector (DECISIONS.md D-40):
-"freeze asserts at M8" in the plan's corpus table means `.freeze()`-ablation
-tests added to `test_sat_solver.py` at M8, not anchors added here — adding
-`.anchor()` calls to this fixture would change its already-frozen
-`fingerprint_full`/`to_json`, which the "add — never replace — known-answer
-vectors" discipline forbids. Anchors are exercised instead by
-`tests/conformance/_anchor_demo.py`'s own, separately committed vector.
+Exercises choice with ordinal, and ordinal comparisons.
+
+`build_space()` stays byte-identical to its committed known-answer vector.
+`.freeze()`-ablation tests live in `test_sat_solver.py`; adding `.anchor()`
+calls here would change this fixture's already-frozen `fingerprint_full` and
+`to_json`, which the add-never-replace discipline forbids. Anchors are
+exercised instead by `tests/conformance/_anchor_demo.py` and its own
+committed vector.
 """
 
 from __future__ import annotations

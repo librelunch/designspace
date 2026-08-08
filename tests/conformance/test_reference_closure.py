@@ -198,14 +198,13 @@ ROUTES = [
 ]
 
 
-# A cell whose *shape* is unsupported rather than whose behaviour is wrong.
+# Cells whose shape is unsupported rather than whose behaviour is wrong.
 # Placing a struct- or choice-elemented lift inside another lift's element
-# composes to the boundary a struct or choice element nested under more
-# than one .repeat() level hits, so the cell must raise, and asserting that
-# it
-# raises is as much a law as the passing cells, since the alternative
-# discovered here was silently invalid configs.
-EXPECTED_D24 = {
+# composes to the boundary a struct or choice element nested under more than
+# one .repeat() level hits, so each cell must raise. Asserting that it raises
+# is as much a law as the passing cells: the alternative is a silently
+# invalid config.
+EXPECTED_UNSUPPORTED_SHAPES = {
     ("element_constraint", "lifted_struct"),
     ("lifted_choice", "lifted_struct"),
 }
@@ -219,7 +218,7 @@ class TestNestingGrid:
     @pytest.mark.parametrize("route", ROUTES)
     @pytest.mark.parametrize("fact", sorted(FACTS))
     def test_cell(self, fact: str, route: str) -> None:
-        if (fact, route) in EXPECTED_D24:
+        if (fact, route) in EXPECTED_UNSUPPORTED_SHAPES:
             with pytest.raises(ResolutionError, match="nested under more than one"):
                 _at_route(FACTS[fact](), route)
             return
@@ -237,7 +236,7 @@ class TestNestingGrid:
     def test_every_expected_error_cell_is_in_the_grid(self) -> None:
         """Guards the guard: a renamed fact or route must not silently turn
         an expected-error cell into an untested one."""
-        for fact, route in EXPECTED_D24:
+        for fact, route in EXPECTED_UNSUPPORTED_SHAPES:
             assert fact in FACTS and route in ROUTES
 
 

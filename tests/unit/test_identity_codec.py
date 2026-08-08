@@ -1,14 +1,17 @@
-"""Unit round-trip tests for the identity/serialize codec
-(`identity/_tags.py`, `identity/_ir_codec.py`) — every expression AST node
-kind and every `Domain` kind. These are lower-level than
-`tests/conformance/test_identity.py`'s laws: they pin the codec itself,
-independent of any particular corpus space, since a subtle encode/decode bug
-in one node/domain kind is otherwise easy to miss if only exercised through
-a handful of hand-built law-test spaces.
+"""Round-trip tests for the identity and serialization codec.
 
-Expression nodes use `eq=False` (identity equality only), so round-trip is
-verified by *re-encoding* the decoded node and comparing the tree — the
-tree, not the Python object, is the thing whose stability matters.
+The codec is `identity/_tags.py` with `identity/_ir_codec.py`, and every
+expression AST node kind and every `Domain` kind is covered.
+
+These are lower-level than `tests/conformance/test_identity.py`'s laws: they
+pin the codec itself, independent of any particular corpus space. A subtle
+encode-or-decode bug in one node or domain kind is otherwise easy to miss
+when it is exercised only through a handful of hand-built law-test spaces.
+
+Expression nodes use `eq=False`, so equality is identity. A round trip is
+therefore verified by re-encoding the decoded node and comparing the trees:
+the tree, rather than the Python object, is the thing whose stability
+matters.
 """
 
 from __future__ import annotations
@@ -141,10 +144,12 @@ class TestExprCodecDisambiguation:
 
 
 class TestValueOpacityCodec:
-    """`Value` (M10.8) is not a generic `EXPR_CASES` round-trip entry above
-    -- it is the one node `decode_expr` deliberately cannot reconstruct
-    (it raises on the mark-sentinel `"opaque"` kind rather than round-
-    tripping), so its codec behavior gets its own class instead."""
+    """`Value` is the one node `decode_expr` deliberately cannot reconstruct.
+
+    It raises on the mark-sentinel `"opaque"` kind rather than round-
+    tripping, so it is not a generic `EXPR_CASES` entry above and its codec
+    behaviour gets its own class.
+    """
 
     def _node(self) -> Value:
         return Value(lambda x: x, (_x,), float)
@@ -317,9 +322,8 @@ class TestListDomainRoundTrip:
     def test_struct_shaped_list_default(self):
         # `list_default` items can be full phenotype values -- a struct
         # dict, a bare choice-variant string, or a parameterized-choice
-        # dict -- never just a flat scalar (see the M6 tests this mirrors,
-        # tests/unit/test_resolve_m6.py's struct/lifted-choice list_default
-        # cases).
+        # dict, and never a flat scalar. `tests/unit/test_resolve_m6.py`'s
+        # struct and lifted-choice list_default cases mirror this.
         domain = ListDomain(
             element_kind="space",
             element_domain=StructDomain(),

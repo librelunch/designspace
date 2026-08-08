@@ -1,7 +1,9 @@
-"""Unit tests for `sample/_diagnostics.py` (M10.6, PLAN.md): misuse guards
-and the `instance_evals_indexed`/`instance_constraint_evals` relationship
-diagnostics relies on. The conformance laws (Kleene rules, D-73/D-74) live
-in `tests/conformance/test_sampling_diagnostics.py`.
+"""Unit tests for `sample/_diagnostics.py`.
+
+Covers the misuse guards, and the relationship between
+`instance_evals_indexed` and `instance_constraint_evals` that diagnostics
+relies on. The conformance laws live in
+`tests/conformance/test_sampling_diagnostics.py`.
 """
 
 from __future__ import annotations

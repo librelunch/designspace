@@ -1,5 +1,6 @@
-"""M3 gate: builder + resolve mechanics for choice/struct/subset/permutation
-not already covered by tests/conformance/test_structure.py.
+"""Builder and resolve mechanics for choice, struct, subset and permutation.
+
+Covers what `tests/conformance/test_structure.py` does not.
 """
 
 from __future__ import annotations
@@ -131,9 +132,12 @@ class TestNoChartForStructuralKinds:
 
 
 class TestUpReferenceDeferredChecks:
-    """D-26: condition up-references are tolerated per-scope and re-checked at
-    finalization over the merged space, so the deferred error-table rows still
-    fire — just at the terminal op, not at construction."""
+    """A condition up-reference is tolerated per-scope and re-checked later.
+
+    The re-check happens at finalization, over the merged space, so the
+    deferred error-table rows still fire, at the terminal operation rather
+    than at construction.
+    """
 
     def test_up_reference_into_struct_binds(self):
         # A struct payload (not only choice) may carry an up-reference too.
@@ -167,7 +171,8 @@ class TestUpReferenceDeferredChecks:
 
     def test_up_reference_type_error_caught_at_finalization(self):
         # Ordering a categorical up-reference (row 14) is invisible standalone
-        # (the categorical is not in the payload's scope) — caught at finalize.
+        # the categorical not being in the payload's scope, and is caught
+        # at finalization.
         space = ds.space(
             ds.param("mode").categorical("a", "b", "c"),
             ds.param("algo").choice(

@@ -1,8 +1,8 @@
-"""M1 gate: builder + resolve pipeline for flat scalar spaces.
+"""Unit tests for the builder and resolve pipeline over flat scalar spaces.
 
-Per milestone gate: every implemented error-table row has a test asserting
-the error class *and* that the message names the offending path; degenerate
-scalars resolve; declaration order is preserved in Space.params.
+Every error-table row here has a test asserting both the error class and
+that the message names the offending path. Degenerate scalars resolve, and
+declaration order is preserved in `Space.params`.
 """
 
 from __future__ import annotations
@@ -108,11 +108,12 @@ class TestRow5NameCharacters:
 
 class TestRow6UndeclaredReference:
     def test_when_references_undeclared_param(self):
-        # D-26 (superseding D-12): a `.when()` reference that resolves nowhere
-        # locally is *tolerated* at construction — it may be an up-reference to
-        # an enclosing scope that binds once this space is embedded. The row-6
-        # error still fires (same class, same phase R, structure-only, no config
-        # needed), only at the terminal-op finalization over the merged space.
+        # A `.when()` reference resolving nowhere locally is tolerated at
+        # construction: it may be an up-reference to an enclosing scope that
+        # binds once this space is embedded. The row-6 error still fires,
+        # with the same class and the same phase R, structure-only and
+        # needing no config, at the terminal operation's finalization over
+        # the merged space.
         space = ds.space(ds.param("x").bool().when(ds.param("y")))
         with pytest.raises(ResolutionError, match="'y'"):
             space.sample_one(seed=0)
@@ -297,10 +298,9 @@ class TestRow23TagsMeta:
             ds.space(ds.param("x").bool().meta(fn=lambda: 1))
 
     def test_list_meta_value_is_accepted(self):
-        # DECISIONS.md D-36 (corrected): row 23 gates "JSON-serializable"
-        # (a list passes that bar) — recurses through the same codec as
-        # `default`/`list_default` (see tests/conformance/test_identity.py
-        # for the round-trip law).
+        # Row 23 gates "JSON-serializable", and a list clears that bar. It
+        # recurses through the codec `default` and `list_default` use;
+        # tests/conformance/test_identity.py holds the round-trip law.
         space = ds.space(ds.param("x").bool().meta(k=[1, 2]))
         assert dict(space.params["x"].meta) == {"k": [1, 2]}
 
@@ -318,9 +318,11 @@ class TestRow23TagsMeta:
 
 
 class TestExpressionBoundsOnRepeatedElementNotYetSupported:
-    """M5 implements expression bounds on ordinary (non-lifted) scalar
-    params — tests/unit/test_resolve_m5.py. A `.repeat()` element's own
-    domain is a separate, still-unsupported case (DECISIONS.md D-29)."""
+    """A `.repeat()` element's own domain does not support expression bounds.
+
+    Ordinary, non-lifted scalar params do; `tests/unit/test_resolve_m5.py`
+    covers them.
+    """
 
     def test_lift_element_expression_bound_raises(self):
         with pytest.raises(ResolutionError, match="repeated element"):

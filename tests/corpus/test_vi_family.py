@@ -1,5 +1,7 @@
-"""Corpus: `vi_family` end-to-end (resolve -> sample 200 -> validate all ->
-round-trip); also exercises the M9 gate items this fixture was built for.
+"""Corpus: `vi_family`, end-to-end.
+
+Resolve, sample 200, validate all, round-trip, plus the custom-type surface
+this fixture was built for.
 """
 
 from __future__ import annotations

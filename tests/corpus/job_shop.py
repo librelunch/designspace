@@ -1,6 +1,6 @@
-"""`job_shop` corpus fixture (PLAN.md corpus table, added M3).
+"""`job_shop` corpus fixture.
 
-Exercises: permutation, `position_of`.
+Exercises permutation and `position_of`.
 """
 
 from __future__ import annotations
