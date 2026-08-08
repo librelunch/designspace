@@ -601,13 +601,13 @@ class Prop(ArithExpr, BoolExpr):
     """`ds.param("c").prop(name)`: a custom type's declared scalar
     property (int/float/bool/str only). `operand` is the custom-typed
     param reference; `name` is checked against the type's `properties()`
-    at resolution (row 16). Dual-typed like `ParamExpr` itself: a
+    at resolution. Dual-typed like `ParamExpr` itself: a
     bool-declared prop is usable directly as a condition (`.require(x.prop
     ("ok"))`, `&`/`|`/`~`), not just inside a `Compare`, matching the same
     "bare BoolExpr coerces via `bool(value)`" convention every param
-    reference already gets (no `type_kind`/declared-type gate on bare
-    boolean-position usage anywhere in the codebase; see row 16 for the
-    *declared + scalar* checks that do still apply uniformly here).
+    reference already gets. Bare boolean-position usage carries no
+    `type_kind` or declared-type gate anywhere in the library, while the
+    *declared* and *scalar* checks do still apply uniformly here.
 
     Exported because it is `.prop()`'s return type and no other public
     type captures it: being both an `ArithExpr` and a `BoolExpr` is what
@@ -641,14 +641,14 @@ class Prop(ArithExpr, BoolExpr):
 class Value(ArithExpr, BoolExpr):
     """`ds.value(fn, *operands, returns=type)`: an opaque derived quantity:
     `.prop()` generalized from *one custom param, named property* to *any
-    operands, arbitrary function* (API.md, "Expressions"). `fn` is called
-    with exactly the operand values, positionally, and never the config
-    (row 30 checks its operands are all expressions at construction); the
+    operands, arbitrary function*. `fn` is called with exactly the operand
+    values, positionally, and never the config; every operand is checked
+    to be an expression at construction. The
     referenced params are the union of the operands' own references, so
     `dependency_graph`/ordering/cycle detection are unaffected. Dual-typed
     like `Prop`: a `returns=bool` node is usable directly as a condition,
     matching the same "bare BoolExpr coerces via `bool(value)`" convention.
-    `returns` is one of `SCALAR_TYPES` (row 30).
+    `returns` is one of `SCALAR_TYPES`.
 
     Exported because it is `ds.value()`'s return type and no other public
     type captures it: being both an `ArithExpr` and a `BoolExpr` is what

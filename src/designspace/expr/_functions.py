@@ -205,9 +205,9 @@ def value(fn: Callable[..., Any], *operands: Expr, returns: type) -> Value:
     if returns not in SCALAR_TYPES:
         raise ResolutionError(
             f"ds.value(): returns={returns!r} is not scalar-typed; only "
-            "int/float/bool/str are expression-visible (row 30)"
+            "int/float/bool/str are expression-visible"
         )
     for operand in operands:
         if not isinstance(operand, Expr):
-            raise ResolutionError(f"ds.value(): operand {operand!r} is not an expression (row 30)")
+            raise ResolutionError(f"ds.value(): operand {operand!r} is not an expression")
     return Value(fn, operands, returns)

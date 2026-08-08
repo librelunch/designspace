@@ -25,16 +25,16 @@ if TYPE_CHECKING:
 
 
 class Encoding(Protocol):
-    """The genotype for **one** param (API.md, "The Representation Layer").
+    """The genotype for **one** param.
 
     Required:
 
     - `target(self, param: ParamDef) -> ParamDef`, the genotype `ParamDef`
-      at `param`'s own path (row 31: a different path is a resolution
-      error).
+      at `param`'s own path. Returning any other path is a resolution
+      error.
     - `decode(self, param: ParamDef, value: Any) -> Any`, genotype value
-      to phenotype value; must be **total** over `target`'s domain (API.md,
-      "Obligations"). Repair inside `decode` when the phenotype domain
+      to phenotype value; must be **total** over `target`'s domain.
+      Repair inside `decode` when the phenotype domain
       carries an invariant the genotype cannot express, or choose a
       genotype that cannot represent an invalid value.
 
@@ -50,9 +50,9 @@ class Encoding(Protocol):
       covers it instead).
     - `prop_expr(self, param: ParamDef, name: str) -> Expr | None`, a
       phenotype property (`.prop(name)`) as a genotype expression; the
-      repair that lets a `.prop()`-read param be encoded at all (row 32;
-      Absent, or returning `None` for a live property, row 32 still
-      fires.
+      repair that lets a `.prop()`-read param be encoded at all. Absent,
+      or returning `None` for a property something still reads,
+      `represent()` raises rather than encoding it.
     - `rewrite(self, param: ParamDef, node: Expr) -> Expr | None`, per-node
       structural rewrite where leaf substitution cannot reach (a one-vs-
       rest categorical bridge turning `algo == "adam"` into a pairwise

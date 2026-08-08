@@ -400,7 +400,7 @@ def _revalidate_anchors_unchanged_shape(space: Space, *, call: str) -> Space:
             reasons = "; ".join(f"{e.param!r}: {e.reason}" for e in result.param_errors)
             raise ResolutionError(
                 f"{call}: anchor {name!r} is invalid after the operation "
-                f"({reasons or 'a declared constraint is violated'}) (row 22)"
+                f"({reasons or 'a declared constraint is violated'})"
             )
     return space
 
@@ -1365,7 +1365,7 @@ def slice_space(space: Space, to_remove: dict[str, Any]) -> Space:
     )
     for name, config in result.anchors.items():
         if not result.validate(config).valid:
-            raise ResolutionError(f".slice(): anchor {name!r} invalid after slicing (row 22)")
+            raise ResolutionError(f".slice(): anchor {name!r} invalid after slicing")
     return result
 
 
@@ -1446,7 +1446,7 @@ def _strip_and_check_anchors_after_slice(
                 if not _values_equal(v, fixed):
                     raise ResolutionError(
                         f".slice(): anchor {name!r} conflicts with sliced value "
-                        f"{def_path!r} = {fixed!r} (anchor has {v!r}) (row 22)"
+                        f"{def_path!r} = {fixed!r} (anchor has {v!r})"
                     )
                 continue
             stripped[concrete_path] = v

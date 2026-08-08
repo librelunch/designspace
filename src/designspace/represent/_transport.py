@@ -142,7 +142,7 @@ def _decode_expr_template(
             if not candidate.params <= {path}:
                 raise ResolutionError(
                     f"represent(): Encoding.decode_expr() for {path!r} references "
-                    f"paths outside its own param (row 31): "
+                    f"paths outside its own param: "
                     f"{sorted(candidate.params - {path})!r}"
                 )
             template = candidate

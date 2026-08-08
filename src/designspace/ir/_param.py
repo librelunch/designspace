@@ -157,8 +157,7 @@ class Constraint:
         dispatch: ``"forbid"`` | ``"require"`` | ``"encourage"`` |
         ``"discourage"`` | ``"bound"`` (the last is the implicit constraint an
         expression bound desugars to). Derived from ``(origin, hard)`` so
-        consumers never re-derive polarity by hand (API.md, "Constraints
-        and Feasibility")."""
+        consumers never re-derive polarity by hand."""
         if self.origin == "bound":
             return "bound"
         if self.origin == "require":
@@ -175,5 +174,5 @@ class Constraint:
         verbs that name a bad state. This is the single source of truth for
         "is this constraint supposed to hold?"; ``ConstraintEval.violated``
         reads it, so forbid/require/encourage/discourage all report
-        consistently (API.md, "Constraints and Feasibility")."""
+        consistently."""
         return self.kind not in ("forbid", "discourage")

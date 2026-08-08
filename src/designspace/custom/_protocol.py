@@ -51,17 +51,17 @@ class ParamType(Protocol):
     Protocol's static shape; see the module docstring):
 
     - `sample(self, rng) -> Any`, generative iff present; absent, the
-      param is **non-generative** (API.md, "Sampling and Generativity":
-      `sample()` raises `SamplingError` naming the param iff it must
-      materialize a value, and `.default()`/`freeze`/`slice`/inactivity all
-      satisfy it instead).
+      param is **non-generative**: sampling raises `SamplingError` naming
+      the param iff a value must be materialized, and
+      `.default()`/`freeze`/`slice`/inactivity each satisfy that instead.
     - `cardinality(self) -> int | None`, contributing a finite factor to
       `Space.cardinality()` iff present; absent, the whole space's
       cardinality is `None` whenever this param is included.
     - `properties(self) -> dict[str, type]` and `extract(self, value, prop)
-      -> Any`, which present *together* enable `.prop()` in expressions
-      (row 16 governs misuse: undeclared property, non-scalar property
-      type, comparison type mismatch).
+      -> Any`, which present *together* enable `.prop()` in expressions.
+      Reading an undeclared property, declaring a non-scalar property
+      type, or comparing a property against a value of another type is a
+      resolution error.
 
     Examples
     --------

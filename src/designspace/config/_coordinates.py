@@ -38,14 +38,14 @@ def _check_fixed_layout(space: Space) -> None:
         if pd.condition is not None:
             raise ResolutionError(
                 f"coordinate_paths(): {path!r} carries a condition, so the "
-                "space has no fixed layout (row 33)"
+                "space has no fixed layout"
             )
         if pd.type_kind == "list":
             assert isinstance(pd.domain, ListDomain)
             if _has_dynamic_count(pd.domain):
                 raise ResolutionError(
                     f"coordinate_paths(): {path!r} has a dynamic repeat() "
-                    "count, so the space has no fixed layout (row 33)"
+                    "count, so the space has no fixed layout"
                 )
 
 

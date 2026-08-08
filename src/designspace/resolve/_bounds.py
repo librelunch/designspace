@@ -96,7 +96,7 @@ def _require_numeric_literal(node: Literal, path: str) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise ResolutionError(
             f"param {path!r}: bound expression literal {value!r} is not numeric, "
-            "so it has no computable interval hull (row 20)"
+            "so it has no computable interval hull"
         )
     return value
 
@@ -119,8 +119,8 @@ def _hull_mul(
         return _scale(c, lo, hi)
     raise ResolutionError(
         f"param {path!r}: bound expression multiplies two non-constant operands; "
-        "interval multiplication is only computable by a literal constant "
-        "(row 20); write the desugared literal bound and an explicit .forbid() "
+        "interval multiplication is only computable by a literal constant"
+        "; write the desugared literal bound and an explicit .forbid() "
         "constraint by hand"
     )
 
@@ -146,7 +146,7 @@ def hull(expr: ArithExpr, envelope_of: Callable[[str], Interval], *, path: str) 
         f"param {path!r}: bound expression has no computable interval hull "
         f"(unsupported {expr.kind!r}; only +, -, and * by a literal constant "
         "over enveloped params are supported); write the desugared literal "
-        "bound and an explicit .forbid() constraint by hand (row 20)"
+        "bound and an explicit .forbid() constraint by hand"
     )
 
 
@@ -185,7 +185,7 @@ def compute_bound_envelopes(
         if d is None or not isinstance(d.domain, _NumericDomain):
             raise ResolutionError(
                 f"bound expression references {path!r}, which is not a real or "
-                "integer param, so it has no computable interval hull (row 20); "
+                "integer param, so it has no computable interval hull; "
                 "write the desugared literal bound and an explicit .forbid() "
                 "constraint by hand"
             )

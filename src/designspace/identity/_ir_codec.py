@@ -241,8 +241,7 @@ def _encode_custom_domain(domain: CustomDomain, ctx: EncodeContext, path: str) -
             described = encode_default_value(pt.describe())
         except SerializationError as e:
             raise SerializationError(
-                f"param {path!r}: custom type describe() output is not "
-                f"JSON-serializable ({e}) (row 23)"
+                f"param {path!r}: custom type describe() output is not JSON-serializable ({e})"
             ) from e
         return {"kind": "custom", "type_key": pt.type_key, "describe": described}
     if ctx.mode == "raise":
@@ -476,7 +475,7 @@ def _decode_custom_domain(
     if custom_types is None or type_key not in custom_types:
         raise SerializationError(
             f"from_json: param {path!r} has type_key {type_key!r}, which has "
-            "no entry in custom_types (row 27)"
+            "no entry in custom_types"
         )
     factory = custom_types[type_key]
     described = decode_default_value(tree["describe"])

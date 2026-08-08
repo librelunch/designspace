@@ -169,7 +169,7 @@ def _materialize_scalar(path: str, pd: ParamDef, rng: np.random.Generator) -> An
                 return pd.default
             raise SamplingError(
                 f"param {path!r}: non-generative custom type has no sample() "
-                "and no .default() to materialize from (row 26)"
+                "and no .default() to materialize from"
             )
         return _draw_custom(domain, rng)
     if pd.type_kind in ("symbolic", "code"):
@@ -181,7 +181,7 @@ def _materialize_scalar(path: str, pd: ParamDef, rng: np.random.Generator) -> An
             return pd.default
         raise SamplingError(
             f"param {path!r}: non-generative {pd.type_kind!r} param has no "
-            "sampler and no .default() to materialize from (row 26)"
+            "sampler and no .default() to materialize from"
         )
     return _draw_value(pd, rng)
 
@@ -206,9 +206,7 @@ def _draw_lift(
     else:
         n = domain.count
     if n < 0:
-        raise SamplingError(
-            f"param {path!r}: repeat() count evaluated to a negative value ({n}) (row 13)"
-        )
+        raise SamplingError(f"param {path!r}: repeat() count evaluated to a negative value ({n})")
     config[path] = n
     for i in range(n):
         _draw_lift_element(space, f"{path}[{i}]", domain, config, activity, rng)

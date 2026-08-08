@@ -66,8 +66,8 @@ An `int` seeds a fresh generator reproducibly; a `numpy.random.Generator`
 is used as given, which is what to pass when several draws must advance
 one stream; `None` draws from fresh entropy and is not reproducible.
 
-Defined here rather than in `sample/` because `sample/_sample.py` imports
-this module, so this is the upstream home both sides can share.
+Defined alongside `Space` rather than with the sampler, which imports this
+module, so that both sides share one upstream definition.
 """
 
 

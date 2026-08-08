@@ -153,7 +153,7 @@ def _check_static_index_range(path: str, defs_by_path: Mapping[str, Any], *, con
         ):
             raise ResolutionError(
                 f"{context}: instance index {idx} on {path!r} is out of range for "
-                f"a static repeat() count of {count} (row 29)"
+                f"a static repeat() count of {count}"
             )
         from designspace.resolve._relocate import element_paramdef
 
@@ -178,7 +178,7 @@ def _reject_lift_valued_bool_operand(
     if _resolve_entry(operand.path, defs_by_path).type_kind == "list":
         raise ResolutionError(
             f"{context}: boolean operator applied to {operand.path!r}, which is "
-            "still a lift (repeat()), not a scalar bool (row 29)"
+            "still a lift (repeat()), not a scalar bool"
         )
 
 
@@ -268,8 +268,7 @@ def prop_type(node: Prop, defs_by_path: Mapping[str, Any], *, context: str) -> t
     if node.name not in props:
         operand_path = cast(ParamExpr, node.operand).path
         raise ResolutionError(
-            f"{context}: prop({node.name!r}) on {operand_path!r} is not a "
-            "declared property (row 16)"
+            f"{context}: prop({node.name!r}) on {operand_path!r} is not a declared property"
         )
     declared_type = props[node.name]
     if declared_type not in _SCALAR_PROP_TYPES:
@@ -277,7 +276,7 @@ def prop_type(node: Prop, defs_by_path: Mapping[str, Any], *, context: str) -> t
         raise ResolutionError(
             f"{context}: prop({node.name!r}) on {operand_path!r} declares "
             f"non-scalar type {declared_type!r}; only int/float/bool/str "
-            "properties are expression-visible (row 16)"
+            "properties are expression-visible"
         )
     return declared_type
 
@@ -303,10 +302,6 @@ def _describe_opaque(node: Prop | Value) -> str:
     return f"ds.value({fn_name}, ...)"
 
 
-def _opaque_row(node: Prop | Value) -> str:
-    return "16" if isinstance(node, Prop) else "30"
-
-
 def _check_opaque_compare_types(
     node: Compare, defs_by_path: Mapping[str, Any], *, context: str
 ) -> None:
@@ -318,9 +313,9 @@ def _check_opaque_compare_types(
     a different declared or returned type.
 
     The match is strict, with no int/float leniency, following the
-    type-tagged equality used throughout the library. The cited row follows
-    whichever side is being checked, so a mismatch between a `.prop()` and a
-    `ds.value()` names a real error-table row from either side.
+    type-tagged equality used throughout the library. The message names the
+    side being checked first, so a mismatch between a `.prop()` and a
+    `ds.value()` reads from whichever side the walk reached first.
     """
     for this_side, other_side in ((node.left, node.right), (node.right, node.left)):
         if not isinstance(this_side, Prop | Value):
@@ -332,8 +327,7 @@ def _check_opaque_compare_types(
                 raise ResolutionError(
                     f"{context}: {_describe_opaque(this_side)} is "
                     f"{declared_type.__name__!r}-typed, compared against "
-                    f"{other_side.value!r} ({type(other_side.value).__name__!r}) "
-                    f"(row {_opaque_row(this_side)})"
+                    f"{other_side.value!r} ({type(other_side.value).__name__!r})"
                 )
         elif isinstance(other_side, Prop | Value):
             other_type = _opaque_scalar_type(other_side, defs_by_path, context=context)
@@ -341,7 +335,7 @@ def _check_opaque_compare_types(
                 raise ResolutionError(
                     f"{context}: {_describe_opaque(this_side)} ({declared_type.__name__!r}) "
                     f"compared against {_describe_opaque(other_side)} "
-                    f"({other_type.__name__!r}) (row {_opaque_row(this_side)})"
+                    f"({other_type.__name__!r})"
                 )
 
 
@@ -497,7 +491,7 @@ def check_expr_types(
                 operand_path = _vector_base(node.operand).path
                 raise ResolutionError(
                     f"{context}: is_sorted() on {operand_path!r} is restricted to a "
-                    "single repeat() level (row 24); a nested lift has no canonical order"
+                    "single repeat() level; a nested lift has no canonical order"
                 )
         elif isinstance(node, Sum | Min | Max | CountOf | Distinct):
             _require_lift_domain(node.operand, defs_by_path, context=context, what=f"{node.kind}()")

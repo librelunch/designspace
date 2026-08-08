@@ -288,16 +288,16 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
             if name in _TYPE_METHOD_NAMES:
                 raise ResolutionError(
                     f"param {self.path!r} declares more than one type: exactly "
-                    "one type method is allowed (row 2)"
+                    "one type method is allowed"
                 )
             if name in _NUMERIC_ONLY_MODIFIERS:
                 if self.lift is not None:
                     raise ResolutionError(
                         f"param {self.path!r}: {name}() written after .repeat() applies "
-                        "to the list, not the element; call it before .repeat() (row 11)"
+                        "to the list, not the element; call it before .repeat()"
                     )
                 raise ResolutionError(
-                    f"param {self.path!r}: {name}() only applies to real or integer params (row 11)"
+                    f"param {self.path!r}: {name}() only applies to real or integer params"
                 )
             raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
 

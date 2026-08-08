@@ -40,9 +40,7 @@ def add_anchors(space: Space, configs: dict[str, dict[str, Any]]) -> Space:
             reasons = "; ".join(f"{e.param!r}: {e.reason}" for e in result.param_errors)
             if not reasons:
                 reasons = "a declared constraint is violated"
-            raise ResolutionError(
-                f"anchor {name!r} is invalid against the space ({reasons}) (row 22)"
-            )
+            raise ResolutionError(f"anchor {name!r} is invalid against the space ({reasons})")
         merged[name] = config
     return replace(space, anchors=MappingProxyType(merged))
 

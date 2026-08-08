@@ -75,9 +75,9 @@ def _sorted_union(a: tuple[str, ...], b: tuple[str, ...]) -> tuple[str, ...]:
 @dataclass(frozen=True)
 class Representation:
     """A `Space → Space` morphism carrying a value-level `decode`/`encode`
-    pair (API.md, "The Representation Layer"). Two tiers construct one:
-    **derived** (`Space.represent(*rules)`, `represent/_build.py`) and
-    **supplied** (this constructor, called directly). A derived
+    pair. Two tiers construct one: **derived**, from
+    `Space.represent(*rules)`, and **supplied**, from this constructor
+    called directly. A derived
     representation *is* a supplied one; both compose through `then` and
     are checked through `check()`.
 
@@ -237,8 +237,8 @@ class Representation:
         source.is_feasible(decode(g))`), and, when `invertible`, the
         one-directional round-trip `decode(encode(x)) == x` for `x =
         decode(g)`. Never raises on a law violation: the suite as a tool,
-        since a supplied morphism has no other way to be shown sound
-        (API.md, "The Representation Layer"). Structural laws (path/arity)
+        since a supplied morphism has no other way to be shown sound.
+        Structural laws (path/arity)
         are guaranteed by construction for the derived tier and asserted
         directly in the conformance suite, since a supplied morphism has no such
         law to check, so `check()` does not re-derive them here.

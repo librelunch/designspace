@@ -105,12 +105,12 @@ def _check_eligibility(
         raise ResolutionError(
             f"represent(): {path!r} has relocated descendants (a struct, "
             "payload-bearing choice discriminator, or struct/choice lift) "
-            "and cannot be encoded (row 32)"
+            "and cannot be encoded"
         )
     if path in count_read:
         raise ResolutionError(
             f"represent(): {path!r} is read by a .repeat() count and cannot "
-            "be encoded (row 32); transport rewrites conditions, ParamDef."
+            "be encoded; transport rewrites conditions, ParamDef."
             "condition, constraints, and element_constraints, but never a "
             "count expression, so encoding it would silently change what "
             "the count means"
@@ -119,7 +119,7 @@ def _check_eligibility(
         raise ResolutionError(
             f"represent(): {path!r} is read by .prop() and its Encoding "
             "supplies no prop_expr() to repair the reference; either "
-            "supply one, or the param cannot be encoded (row 32)"
+            "supply one, or the param cannot be encoded"
         )
 
 
@@ -140,7 +140,7 @@ def _build_targets(
         if target_pd.path != path:
             raise ResolutionError(
                 f"represent(): Encoding.target() for {path!r} returned a "
-                f"different path {target_pd.path!r} (row 31)"
+                f"different path {target_pd.path!r}"
             )
         targets[path] = target_pd
     return targets

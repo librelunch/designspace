@@ -171,7 +171,7 @@ def _check_nested_container_lifts(space: Space) -> None:
         if _innermost_domain_element_kind(pd.domain) in ("space", "choice"):
             raise ResolutionError(
                 f"param {path!r}: a struct/choice element nested under more than one "
-                ".repeat() level is not supported (row 34); scalar/subset/permutation "
+                ".repeat() level is not supported; scalar/subset/permutation "
                 "elements support arbitrary nesting"
             )
 
@@ -595,7 +595,7 @@ def _check_modifier_placement(d: ParamExpr) -> None:
         if d.lift is not None:
             raise ResolutionError(
                 f"param {d.path!r}: prior()/log_scale() written after .repeat() applies "
-                "to the list, not the element; call it before .repeat() (row 11)"
+                "to the list, not the element; call it before .repeat()"
             )
         if isinstance(d.prior_spec, Weights) and not weighted:
             raise ResolutionError(
@@ -610,7 +610,7 @@ def _check_modifier_placement(d: ParamExpr) -> None:
         if d.lift is not None:
             raise ResolutionError(
                 f"param {d.path!r}: quantized() written after .repeat() applies to the "
-                "list, not the element; call it before .repeat() (row 11)"
+                "list, not the element; call it before .repeat()"
             )
         if not numeric:
             raise ResolutionError(
@@ -799,8 +799,7 @@ def _check_primitive_arity(path: str, prim: Primitive) -> None:
     )
     if not valid_shape:
         raise ResolutionError(
-            f"param {path!r}: Primitive {prim.name!r} arity must be an int or "
-            "an (lo, hi) tuple (row 15)"
+            f"param {path!r}: Primitive {prim.name!r} arity must be an int or an (lo, hi) tuple"
         )
     lo, hi = arity
     if lo < 0:
@@ -866,7 +865,7 @@ def _check_code_domain(path: str, domain: CodeDomain) -> None:
     _check_program_signature(path, domain.signature)
     if domain.examples is not None:
         check_meta_json_serializable(
-            {"examples": list(domain.examples)}, what=f"param {path!r}: code() examples (row 23)"
+            {"examples": list(domain.examples)}, what=f"param {path!r}: code() examples"
         )
 
 
@@ -1041,8 +1040,8 @@ def _validate_default(d: ParamExpr) -> None:
         # top-level or a lift's own element, never has a default of its own,
         # whether written before or after `.repeat()`.
         raise ResolutionError(
-            f"param {d.path!r}: .default() is not valid on a struct param "
-            "(row 21); its members default individually, field-wise"
+            f"param {d.path!r}: .default() is not valid on a struct param"
+            "; its members default individually, field-wise"
         )
     ok: bool
     if isinstance(domain, RealDomain):
@@ -1124,7 +1123,7 @@ def _validate_lift(d: ParamExpr, defs_by_path: dict[str, ParamExpr]) -> None:
     if depth > 1 and inner.element_class in (StructParamExpr, ChoiceParamExpr):
         raise ResolutionError(
             f"param {d.path!r}: a struct/choice element nested under more than one "
-            ".repeat() level is not supported (row 34); scalar/subset/permutation "
+            ".repeat() level is not supported; scalar/subset/permutation "
             "elements support arbitrary nesting"
         )
     # inner.element_class is the view class the element was declared with.
@@ -1147,7 +1146,7 @@ def _validate_lift(d: ParamExpr, defs_by_path: dict[str, ParamExpr]) -> None:
     _validate_default(element)
     if inner.default_value is not None and any_list_default:
         raise ResolutionError(
-            f"param {d.path!r}: element default and list default are mutually exclusive (row 21)"
+            f"param {d.path!r}: element default and list default are mutually exclusive"
         )
 
 
@@ -1229,15 +1228,13 @@ def _check_count_type_node(
         return
     if isinstance(node, Literal):
         if not isinstance(node.value, int) or isinstance(node.value, bool):
-            raise ResolutionError(
-                f"{context}: must be integer-typed, got literal {node.value!r} (row 12)"
-            )
+            raise ResolutionError(f"{context}: must be integer-typed, got literal {node.value!r}")
         return
     if isinstance(node, ParamExpr):
         kind = defs_by_path[node.path].type_kind
         if kind != "integer":
             raise ResolutionError(
-                f"{context}: references {node.path!r}, which is {kind!r}, not integer (row 12)"
+                f"{context}: references {node.path!r}, which is {kind!r}, not integer"
             )
         return
     if isinstance(node, Prop):
@@ -1248,7 +1245,7 @@ def _check_count_type_node(
         # "custom", which is correctly not integer-typed. Only the extracted
         # property value needs to be.
         if prop_type(node, defs_by_path, context=context) is not int:
-            raise ResolutionError(f"{context}: prop({node.name!r}) is not integer-typed (row 12)")
+            raise ResolutionError(f"{context}: prop({node.name!r}) is not integer-typed")
         return
     if isinstance(node, Value):
         # A `ds.value(fn, ..., returns=int)`-driven count. Only the declared
@@ -1256,33 +1253,31 @@ def _check_count_type_node(
         # into the operands, mirroring the `Prop` branch above.
         if node.returns is not int:
             raise ResolutionError(
-                f"{context}: ds.value(returns={node.returns.__name__}) is not "
-                "integer-typed (row 12)"
+                f"{context}: ds.value(returns={node.returns.__name__}) is not integer-typed"
             )
         return
     if isinstance(node, Count | Size | Length | PositionOf | CountOf):
         return  # always int-valued by construction; no leaf to check
     if isinstance(node, SumOver):
         if not all(isinstance(v, int) and not isinstance(v, bool) for v in node.mapping.values()):
-            raise ResolutionError(f"{context}: sum_over() has a non-integer value (row 12)")
+            raise ResolutionError(f"{context}: sum_over() has a non-integer value")
         return
     if isinstance(node, Sum | Min | Max):
         if not isinstance(node.operand, ParamExpr):
             raise ResolutionError(
                 f"{context}: {node.kind}() over a .field() projection is not "
-                "supported as a repeat() count (row 12)"
+                "supported as a repeat() count"
             )
         elem_kind = _innermost_lift_element_kind(defs_by_path[node.operand.path])
         allowed = ("integer", "bool") if isinstance(node, Sum) else ("integer",)
         if elem_kind not in allowed:
             raise ResolutionError(
-                f"{context}: {node.kind}() over a {elem_kind!r}-leaved lift is not "
-                "integer-typed (row 12)"
+                f"{context}: {node.kind}() over a {elem_kind!r}-leaved lift is not integer-typed"
             )
         return
     if isinstance(node, ArithOp):
         if node.op == "div":
-            raise ResolutionError(f"{context}: division is not integer-typed (row 12)")
+            raise ResolutionError(f"{context}: division is not integer-typed")
         if node.op == "pow" and not (
             isinstance(node.right, Literal)
             and isinstance(node.right.value, int)
@@ -1291,7 +1286,7 @@ def _check_count_type_node(
         ):
             raise ResolutionError(
                 f"{context}: ** requires a non-negative literal integer exponent to "
-                "stay integer-typed (row 12)"
+                "stay integer-typed"
             )
         _check_count_type_node(node.left, defs_by_path, context, tolerate_undeclared=tolerate)
         _check_count_type_node(node.right, defs_by_path, context, tolerate_undeclared=tolerate)
@@ -1300,7 +1295,7 @@ def _check_count_type_node(
         _check_count_type_node(node.operand, defs_by_path, context, tolerate_undeclared=tolerate)
         _check_count_type_node(node.fallback, defs_by_path, context, tolerate_undeclared=tolerate)
         return
-    raise ResolutionError(f"{context}: must be integer-typed (row 12)")
+    raise ResolutionError(f"{context}: must be integer-typed")
 
 
 def _check_count_type(
@@ -1322,7 +1317,7 @@ def _check_count_type(
     if not isinstance(count, int) or isinstance(count, bool):
         raise ResolutionError(
             f"param {path!r}: repeat() count must be an int or an integer-typed "
-            f"expression, got {count!r} (row 12)"
+            f"expression, got {count!r}"
         )
     if count < 0:
         raise ResolutionError(f"param {path!r}: repeat() count must be >= 0, got {count!r}")
@@ -1333,13 +1328,11 @@ def _validate_list_default_shape(path: str, snap: _ElementSnapshot) -> None:
         return
     if isinstance(snap.count, ArithExpr):
         raise ResolutionError(
-            f"param {path!r}: list default requires a static (int) repeat count "
-            "at this level (row 21)"
+            f"param {path!r}: list default requires a static (int) repeat count at this level"
         )
     if not isinstance(snap.list_default, list) or len(snap.list_default) != snap.count:
         raise ResolutionError(
-            f"param {path!r}: list default length must match the static repeat "
-            f"count ({snap.count}) (row 21)"
+            f"param {path!r}: list default length must match the static repeat count ({snap.count})"
         )
 
 
@@ -1410,7 +1403,7 @@ def _validate_list_default_level(
             level = "list default" if depth == 0 else f"nested list default (depth {depth})"
             raise ResolutionError(
                 f"param {param_path!r}: {level} {domain.list_default!r} is outside "
-                f"its domain ({detail}) (row 21)"
+                f"its domain ({detail})"
             )
     if domain.element_kind == "list":
         assert isinstance(domain.element_domain, ListDomain)
@@ -1467,7 +1460,7 @@ def _relocate_choice_variants(
             raise ResolutionError(
                 f"param {discriminator_path!r}: choice() payload for variant "
                 f"{variant_name!r} must be a Space (from ds.space(...)), got "
-                f"{type(payload).__name__} (row 29)"
+                f"{type(payload).__name__}"
             )
         discriminator_eq = Compare("eq", ParamExpr(path=discriminator_path), Literal(variant_name))
         injected = and_(condition, discriminator_eq)

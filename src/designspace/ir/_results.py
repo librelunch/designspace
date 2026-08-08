@@ -313,7 +313,7 @@ class SubspaceInfo:
 
 @dataclass(frozen=True)
 class ConstraintReport:
-    """One `SamplingReport.constraints` row (API.md, "Sampling diagnostics").
+    """One `SamplingReport.constraints` row.
 
     `constraint` is the declared `Constraint`. For a per-element template
     (`ListDomain.element_constraints`), the template itself, never an
@@ -372,8 +372,9 @@ class ConstraintReport:
 
 @dataclass(frozen=True)
 class SamplingReport:
-    """`.sampling_report(n, seed, tighten_bounds)` (API.md, "Sampling
-    diagnostics"). Aggregation only, over the **unconditioned** measure,
+    """What `Space.sampling_report(n, seed, tighten_bounds)` returns.
+
+    Aggregation only, over the **unconditioned** measure,
     drawn before rejection, so both Unknown-swallowing and funnel bias are
     visible. `activity` keys are exactly `set(space.params)`, including
     `"[]"`-templated definition paths from inside a lifted struct or

@@ -32,9 +32,10 @@ def param(name: str) -> FreshParamExpr:
     Parameters
     ----------
     name : str
-        The parameter's name, or a path into a nested structure
-        (`"optimizer.lr"`, `"stops[].dwell"`). See API.md, "Paths and
-        Scoping" for the grammar.
+        The parameter's name, or a path into a nested structure. A dot
+        descends into a struct field or a choice variant's payload
+        (`"optimizer.lr"`), and `[]` marks the element of a lift
+        (`"stops[].dwell"`).
 
     Returns
     -------

@@ -929,8 +929,8 @@ class StructParamExpr(TypedParamExpr):
 class CustomParamExpr(TypedParamExpr):
     """`.custom()`'s return type, a thin leaf view.
 
-    A custom value is opaque by design, under the open-world and
-    closed-world split in API.md, "Solver Integration". This view therefore
+    A custom value is opaque by design: the library validates, serializes
+    and hashes it without interpreting its shape. This view therefore
     carries no domain-specific chainers beyond the universal modifiers
     `.default()`, `.when()`, `.tag()` and `.meta()`, plus `.repeat()`
     inherited from `TypedParamExpr`. Domain-specific fluent configuration
@@ -942,8 +942,7 @@ class CustomParamExpr(TypedParamExpr):
 
 class SymbolicParamExpr(TypedParamExpr):
     """`.symbolic()`'s return type, a thin leaf view, mirroring
-    `CustomParamExpr` (API.md, "Parameter Types" > "Program"). Non-
-    generative unless `sampler=` was given."""
+    `CustomParamExpr`. Non-generative unless `sampler=` was given."""
 
     type_kind: ClassVar[str] = "symbolic"
 
