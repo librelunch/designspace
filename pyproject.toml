@@ -30,6 +30,7 @@ dev = [
     "mypy>=1.10",
     "ruff>=0.5",
     "polars>=1.0",
+    "ipython>=9",
     # Drives the docstring gates in tests/test_docs.py. It is the only tool that
     # computes publicity from `__all__`, which is the scoping those gates
     # need: ruff's D1xx rules never fire here, every implementation module

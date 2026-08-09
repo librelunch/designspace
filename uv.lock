@@ -349,6 +349,7 @@ polars = [
 dev = [
     { name = "griffe" },
     { name = "hypothesis" },
+    { name = "ipython" },
     { name = "mypy" },
     { name = "polars" },
     { name = "pytest" },
@@ -373,6 +374,7 @@ provides-extras = ["polars", "docs"]
 dev = [
     { name = "griffe", specifier = ">=2.0" },
     { name = "hypothesis", specifier = ">=6" },
+    { name = "ipython", specifier = ">=9" },
     { name = "mypy", specifier = ">=1.10" },
     { name = "polars", specifier = ">=1.0" },
     { name = "pytest", specifier = ">=8" },
