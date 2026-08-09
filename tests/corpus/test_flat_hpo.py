@@ -4,6 +4,7 @@ round-trip).
 
 from __future__ import annotations
 
+import pytest
 from flat_hpo import build_space
 
 from designspace import Space
@@ -59,6 +60,7 @@ def test_round_trips():
 # -- DataFrame output ---------------------------------------------------------
 
 
+@pytest.mark.requires_polars
 def test_dataframe_dtypes_per_kind():
     import polars as pl
 

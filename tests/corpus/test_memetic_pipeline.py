@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from memetic_pipeline import MAX_OPS, MIN_OPS, build_space
 
 from designspace import Space
@@ -115,6 +116,7 @@ def test_freeze_pipeline_union_rule_keeps_both_payload_variants_when_both_used()
 # -- DataFrame output: a lifted choice gives List(Struct{variant, ...}) ------
 
 
+@pytest.mark.requires_polars
 def test_dataframe_pipeline_is_list_of_variant_struct():
     import polars as pl
 

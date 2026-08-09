@@ -15,10 +15,15 @@ from __future__ import annotations
 
 import sys
 
-import polars as pl
 import pytest
 
 import designspace as ds
+
+# The two tests below run on a polars-free install and are the reason this
+# module imports polars inside the tests that need it rather than at the top:
+# a module-level import would take the missing-extra error path out of the run
+# that is meant to check it. Setting the `sys.modules` entry to `None` makes
+# `import polars` raise whether or not the package is installed.
 
 
 def test_sample_raises_import_error_naming_the_extra_when_polars_missing(monkeypatch):
@@ -35,7 +40,10 @@ def test_sample_one_and_sample_dicts_unaffected_by_missing_polars(monkeypatch):
     assert len(space.sample_dicts(3, seed=0)) == 3
 
 
+@pytest.mark.requires_polars
 def test_static_repeat_uses_array_dtype():
+    import polars as pl
+
     space = ds.space(ds.param("weights").real(0.0, 1.0).repeat(3))
     df = space.sample(5, seed=0)
     dt = df.schema["weights"]
@@ -46,7 +54,10 @@ def test_static_repeat_uses_array_dtype():
         assert len(row) == 3
 
 
+@pytest.mark.requires_polars
 def test_dynamic_outer_static_inner_yields_list_of_array():
+    import polars as pl
+
     n = ds.param("n").integer(1, 4)
     grid = ds.param("cell").integer(0, 9).repeat(2).repeat(n)
     space = ds.space(n, grid)

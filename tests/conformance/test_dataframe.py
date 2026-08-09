@@ -22,6 +22,9 @@ from pathlib import Path
 
 import pytest
 
+# Every law here calls `space.sample()`, so the whole module needs the extra.
+pytestmark = pytest.mark.requires_polars
+
 CORPUS_DIR = Path(__file__).resolve().parents[1] / "corpus"
 if str(CORPUS_DIR) not in sys.path:
     sys.path.insert(0, str(CORPUS_DIR))

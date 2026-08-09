@@ -173,12 +173,14 @@ class TestEveryKindSatisfiesEveryLaw:
         space = _space(ALL_GENERATIVE[kind])
         assert space.represent().check(n=40, seed=1).ok
 
+    @pytest.mark.requires_polars
     @pytest.mark.parametrize("kind", sorted(KINDS))
     def test_dataframe_dtype_matches_the_table(self, kind: str) -> None:
         builder, expected = KINDS[kind]
         frame = ds.space(builder()).sample(4, seed=0)
         assert str(frame.schema["p"]) == expected
 
+    @pytest.mark.requires_polars
     @pytest.mark.parametrize("kind", sorted(DTYPE_PREFIX_ONLY))
     def test_container_lift_dtype_is_an_array(self, kind: str) -> None:
         builder, prefix = DTYPE_PREFIX_ONLY[kind]

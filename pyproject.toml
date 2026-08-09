@@ -11,7 +11,6 @@ dependencies = [
 
 [project.optional-dependencies]
 polars = ["polars>=1.0"]
-# Docs-only, never core. Core stays numpy + rfc8785.
 docs = [
     "sphinx>=8",
     "pydata-sphinx-theme>=0.16",
@@ -56,17 +55,24 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 strict = true
 python_version = "3.12"
 
+# `polars` is an optional extra, so on a core install there is nothing for mypy
+# to resolve the two `TYPE_CHECKING` imports of it against, and the type gate
+# fails for the absence of a package the core path is defined to work without.
+# This covers only that case: where the extra is installed, mypy reads polars'
+# real types exactly as before, and every other module stays under `strict`.
+[[tool.mypy.overrides]]
+module = ["polars", "polars.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
-# The test suite only. Doctests are a separate commit gate with its own command
-# (see CLAUDE.md), so no `addopts` here bends this run into something else:
-# `pytest tests/unit/test_frame.py` collects that file and nothing more.
+# The test suite only. Doctests are a separate gate with their own command.
 testpaths = ["tests"]
+addopts = ["--strict-markers"]
+# A test carries this when it needs the optional `polars` extra.
+markers = [
+    "requires_polars: exercises DataFrame output, which needs the `polars` extra",
+]
 # Applies to the doctest gate, which runs `--doctest-modules --doctest-glob=*.md`
 # over `src`, `docs` and `README.md`: every `>>>` in a docstring is a test, and
 # so is every `>>>` on a design-note page or in the README.
 doctest_optionflags = ["ELLIPSIS", "NORMALIZE_WHITESPACE"]
-# No `norecursedirs` override. It was restated here without "build" because the
-# builder package was once named `src/designspace/build/`, which collides
-# with pytest's default entry for setuptools output, so the doctest gate
-# collected nothing from it while reporting green. The package is `builder/`
-# as of 2026-08-06, so pytest's defaults are correct as they ship.

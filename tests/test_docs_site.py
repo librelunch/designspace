@@ -49,6 +49,7 @@ import ast
 import re
 import warnings
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -59,6 +60,14 @@ _DOCS = _ROOT / "docs"
 _EXAMPLES = _ROOT / "examples"
 _DESIGN_NOTES = sorted((_DOCS / "design-notes").glob("*.md"))
 _GUIDE_PAGES = sorted(p for p in (_DOCS / "user-guide").glob("*.md") if p.stem != "index")
+# A page whose cells call `space.sample()` needs the `polars` extra, so its
+# parameter carries the marker. The cells share one namespace and execution
+# stops at the first failure, so the marker goes on a whole page rather than
+# part of one. Adding a page that samples without listing it here fails the
+# polars-free run, which is the signal to add it. Naming the pages outright
+# rather than searching cells for the call keeps a custom type's own `sample`
+# method from marking a page by accident.
+_POLARS_GUIDE_PAGES = {"10-diagnostics-and-dataframes"}
 _EXAMPLE_SCRIPTS = sorted(_EXAMPLES.glob("*.py"))
 # `_build` is gitignored output, not authored prose, and `conf.py` excludes it
 # from the build for the same reason.
@@ -250,8 +259,17 @@ def test_guide_pages_exist() -> None:
     orphans = [p.stem for p in _GUIDE_PAGES if p.stem not in index]
     assert not orphans, f"user-guide pages missing from the toctree: {', '.join(orphans)}"
 
+    stems = {p.stem for p in _GUIDE_PAGES}
+    stale = sorted(_POLARS_GUIDE_PAGES - stems)
+    assert not stale, f"_POLARS_GUIDE_PAGES names pages that no longer exist: {', '.join(stale)}"
 
-@pytest.mark.parametrize("page", _GUIDE_PAGES, ids=[p.stem for p in _GUIDE_PAGES])
+
+def _guide_page_param(page: Path) -> Any:
+    marks = [pytest.mark.requires_polars] if page.stem in _POLARS_GUIDE_PAGES else []
+    return pytest.param(page, id=page.stem, marks=marks)
+
+
+@pytest.mark.parametrize("page", [_guide_page_param(p) for p in _GUIDE_PAGES])
 def test_guide_page_executes(page: Path) -> None:
     """Every `{code-cell}` on a user-guide page runs, in order, in one namespace.
 

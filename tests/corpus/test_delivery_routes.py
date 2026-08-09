@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from delivery_routes import TOTAL_DWELL_BUDGET_MIN, build_space
 
 from designspace import Space
@@ -124,6 +125,7 @@ def test_freeze_stops_rejects_a_config_violating_the_fixed_route():
 # -- DataFrame output: a dynamic-count struct lift gives List(Struct) --------
 
 
+@pytest.mark.requires_polars
 def test_dataframe_stops_is_dynamic_list_of_struct():
     import polars as pl
 

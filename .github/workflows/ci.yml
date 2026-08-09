@@ -39,9 +39,8 @@ jobs:
 
   core-only:
     # Proves the core install path (numpy + rfc8785 only, no `polars` extra)
-    # actually works rather than assuming it from the guarded import in
-    # frame/_frame.py. The `test-core` recipe carries the exclusions and the
-    # reason for each.
+    # actually works. The `test-core` recipe deselects the `requires_polars`
+    # marker, which each test that needs the extra declares for itself.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

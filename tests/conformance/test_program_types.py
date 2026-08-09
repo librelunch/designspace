@@ -639,8 +639,10 @@ class TestSliceUnlikeCustom:
 
 
 class TestDownstreamSurfaces:
+    @pytest.mark.requires_polars
     def test_dataframe_column_is_utf8_json_string(self):
-        pl = pytest.importorskip("polars")
+        import polars as pl
+
         space = ds.space(
             ds.param("sched")
             .symbolic(_cooling_signature(), _cooling_primitives(), 4)

@@ -53,6 +53,7 @@ laws. No milestone row.
 
 | Date | Fix | Against |
 |---|---|---|
+| 2026-08-09 | The polars-free run selects on a `requires_polars` marker each test declares for itself, rather than on a list of ignored files and deselected node ids; it thereby regains 29 tests that list dropped, the missing-extra `ImportError` laws among them, and mypy resolves the two `TYPE_CHECKING` imports of the absent extra | M10, M12.5 |
 | 2026-08-08 | The six gates moved into a `justfile`, their one definition, called by CI and by pre-commit and pre-push git hooks; devenv went native, pinned to the revision `flake.lock` carried | M12.5 |
 | 2026-08-06 | Each commit gate became a command of its own, six rather than four; `core-only` CI job fixed for the polars-free install | M13, M13.5, M13.6 |
 | 2026-08-06 | `build/` renamed to `builder/`, which had collided with pytest's default `norecursedirs` and cost the package all 83 of its doctests; test imports moved off private module paths | M1, M13, M2 |
