@@ -351,11 +351,14 @@ def is_feasible(space: Space, config: dict[str, Any]) -> bool:
 
 
 def infeasibility_reasons(space: Space, config: dict[str, Any]) -> list[str]:
+    from designspace.display._expr import render_expr
+
     result = validate(space, config)
     reasons = [f"{pe.param}: {pe.reason}" for pe in result.param_errors]
     for ce in result.constraint_evals:
         if ce.constraint.hard and ce.violated:
             reasons.append(
-                f"{ce.constraint.kind} violated (margin={ce.margin}): {ce.constraint.expr.kind}"
+                f"{ce.constraint.kind} violated (margin={ce.margin}): "
+                f"{render_expr(ce.constraint.expr)}"
             )
     return reasons

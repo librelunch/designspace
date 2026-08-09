@@ -18,12 +18,14 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from designspace.charts import build_chart
+from designspace.display._hooks import displayable
 from designspace.ir import Chart, IntegerDomain, RealDomain
 
 if TYPE_CHECKING:
     import designspace as ds  # noqa: F401  (doctest namespace; see conftest.py)
 
 
+@displayable("designspace.display._results.render_signature_standalone")
 @dataclass(frozen=True)
 class Signature:
     """The interface a `.symbolic()` or `.code()` parameter must satisfy.
@@ -59,6 +61,7 @@ class Signature:
         )
 
 
+@displayable("designspace.display._results.render_float_literal")
 @dataclass(frozen=True)
 class FloatLiteral:
     """A range of real constants admissible in a `.symbolic()` tree.
@@ -101,6 +104,7 @@ class FloatLiteral:
         return chart
 
 
+@displayable("designspace.display._results.render_int_literal")
 @dataclass(frozen=True)
 class IntLiteral:
     """A range of integer constants admissible in a `.symbolic()` tree.
@@ -141,6 +145,7 @@ class IntLiteral:
         return chart
 
 
+@displayable("designspace.display._results.render_primitive")
 @dataclass(frozen=True)
 class Primitive:
     """An operator declared for a `.symbolic()` parameter, with its arity.

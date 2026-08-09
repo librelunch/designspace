@@ -49,16 +49,17 @@ Conventions used throughout:
 19. [Identity and Serialization](#identity-and-serialization)
 20. [Config Utilities](#config-utilities)
 21. [Config Representation](#config-representation)
-22. [Protocols](#protocols)
-23. [Support Types](#support-types)
-24. [IR](#ir)
-25. [Resolution](#resolution)
-26. [Errors and Concurrency](#errors-and-concurrency)
-27. [Dependencies](#dependencies)
-28. [Conformance Laws](#conformance-laws)
-29. [Solver Integration](#solver-integration) (informative)
-30. [Staging](#staging) (informative)
-31. [Out of Scope](#out-of-scope) (informative)
+22. [Human-Readable Rendering](#human-readable-rendering)
+23. [Protocols](#protocols)
+24. [Support Types](#support-types)
+25. [IR](#ir)
+26. [Resolution](#resolution)
+27. [Errors and Concurrency](#errors-and-concurrency)
+28. [Dependencies](#dependencies)
+29. [Conformance Laws](#conformance-laws)
+30. [Solver Integration](#solver-integration) (informative)
+31. [Staging](#staging) (informative)
+32. [Out of Scope](#out-of-scope) (informative)
 
 ---
 
@@ -1878,6 +1879,65 @@ conformance-tested.
 | symbolic, code, custom | `Utf8` (JSON string) |
 ---
 
+## Human-Readable Rendering
+
+Every public object renders itself for a person through `str()`, and through
+the IPython and Jupyter display hooks a REPL or a notebook cell calls when a
+value is shown rather than printed. `repr()` is unaffected: it stays the
+faithful, constructor-shaped form a debugger and a doctest see.
+
+The exact layout, column widths, elision thresholds, and wording, is **not** a
+compatibility contract. It may change between releases without a version
+bump, unlike the wire format under the freeze discipline.
+
+A path appearing in rendered output uses the one grammar given under *Paths
+and Scoping*. A `.symbolic()` parameter renders its own declaration, the
+signature, the primitive vocabulary, and the depth limit; core still owns no
+printer for a value's AST, so a submitted expression tree is never rendered
+back to source.
+
+### `pretty`
+
+`pretty(obj, space=None, *, width=88, columns=None, show=None, hide=None)`
+reaches what `str()` cannot: a configuration, which needs the space it is
+read against, and a caller's own width and column choices.
+
+`obj` and `space` dispatch between two cases:
+
+- **`space` given.** `obj` must be a configuration, a `Mapping`. It renders as
+  one row per coordinate. A `"set"` parameter shows its value beside the
+  domain it satisfies; an unset, inactive, or undecidable one shows that
+  status word in place of a value, distinguishing a parameter waiting on an
+  assignment from one a condition switched off. A value is rendered exactly,
+  in full, never rounded, truncated, or abbreviated; a domain may still elide
+  the way it does in a `Space` table. The header states the configuration's
+  real totals and, when validation succeeds, whether it is valid. A
+  malformed value can fail activity or constraint evaluation the way it
+  would fail validation; `pretty` never raises on this, degrading the
+  affected accounting to the undecidable status rather than propagating the
+  failure.
+- **`space` omitted.** `obj` is read on its own: a `Space`, a `ParamDef`, a
+  `ParamExpr`, or any other object this package renders for display.
+  `pretty(x)` at its default arguments equals `str(x)`.
+
+`columns` narrows which facts a row carries, from the vocabulary `kind`,
+`domain`, `prior`, `default`, `when`, `tags`, `constraints`, plus `value` and
+`status` for a configuration's own rows. Applied where meaningful for `obj`
+and ignored where it is not. `show` and `hide` narrow a configuration's rows
+by status, from the vocabulary `set`, `unset`, `inactive`, `unknown`; `show`
+names the statuses to keep, `hide` the ones to omit, and the two are mutually
+exclusive. Neither applies without `space`. A filter selects rows and never
+alters one: a row it keeps renders identically to the same row unfiltered,
+and the header's totals are unchanged by any filter. A row a filter omits is
+still accounted for, in a trailing line naming how many rows of that status
+were left out, so a filtered rendering never reads as a configuration with
+nothing to hide.
+
+An unrecognized name passed to `columns`, `show`, or `hide` raises
+`TypeError` naming it.
+
+---
+
 ## Protocols
 
 ```python
@@ -2522,6 +2582,34 @@ identifiers: where an implementation reports a law by name, as
 | `program_generativity` | `.code()` is always non-generative, `.symbolic()` is non-generative unless `sampler=` is given, and `has_nongenerative_params` is true for either kind under a `.repeat()` element as well as at the top level | `tests/conformance/test_program_types.py` |
 | `per_field_opacity` | `validators`, `.symbolic()`'s `sampler`, and `Primitive.fn` each ride raise, mark, and drop *in place*, degrading only that field and never the whole domain, and `from_json` raises on a marked field | `tests/conformance/test_program_types.py` |
 | `program_freeze_and_slice` | `.freeze()` is fingerprint-equal to the hand-written `require(p == value)` plus `.default(value)` expansion, and `.slice()` supports a program param unconditionally, a program value always being a plain, comparable, serializable JSON dict | `tests/conformance/test_program_types.py` |
+
+### Display laws
+
+| Law | Statement | Enforced by |
+|---|---|---|
+| `display_totality` | `str()` and the notebook display hooks succeed for every displayable type, over every corpus fixture and every kind in the kind-surface matrix; rendering never raises | `tests/conformance/test_display.py` |
+| `display_accounts_for_every_param` | `str(space)` names every path in `space.params`, or accounts for it in an elision count | `tests/conformance/test_display.py` |
+| `display_paths_use_the_grammar` | Every path token in rendered output parses under the one grammar given under *Paths and Scoping* | `tests/conformance/test_display.py` |
+| `display_respects_the_width_budget` | No line of rendered output exceeds the column budget, for any corpus fixture | `tests/conformance/test_display.py` |
+| `display_elides_without_truncating` | Where a rendered domain is elided, the output ends in a count of the items left out and never in a severed token | `tests/conformance/test_display.py` |
+| `repr_is_unchanged` | `repr()` is still the dataclass-generated form for every displayable type, and differs from `str()` for every aggregate type | `tests/conformance/test_display.py` |
+| `expression_render_distinguishes` | Every expression node kind renders with its operator's surface spelling, and structurally distinct expressions render distinctly | `tests/conformance/test_display.py` |
+| `display_escapes_html` | The Jupyter display hook emits no unescaped `<`, `>`, or `&` originating in a user-supplied name or value | `tests/conformance/test_display.py` |
+| `symbolic_ast_is_not_rendered_as_source` | A `.symbolic()` parameter's rendering shows its declaration and never a value's AST rendered back to source | `tests/conformance/test_display.py` |
+
+### Pretty laws
+
+| Law | Statement | Enforced by |
+|---|---|---|
+| `pretty_never_raises` | `pretty` succeeds for every corpus fixture against a matrix of sampled, empty, partial, and malformed configurations | `tests/conformance/test_pretty.py` |
+| `pretty_accounts_for_every_coordinate` | A rendered configuration names every coordinate `evaluate_partial` reports, or accounts for it in an elision count or a filter's trailing line, under every `show` and `hide` combination | `tests/conformance/test_pretty.py` |
+| `pretty_states_every_value_exactly` | A value shown in a rendered configuration is exact, never rounded, truncated, or abbreviated | `tests/conformance/test_pretty.py` |
+| `pretty_marks_inactive_parameters` | A parameter inactive under the configuration renders distinctly from one that is active and unset, and is never omitted | `tests/conformance/test_pretty.py` |
+| `pretty_respects_the_width_budget` | No line exceeds the requested width, across the corpus and a range of widths, except a row whose value or condition alone is wider, which is never abbreviated to fit | `tests/conformance/test_pretty.py` |
+| `pretty_matches_the_display_hooks` | `pretty(x)` at its default arguments equals `str(x)`, for every type `str()` already reaches | `tests/conformance/test_pretty.py` |
+| `pretty_filters_only_whole_rows` | A row a filter keeps is byte-identical to the same row unfiltered, and the header's totals are unchanged by any filter | `tests/conformance/test_pretty.py` |
+| `pretty_rejects_an_unknown_name` | An unrecognized `columns`, `show`, or `hide` name raises `TypeError` naming it, as does passing both `show` and `hide`, or either without `space` | `tests/conformance/test_pretty.py` |
+
 ---
 
 ## Solver Integration

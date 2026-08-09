@@ -30,7 +30,7 @@ space = (
         & ds.param("certifications").contains("ATEX"),
     )
 )
-space.n_params
+print(space)
 ```
 
 ## Defaults
@@ -56,7 +56,7 @@ conflicting = ds.space(
     ds.param("b").integer(0, 10).default(9),
 ).forbid(ds.param("a") + ds.param("b") > 10)
 filled = conflicting.apply_defaults({})
-filled, conflicting.validate(filled).valid, conflicting.is_feasible(filled)
+print(ds.pretty(filled, conflicting))
 ```
 
 ## What is open

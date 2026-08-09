@@ -19,7 +19,7 @@ space = ds.space(
     ds.param("width").integer(8, 256).log_scale().repeat(ds.param("n_layers")),
     ds.param("optimizer").categorical("adam", "sgd"),
 ).forbid(ds.param("lr") > 0.5)
-space.n_params
+print(space)
 ```
 
 ## Serialization

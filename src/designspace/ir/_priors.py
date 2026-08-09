@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from designspace.display._hooks import displayable
+
 
 class Prior(Protocol):
     """A distribution you supply yourself, for `.prior()`.
@@ -73,6 +75,7 @@ class Prior(Protocol):
         ...
 
 
+@displayable("designspace.display._space.render_prior")
 @dataclass(frozen=True)
 class Log:
     """A logarithmic prior: equal weight per order of magnitude.
@@ -85,6 +88,7 @@ class Log:
     """
 
 
+@displayable("designspace.display._space.render_prior")
 @dataclass(frozen=True)
 class Logit:
     """A logit prior: weight concentrated toward both ends of `(0, 1)`.
@@ -96,6 +100,7 @@ class Logit:
     """
 
 
+@displayable("designspace.display._space.render_prior")
 @dataclass(frozen=True)
 class Power:
     """A power prior: `u ** p` weighting toward one end of the domain.
@@ -114,6 +119,7 @@ class Power:
     p: float
 
 
+@displayable("designspace.display._space.render_prior")
 @dataclass(frozen=True)
 class Weights:
     """Relative weights over a discrete parameter's values.

@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from designspace.display._hooks import displayable
 from designspace.expr import ArithExpr
 
 if TYPE_CHECKING:
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
     from designspace.ir._priors import PriorSpec
 
 
+@displayable("designspace.display._space.render_quantized")
 @dataclass(frozen=True)
 class QuantizedSpec:
     """A grid restricting a numeric domain, set by `.quantized()`.
@@ -42,6 +44,7 @@ class QuantizedSpec:
     include_hi: bool = False
 
 
+@displayable("designspace.display._domain.render_domain")
 @dataclass(frozen=True)
 class RealDomain:
     """A continuous interval, declared by `.real()`.
@@ -59,6 +62,7 @@ class RealDomain:
     hi: float | ArithExpr
 
 
+@displayable("designspace.display._domain.render_domain")
 @dataclass(frozen=True)
 class IntegerDomain:
     """A range of integers, declared by `.integer()`.
@@ -76,6 +80,7 @@ class IntegerDomain:
     hi: int | ArithExpr
 
 
+@displayable("designspace.display._domain.render_domain")
 @dataclass(frozen=True)
 class CategoricalDomain:
     """An unordered set of values, declared by `.categorical()`.
@@ -90,6 +95,7 @@ class CategoricalDomain:
     values: tuple[Any, ...]
 
 
+@displayable("designspace.display._domain.render_domain")
 @dataclass(frozen=True)
 class OrdinalDomain:
     """An ordered set of values, declared by `.ordinal()`.
@@ -104,6 +110,7 @@ class OrdinalDomain:
     values: tuple[Any, ...]
 
 
+@displayable("designspace.display._domain.render_domain")
 @dataclass(frozen=True)
 class BoolDomain:
     """The two truth values, declared by `.bool()`.
@@ -112,6 +119,7 @@ class BoolDomain:
     """
 
 
+@displayable("designspace.display._domain.render_domain")
 @dataclass(frozen=True)
 class SubsetDomain:
     """A selection of items, declared by `.subset()`.
@@ -133,6 +141,7 @@ class SubsetDomain:
     max_size: int | None
 
 
+@displayable("designspace.display._domain.render_domain")
 @dataclass(frozen=True)
 class PermutationDomain:
     """An ordering of all items, declared by `.permutation()`.
@@ -146,6 +155,7 @@ class PermutationDomain:
     items: tuple[Any, ...]
 
 
+@displayable("designspace.display._domain.render_domain")
 @dataclass(frozen=True)
 class ChoiceDomain:
     """A branch among named variants, declared by `.choice()`.
@@ -165,6 +175,7 @@ class ChoiceDomain:
     has_payload: frozenset[str]
 
 
+@displayable("designspace.display._domain.render_domain")
 @dataclass(frozen=True)
 class StructDomain:
     """A named group of parameters, declared by `.space()`.
@@ -174,6 +185,7 @@ class StructDomain:
     """
 
 
+@displayable("designspace.display._domain.render_domain")
 @dataclass(frozen=True)
 class CustomDomain:
     """A consumer-supplied type, declared by `.custom()`.
@@ -199,6 +211,7 @@ class CustomDomain:
     validator: Any = None  # Callable[[Any], bool] | None (shorthand)
 
 
+@displayable("designspace.display._domain.render_domain")
 @dataclass(frozen=True)
 class SymbolicDomain:
     """A symbolic expression tree, declared by `.symbolic()`.
@@ -230,6 +243,7 @@ class SymbolicDomain:
     sampler: Any = None  # Callable[[Any], Any] | None
 
 
+@displayable("designspace.display._domain.render_domain")
 @dataclass(frozen=True)
 class CodeDomain:
     """Freeform source code, declared by `.code()`.
@@ -259,6 +273,7 @@ class CodeDomain:
     validators: Any = None  # tuple[Callable[[str], bool], ...] | None
 
 
+@displayable("designspace.display._domain.render_domain")
 @dataclass(frozen=True)
 class ListDomain:
     """A list of independent copies, declared by `.repeat()`.

@@ -40,7 +40,7 @@ space = (
         tags=("budget-guarded",),
     )
 )
-space.n_params
+print(space)
 ```
 
 ## Columnar output

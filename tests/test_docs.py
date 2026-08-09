@@ -268,10 +268,12 @@ def test_signature_parameters_are_documented(label: str, obj: Any) -> None:
 def test_every_export_has_an_example() -> None:
     """Every callable a user invokes carries a runnable `>>>` example.
 
-    Scoped to callables. An example on an IR dataclass would only echo a
-    repr, and `repr(Space)` is a multi-line `mappingproxy` blob that is both
-    unreadable and brittle as expected output. `--doctest-modules` executes
-    the examples; this law asserts only that they exist.
+    Scoped to callables. A doctest of a bare expression echoes its `repr`,
+    not `str`, and `repr(Space)` is a multi-line `mappingproxy` blob that is
+    both unreadable and brittle as expected output; `str(Space)` reading
+    well does not change that a worked example would still show the repr.
+    `--doctest-modules` executes the examples; this law asserts only that
+    they exist.
     """
     missing = [
         label for label, obj in CALLABLES if _documented(obj) and ">>>" not in obj.docstring.value

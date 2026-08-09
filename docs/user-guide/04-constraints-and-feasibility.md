@@ -38,7 +38,7 @@ space = (
     .encourage(ds.param("reagents").size() <= 3, tags=("lean-process",))
     .discourage(ds.param("temp_c") > 180.0, tags=("thermal-load",))
 )
-len(space.constraints)
+print(space)
 ```
 
 The expression vocabulary here is worth naming. `.contains(item)`, `.size()` and
@@ -52,7 +52,7 @@ configuration satisfies them by construction.
 
 ```{code-cell}
 config = space.sample_one(seed=0)
-config
+print(ds.pretty(config, space))
 ```
 
 ```{code-cell}

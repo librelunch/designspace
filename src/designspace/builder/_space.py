@@ -23,6 +23,7 @@ import numpy as np
 
 from designspace.builder._paramexpr import ParamExpr
 from designspace.custom import has_cardinality, is_generative
+from designspace.display._hooks import displayable
 from designspace.expr import ArithExpr, BoolExpr
 from designspace.ir import (
     BoolDomain,
@@ -71,6 +72,9 @@ module, so that both sides share one upstream definition.
 """
 
 
+@displayable(
+    "designspace.display._space.render_space", "designspace.display._html.render_space_html"
+)
 @dataclass(frozen=True)
 class Space:
     """A resolved design space: the set of configurations you can draw from.
@@ -1175,7 +1179,7 @@ class Space:
         --------
         >>> s = ds.space(ds.param("depth").integer(1, 4)).forbid(ds.param("depth") > 2)
         >>> s.infeasibility_reasons({"depth": 4})
-        ['forbid violated (margin=2.0): gt']
+        ['forbid violated (margin=2.0): depth > 2']
         >>> s.infeasibility_reasons({"depth": 1})
         []
         """

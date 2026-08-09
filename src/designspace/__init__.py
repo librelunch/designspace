@@ -59,6 +59,7 @@ from designspace.builder import (
 )
 from designspace.config import config_diff, destructure, flatten, payload, unflatten, variant
 from designspace.custom import ParamType
+from designspace.display import pretty
 from designspace.errors import DesignSpaceError, ResolutionError, SamplingError, SerializationError
 from designspace.expr import ArithExpr, BoolExpr, Expr, Prop, Value, all_, any_, count, value
 from designspace.identity import (
@@ -208,6 +209,7 @@ __all__ = [
     "param",
     "param_from_def",
     "payload",
+    "pretty",
     "space",
     "space_from_ir",
     "unflatten",

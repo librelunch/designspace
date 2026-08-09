@@ -23,7 +23,7 @@ space = ds.space(
     ds.param("bias").real(-1.0, 1.0).repeat(3),
 )
 config = space.sample_one(seed=0)
-config
+print(ds.pretty(config, space))
 ```
 
 `n_stages` is drawn first, because the count references it and so joins the

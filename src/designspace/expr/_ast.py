@@ -11,6 +11,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, NoReturn
 
+from designspace.display._hooks import displayable
+
 if TYPE_CHECKING:
     import designspace as ds  # noqa: F401  (doctest namespace; see conftest.py)
 
@@ -34,6 +36,7 @@ _CONTAINS_GUARD = (
 )
 
 
+@displayable("designspace.display._expr.render_expr_standalone")
 class Expr:
     """An expression: the shared base of conditions and arithmetic.
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from designspace.display._hooks import displayable
 from designspace.expr import BoolExpr
 from designspace.ir._chart import Chart
 from designspace.ir._domain import Domain, QuantizedSpec
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
     import designspace as ds  # noqa: F401  (doctest namespace; see conftest.py)
 
 
+@displayable("designspace.display._space.render_param_def")
 @dataclass(frozen=True)
 class ParamDef:
     """One resolved parameter: the introspection surface.
@@ -81,6 +83,7 @@ class ParamDef:
     quantized: QuantizedSpec | None = None
 
 
+@displayable("designspace.display._space.render_condition")
 @dataclass(frozen=True)
 class Condition:
     """When one parameter is active, as resolved IR.
@@ -106,6 +109,7 @@ class Condition:
     params: frozenset[str]
 
 
+@displayable("designspace.display._space.render_constraint")
 @dataclass(frozen=True)
 class Constraint:
     """A restriction on which configurations are valid, as resolved IR.

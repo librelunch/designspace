@@ -24,7 +24,7 @@ space = ds.space(
     ds.param("acceptance").ordinal("greedy", "boltzmann", "metropolis"),
     ds.param("reheat").bool(),
 )
-list(space.params)
+print(space)
 ```
 
 `real` and `integer` take numeric bounds. `categorical` is unordered and

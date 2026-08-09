@@ -67,6 +67,18 @@ Reshaping a config without going through a space.
    designspace.variant
 ```
 
+## Rendering
+
+Every public object renders itself for a person through `str()`. `pretty`
+prints a configuration read against its space.
+
+```{eval-rst}
+.. autosummary::
+   :toctree: api
+
+   designspace.pretty
+```
+
 ## Sampling and validation results
 
 What the sampling and checking surfaces hand back.

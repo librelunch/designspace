@@ -44,6 +44,7 @@ Rows before that date are single totals under the old arrangement.
 | M13.7: Design-document consolidation (`API.md` restructured, prose standards, four prose laws) | 2026-08-06 | 2447 + 123 |
 | M13.8: Source and test prose (`src/` and `tests/` to the standard; prose laws widened; two new laws) | 2026-08-08 | 3156 + 123 |
 | M13.9: User-facing text stands on its own (row citations out of messages and published docstrings; four new laws) | 2026-08-08 | 3462 + 123 |
+| M13.10: Human-readable rendering (`__str__` on every public type, and `pretty(obj, space=None, ...)` | 2026-08-09 | 3820 + 126 |
 
 ## Out-of-band fixes
 

@@ -18,11 +18,13 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
+from designspace.display._hooks import displayable
 from designspace.expr import BoolExpr
 from designspace.ir._domain import QuantizedSpec
 from designspace.ir._param import Constraint
 
 
+@displayable("designspace.display._results.render_constraint_eval")
 @dataclass(frozen=True)
 class ConstraintEval:
     """One constraint evaluated against one configuration.
@@ -73,6 +75,7 @@ class ConstraintEval:
         return self.applicable and self.satisfied is not self.constraint.feasible_when_satisfied
 
 
+@displayable("designspace.display._results.render_param_error")
 @dataclass(frozen=True)
 class ParamError:
     """One parameter's value rejected during validation.
@@ -97,6 +100,7 @@ class ParamError:
     value: Any | None
 
 
+@displayable("designspace.display._results.render_validation_result")
 @dataclass(frozen=True)
 class ValidationResult:
     """What `Space.validate()` found.
@@ -121,6 +125,7 @@ class ValidationResult:
     constraint_evals: tuple[ConstraintEval, ...]
 
 
+@displayable("designspace.display._results.render_partial_eval")
 @dataclass(frozen=True)
 class PartialEval:
     """What `Space.evaluate_partial()` found: the state of a partial configuration.
@@ -151,6 +156,7 @@ class PartialEval:
 # value, and may admit values an unreduced multi-operand coupling forbids.
 
 
+@displayable("designspace.display._results.render_real_remaining")
 @dataclass(frozen=True)
 class RealRemaining:
     """What a real parameter may still take, given a partial configuration.
@@ -177,6 +183,7 @@ class RealRemaining:
     grid: QuantizedSpec | None
 
 
+@displayable("designspace.display._results.render_integer_remaining")
 @dataclass(frozen=True)
 class IntegerRemaining:
     """What an integer parameter may still take, given a partial configuration.
@@ -196,6 +203,7 @@ class IntegerRemaining:
     grid: QuantizedSpec | None
 
 
+@displayable("designspace.display._results.render_value_remaining")
 @dataclass(frozen=True)
 class ValueRemaining:
     """What a bool, categorical, ordinal, or choice parameter may still take.
@@ -209,6 +217,7 @@ class ValueRemaining:
     values: tuple[Any, ...]
 
 
+@displayable("designspace.display._results.render_subset_remaining")
 @dataclass(frozen=True)
 class SubsetRemaining:
     """What a subset parameter may still select, given a partial configuration.
@@ -234,6 +243,7 @@ class SubsetRemaining:
     max_size: int
 
 
+@displayable("designspace.display._results.render_permutation_remaining")
 @dataclass(frozen=True)
 class PermutationRemaining:
     """What a permutation parameter may still order.
@@ -261,6 +271,7 @@ still turn out infeasible, but a value it excludes is genuinely impossible.
 """
 
 
+@displayable("designspace.display._results.render_param_diff")
 @dataclass(frozen=True)
 class ParamDiff:
     """One difference between two configurations, from `ds.config_diff()`.
@@ -280,6 +291,7 @@ class ParamDiff:
     new: Any | None
 
 
+@displayable("designspace.display._results.render_subspace_info")
 @dataclass(frozen=True)
 class SubspaceInfo:
     """One nested region of a space, from `Space.subspaces`.
@@ -311,6 +323,7 @@ class SubspaceInfo:
     variant_name: str | None = None  # set only for kind == "variant"
 
 
+@displayable("designspace.display._results.render_constraint_report")
 @dataclass(frozen=True)
 class ConstraintReport:
     """One `SamplingReport.constraints` row.
@@ -370,6 +383,7 @@ class ConstraintReport:
         return self.satisfied
 
 
+@displayable("designspace.display._results.render_sampling_report")
 @dataclass(frozen=True)
 class SamplingReport:
     """What `Space.sampling_report(n, seed, tighten_bounds)` returns.
@@ -400,6 +414,7 @@ class SamplingReport:
     activity: MappingProxyType[str, float]
 
 
+@displayable("designspace.display._results.render_representation_check_failure")
 @dataclass(frozen=True)
 class RepresentationCheckFailure:
     """One law `Representation.check()` found violated.
@@ -423,6 +438,7 @@ class RepresentationCheckFailure:
     count: int  # how many of the n draws exhibited this failure
 
 
+@displayable("designspace.display._results.render_representation_check")
 @dataclass(frozen=True)
 class RepresentationCheck:
     """What `Representation.check()` found: a report, never an exception.

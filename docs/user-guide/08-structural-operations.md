@@ -31,7 +31,7 @@ space = (
     )
     .encourage(ds.param("cooling_rate") >= 0.95, tags=("slow-cooling",))
 )
-space.n_params
+print(space)
 ```
 
 ## Pinning a parameter

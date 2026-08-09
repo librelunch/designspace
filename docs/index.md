@@ -16,6 +16,11 @@ space by fingerprint.
 ...     ds.param("lr").real(1e-4, 1e-1).prior(ds.Log()),
 ...     ds.param("momentum").real(0.0, 0.99).when(ds.param("optimizer") == "sgd"),
 ... )
+>>> print(space)
+Space: 3 params, 1 conditional, 0 constraints
+  optimizer  categorical  {'adam', 'sgd'}
+  lr         real         [0.0001, 0.1]  log
+  momentum   real         [0.0, 0.99]  when optimizer == 'sgd'
 >>> config = space.sample_one(seed=0)
 >>> config["optimizer"]
 'sgd'

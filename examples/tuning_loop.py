@@ -71,24 +71,13 @@ def search(space: ds.Space, n: int, seed: int) -> tuple[dict[str, Any], float]:
 
 def main() -> None:
     space = build_space()
-    print(f"Space: {space.n_params} parameters, {len(space.constraints)} constraints")
+    print(space)
 
     best, score = search(space, N_CANDIDATES, SEED)
 
     print(f"\nBest of {N_CANDIDATES} candidates (score {score:.4f}):")
-    for path, value in ds.flatten(best, space).items():
-        print(f"  {path:28} = {value!r}")
+    print(ds.pretty(best, space))
 
-    # The declared constraint is reported, never enforced. A positive margin is
-    # slack; a negative one means the discouraged state holds.
-    for ce in space.evaluate_constraints(best):
-        if not ce.constraint.hard:
-            tags = ", ".join(sorted(ce.constraint.tags))
-            print(f"\ndeclared [{tags}]: violated={ce.violated}")
-
-    # Store results under this pair. The fingerprint identifies the space, the
-    # config hash the point in it, so a result stays interpretable after the
-    # space is edited.
     print("\nObservation key:")
     print(f"  space  {space.fingerprint()}")
     print(f"  config {ds.config_hash(best, space)}")

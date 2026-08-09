@@ -20,7 +20,7 @@ space = ds.space(
     ds.param("neighborhood").categorical("swap", "insert", "reverse"),
     ds.param("acceptance").ordinal("greedy", "boltzmann", "metropolis"),
 ).forbid(ds.param("min_temp") >= ds.param("initial_temp"))
-space.n_params
+print(space)
 ```
 
 ## One draw
@@ -30,6 +30,13 @@ space.n_params
 ```{code-cell}
 config = space.sample_one(seed=0)
 config
+```
+
+A config can be pretty-printed against its space using `pretty`, showing each
+value beside the domain it satisfies.
+
+```{code-cell}
+print(ds.pretty(config, space))
 ```
 
 `cooling_rate` lands on the declared grid, and the two temperatures respect the

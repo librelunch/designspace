@@ -35,6 +35,7 @@ from dataclasses import dataclass, field, fields, replace
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar
 
+from designspace.display._hooks import displayable
 from designspace.errors import ResolutionError
 from designspace.expr import (
     ArithExpr,
@@ -118,6 +119,7 @@ class _ElementSnapshot:
     list_default: Any = None
 
 
+@displayable("designspace.display._space.render_param_expr")
 @dataclass(frozen=True, eq=False)
 class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     """A parameter, either being declared or being referred to.

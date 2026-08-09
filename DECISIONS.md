@@ -517,6 +517,209 @@ Enforced by `messages_cite_no_error_table_row` and
 
 ---
 
+## D-96: Do public objects render themselves for a human, and what is the stability of that rendering?
+
+- Status: Resolved
+- Date: 2026-08-09
+- Spec section: none (gap); resolved into API.md §Human-Readable Rendering
+- Decided by: User
+
+### Question
+
+Every exported type relies on the `@dataclass`-generated `__repr__`. That repr
+is faithful but unreadable at any real size: a three-parameter space prints as
+one line of nested `mappingproxy`, `frozenset()`, and unresolved defaults such
+as `FreshParamExpr(path='optimizer', domain=None, periodic=False,
+prior_spec=None, ...)`. Should a public object render itself readably for a
+person, through which hook, with what stability guarantee on the exact layout,
+and should that extend to a module-level formatting function?
+
+### Why the specification is insufficient
+
+`API.md` says nothing about `__repr__`, `__str__`, `str()`, or printing.
+Pretty-printing is absent from the binding *Out of Scope* list, whose entries
+are all semantic (search operators, distances, genotype encodings, structural
+morphisms, CSP solving). The one adjacent sentence, under *Parameter Types*,
+states that core owns no printer or parser for a `.symbolic()` value's AST;
+that is scoped to rendering a value back to source and says nothing about
+rendering a declaration or any other type.
+
+### Possibilities considered
+
+1. **Do nothing.** Leaves the repr as the only rendering, unreadable at any
+   real size, and leaves `infeasibility_reasons` printing a violated
+   constraint as its bare node kind (`compare`) rather than the expression.
+2. **`__str__` only.** `print(space)` and `str(space)` render prettily;
+   `repr(space)` stays the faithful dataclass form, so a debugger and the two
+   existing repr-pinning doctests are untouched.
+3. **`__str__` plus the IPython and Jupyter display hooks**
+   (`_repr_pretty_`, `_repr_html_`). Because the user-guide pages are executed
+   myst-nb notebooks, a cell ending on a bare object renders into the built
+   documentation site through these hooks.
+4. **Replace `__repr__` as well**, the polars approach: a bare object at a
+   REPL shows the pretty form. Costs the faithful constructor-shaped repr and
+   would rewrite the doctests at `builder/_views.py:94` and `ir/_param.py:68`.
+5. **A public `ds.pretty(...)` function**, alongside or instead of a dunder.
+   Gains caller-supplied width and column selection, and is the only way to
+   render a `Config`, since `sample_one` returns a plain `dict` that no
+   dunder can reach.
+
+### Answer
+
+Possibility 3, `__str__` plus the notebook hooks, `__repr__` left untouched.
+The exact layout is explicitly not a compatibility contract: it may be tuned
+after v0.1 without a version bump, unlike the wire format under the freeze
+discipline.
+
+`ds.pretty()` (possibility 5) was considered and deferred rather than
+rejected. Two of its three arguments are weak: caller-supplied width and
+column selection do not by themselves justify new public surface, and
+rendering something that is not one object (a space diff, a config pair) is a
+separate feature. The third argument survives: there is no way to print a
+`Config` against its space, since `sample_one` returns a plain `dict` and no
+dunder can reach it. That gap is real but is its own design question, how an
+inactive parameter is shown, whether printing validates, one config or many,
+and is left for a later milestone to answer on its own rather than folded in
+here under a "printing" scope.
+
+### Reasoning
+
+Nothing in the specification forbids this, and the repository already
+concedes the problem: `tests/test_docs.py` exempts non-callables from the
+worked-example gate because a dataclass repr is "unreadable and brittle as
+expected output." A dunder is not an export, so it does not weigh against
+`PLAN.md`'s requirement that `__init__.py` hold exactly the implemented spec
+surface; a new function would. Possibility 4 was rejected because the
+faithful repr has a real use, is what a doctest and a debugger see, and two
+doctests already depend on its exact shape.
+
+### Specification update
+
+`API.md` gains `## Human-Readable Rendering`, stating that every public
+object renders itself through `str()` and the notebook hooks, that `repr()`
+remains the faithful form, that the layout is not a compatibility contract,
+that rendered paths use the one grammar from *Paths and Scoping*, and that a
+`.symbolic()` parameter renders its declaration only, never a value's AST as
+source. The *Conformance Laws* table gains the new laws enforced in
+`tests/conformance/test_display.py`.
+
+---
+
+## D-97: How is a configuration rendered against its space, and what public surface does that take?
+
+- Status: Resolved
+- Date: 2026-08-09
+- Spec section: none (gap); resolved into API.md §Human-Readable Rendering
+- Decided by: User
+
+### Question
+
+D-96 gave every public object a `__str__` and the notebook hooks, but named
+one gap and deferred it: a configuration is a plain `dict`, and `sample_one`
+returns one, so no dunder can ever reach it. There is no way to print an
+assignment beside the domain it satisfies, or beside which parameters a
+condition switched off. Should that gap be closed now, through what surface,
+and with what arguments?
+
+### Why the specification is insufficient
+
+`API.md` says nothing about rendering, human-readable or otherwise; D-96
+already established that printing is not covered by the binding *Out of
+Scope* list. A configuration itself is specified only as "a `dict[str, Any]`
+keyed by definition and instance paths" under *Config Representation*, which
+says nothing about how one is displayed.
+
+### Possibilities considered
+
+1. **Do nothing.** The gap D-96 named stays open. `sample_one`'s result is
+   printed as a bare dict, `repr`-only, with no reference to the space that
+   declares it.
+2. **A method on `Space`**, `space.pretty_config(config)`. No new module-level
+   export, and the space is always in hand at the call site. Rejected: the
+   library's rendering surface would then be split between a dunder-driven
+   convention for every other type and a differently-named method for this
+   one, and a caller who already has `ds.pretty(other_thing)` in scope would
+   have no reason to expect the config path to look different.
+3. **A wrapper type**, a wrapping `RenderedConfig` or similar carrying both
+   the config and its space. Rejected: it exists solely to be printed and
+   would need everything a plain `dict` gives away for free (iteration,
+   equality, `in`), and gives no independent design freedom a well-chosen
+   function signature does not already give.
+4. **A module-level function, `ds.pretty(obj, space=None, ...)`.** One name
+   dispatches on what it is given: a configuration paired with its space, or
+   any other displayable object read on its own. Reaches the config gap and
+   gives `width` and column selection a home, without the split surface of
+   possibility 2 or the ceremony of possibility 3.
+
+### Answer
+
+Possibility 4. `ds.pretty(obj, space=None, *, width, columns, show, hide)`
+is one new export.
+
+A configuration is rendered as one row per coordinate: its value beside the
+domain it satisfies for a `"set"` parameter, or one of `"unset"`, `"inactive"`,
+`"unknown"` in place of a value otherwise, distinguishing a parameter waiting
+on an assignment from one a condition has switched off, which
+`infeasibility_reasons`'s own vocabulary already keeps distinct at the
+`evaluate_partial` layer. The header reports the config's real totals and,
+when validation succeeds, whether it is valid; the trailing block, when
+requested, carries each constraint's verdict and margin. `evaluate_partial`
+and `validate` both raise on a value whose type does not match its domain,
+exactly the config a printer is reached for, so both run behind a guard and
+degrade the affected accounting to `"unknown"` rather than propagating: a
+printer must never be less robust than the thing it summarizes failed to
+validate cleanly.
+
+`show` and `hide` narrow the rendered rows by status, and apply only to a
+configuration: `hide="inactive"` is the common case of wanting to see what is
+actually set without the parameters a condition switched off, and `show`
+names what is left to assign. A filter is honest about what it drops: the
+header keeps the config's real counts, and a trailing line states how many
+rows of each hidden status were left out, so a reader can never mistake a
+filtered render for a config with nothing to hide. A filter selects rows and
+never touches one: a kept row renders identically whether or not a sibling
+row was hidden, which is what keeps repeated `pretty()` calls under different
+filters comparable by eye.
+
+`columns` and the `width` argument extend to every displayable object, not
+only a configuration, since a `Space`, a `ParamDef`, or a `ParamExpr` already
+share the same row vocabulary a config's own rows draw from. `pretty(x)` at
+its defaults is required to equal `str(x)` for every type this applies to, a
+conformance law (`pretty_matches_the_display_hooks`) pins directly, so the two
+surfaces cannot silently drift apart. The one deliberate exception is a bare
+`Constraint`: its own `__str__` never wraps regardless of length, since a
+standalone constraint outside a table was never covered by the width-budget
+law D-96 introduced, and `pretty` only wraps one when a caller names a width
+of their own.
+
+### Reasoning
+
+A method (possibility 2) reads naturally at one call site but forks the
+rendering surface in two: a bare object goes through the display hooks
+`str()` already reaches, while a config alone would need its own
+differently-shaped entry point, and a caller has no way to guess which
+applies without checking the type first. A dedicated wrapper (possibility 3)
+solves nothing a function signature does not, and costs a type whose only
+job is to be printed, meaning it duplicates `dict`'s own protocol for no
+independent benefit. Extending `columns` to every displayable object, not
+just a configuration, was a small addition once the vocabulary already
+existed for a `Space` table's own columns, and keeping `pretty(x) == str(x)`
+at defaults, enforced as a law rather than left as an informal expectation,
+is what stops the two rendering paths from drifting once either one changes
+independently later.
+
+### Specification update
+
+`API.md`'s `## Human-Readable Rendering` section gains `pretty`'s contract:
+the dispatch rule between a configuration and every other displayable object,
+the column and status vocabularies, the rule that a row filter reports what
+it suppresses rather than dropping it silently, and the statement that a
+rendered value is exact while a rendered domain may still elide. The
+*Conformance Laws* table gains the new laws enforced in
+`tests/conformance/test_pretty.py`.
+
+---
+
 _Numbering._ D-1 through D-90 were resolved into `API.md` and removed from this
 file, and are recoverable from git history. Numbering continues unbroken, so a
 number always names one question.

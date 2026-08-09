@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from designspace.builder._space import Seed, Space
+from designspace.display._hooks import displayable
 from designspace.ir import Constraint, RepresentationCheck, RepresentationCheckFailure
 
 if TYPE_CHECKING:
@@ -72,6 +73,7 @@ def _sorted_union(a: tuple[str, ...], b: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(sorted(set(a) | set(b)))
 
 
+@displayable("designspace.display._results.render_representation")
 @dataclass(frozen=True)
 class Representation:
     """A `Space → Space` morphism carrying a value-level `decode`/`encode`
