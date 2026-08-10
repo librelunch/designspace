@@ -40,7 +40,7 @@ dev = [
     # group because the workspace shares one environment: were they declared
     # only on the member, a per-package sync would evict what the other gates
     # need, and the gates would reinstall over each other in turn. One `uv
-    # sync` here serves all seven. Both backends are pure Python and support
+    # sync` here serves every gate. Both backends are pure Python and support
     # every version in the CI matrix.
     "designspace-solvers[optuna,cmaes]",
 ]

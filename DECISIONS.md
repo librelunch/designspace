@@ -4,6 +4,22 @@ This file is an interpretation log for genuine gaps in `API.md`. It is not a
 general ADR diary, a progress log, or a place to justify divergence from a clear
 requirement.
 
+## Filing an entry
+
+An entry is written when `API.md` is imprecise or incomplete and an answer is
+required to proceed. Routine implementation details are not entries, and a
+requirement that is clear but inconvenient is not a gap.
+
+Where the specification is silent, do not invent silently. Choose the
+least-surprising behavior consistent with its design principles and
+representation model, implement it, and record the question, the possibilities
+and the answer here under the current milestone.
+
+**Who may resolve one.** Ask the user before resolving a gap that changes public
+API, compatibility, scope, or mathematical meaning. An agent may resolve a
+low-risk, reversible implementation gap, and must still record it if it affects
+the contract.
+
 **Who decided determines whether the answer reaches `API.md`.**
 
 - A gap the **user** resolves is folded into `API.md`, so future work no longer
@@ -14,10 +30,12 @@ requirement.
   review, and the specification changes only once the user has reviewed it. Its
   `Specification update` field says so.
 
+## Citing an entry
+
 Entries are numbered for this file's own use. **Nothing outside this file cites
-an entry by number.** Code and specification state their reasons directly, in
-words, so that reading them never requires following a number to a second
-document.
+an entry by number.** Code, specification and commit messages state their
+reasons directly, in words, so that reading them never requires following a
+number to a second document.
 
 ## Entry template
 

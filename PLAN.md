@@ -4,21 +4,7 @@
 holds only work that has not shipped. Keep exactly one milestone in progress.
 Completed milestones are recorded in `PROGRESS.md`.
 
-## Source of truth and conflict handling
-
-1. **API.md is normative.** This plan sequences it; it never overrides it.
-2. If the spec and this plan conflict, the spec wins. Record the conflict in
-   `DECISIONS.md`.
-3. If the spec is ambiguous or silent, do not invent silently: choose the
-   least-surprising behavior consistent with the spec's design principles and
-   representation model, implement it, and record the question, the options, and
-   the choice in `DECISIONS.md` under the current milestone. An agent's answer
-   stays in `DECISIONS.md` for review and is not folded into `API.md`; a user's
-   answer is folded in (see `CLAUDE.md`).
-4. Never resolve an ambiguity by weakening a stated law (conformance laws, error
-   table, Kleene table, chart formulas). Laws are frozen text.
-
-## Working protocol
+## Milestone protocol
 
 - **One milestone.** Do not start milestone N+1 while N's exit criteria fail.
 - **Laws first.** At the start of each milestone, write that milestone's
@@ -32,23 +18,6 @@ Completed milestones are recorded in `PROGRESS.md`.
 - **No dead scaffolding.** Do not stub future milestones' APIs. Unimplemented
   spec surface should not exist yet, so `from designspace import X` fails
   honestly.
-
-## Global conventions
-
-- Python >= 3.12
-- Layout: `src/designspace/`, tests in `tests/`.
-- Tooling: `uv` for env, `ruff` (lint and format), `mypy --strict`, `pytest`,
-  `hypothesis` for property tests.
-- All public objects are **immutable** (`@dataclass(frozen=True)` or
-  equivalent); builders return new objects. No global mutable state; RNG passed
-  explicitly.
-- Exception taxonomy per spec: `DesignSpaceError` with `ResolutionError`,
-  `SerializationError`, and `SamplingError` under it; misuse guards raise plain
-  `TypeError`. Every `ResolutionError` message names the offending definition
-  path or paths.
-- Do not implement anything in the spec's **Out of scope** list, even as a
-  helper: no search operators, no distances, no tree generators, no algebraic
-  expression normalization, no clamping anywhere.
 
 ## Freeze discipline (the version-bump protocol)
 
@@ -70,37 +39,6 @@ version**, frozen at `1`. Every milestone works under this protocol:
 5. **`rfc8785` is pinned exactly.** Bumping that pin is an act under this
    protocol rather than a routine dependency update: a transitive change to
    number formatting would silently shift every committed digest.
-
-## Module map (stable across milestones)
-
-```
-src/designspace/
-  __init__.py      # public surface only; re-exports
-  expr/            # M0  AST nodes, operators, guardrails, all_/any_/count
-  builder/         # M1  ds.param / ds.space builders, modifiers, layering
-  ir/              # M1  ParamDef, Domain, Constraint, Condition, results
-  resolve/         # M1+ pass pipeline, error table, desugaring; M5 envelopes
-  charts/          # M2  chart families, integers, grids, periodic, truncation
-  eval/            # M2  Kleene engine, activity, margins; M4 aggregates
-  validate/        # M2  validate / is_feasible / evaluate_constraints
-  sample/          # M2  reference sampler, rejection, retries
-  paths/           # M3  grammar, parsing, scoping walk
-  config/          # M3  flatten/unflatten/variant/payload/destructure; M7 hash/diff
-  defaults/        # M6  apply_defaults cascade
-  partial/         # M6  evaluate_partial, remaining_domain, next_assignable
-  identity/        # M7  canonical encoding, config_hash, fingerprint
-  serialize/       # M7  to_json/from_json, versioning; M15 to_json_schema
-  ops/             # M8  slice/freeze/select/filter/extend/active_subspace
-  meta/            # M8  space_from_ir, param_from_def, map_params, ...
-  custom/          # M9  ParamType protocol, registry, prop()
-  frame/           # M10 polars output
-  represent/       # M11 Encoding, Representation, transport, the induced chart representation
-  program/         # M12 symbolic/code types
-tests/
-  unit/            # per-module
-  conformance/     # the laws; known-answer vectors in tests/conformance/vectors/
-  corpus/          # integration spaces (below), exercised end-to-end
-```
 
 ## Integration corpus
 
@@ -178,7 +116,7 @@ matching the existing `builder/_space.py` pattern. New
 milestone writes its own user-facing docstrings, under the same coverage gates,
 before merging.
 
-**Gate:** the seven commit gates plus the docstring-coverage gates, all green;
+**Gate:** `just gates` plus the docstring-coverage gates, all green;
 pre-existing known-answer vectors byte-identical; every corpus fixture's
 `to_json_schema()` output validates that fixture's own sampled configs;
 `examples/README.md`'s "Not yet implemented" section, which currently names
@@ -205,8 +143,6 @@ is additive, so none blocks a release.
 2. Corpus fixtures for the milestone added and passing end-to-end.
 3. Error-table rows introduced by the milestone each have a message-content
    test.
-4. The seven commit gates in `CLAUDE.md` green.
+4. `just gates` green.
 5. `PROGRESS.md` updated; `DECISIONS.md` entries for anything the spec left
    open.
-6. Public `__init__.py` exports exactly the spec surface implemented so far,
-   nothing speculative.

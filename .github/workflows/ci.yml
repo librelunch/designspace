@@ -29,8 +29,8 @@ jobs:
       - run: just solvers
 
   docs:
-    # The sixth commit gate. The recipe carries `--extra docs`, which installs
-    # the extra for that run alone.
+    # The docs gate. The recipe carries `--extra docs`, which installs the extra
+    # for that run alone.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

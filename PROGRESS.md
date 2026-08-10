@@ -2,16 +2,16 @@
 
 Current milestone: **M14 (open)**
 
-One row per completed milestone: date and total test count at completion. A
-milestone's section is deleted from `PLAN.md` when its exit criteria pass, so
-this file is the record that it shipped. Update the "Current milestone" line at
-the same time. Decisions live in `DECISIONS.md`; this file does not index them.
+One row per completed milestone: date and total test count at completion. This
+file is the record that a milestone shipped; `PLAN.md` holds the protocol and
+the work that has not. Update the "Current milestone" line with each row.
+Decisions live in `DECISIONS.md`; this file does not index them.
 
 From 2026-08-06 the test count is two numbers, `pytest -q` plus the doctest
-gate, because those are two commit gates and two commands (see `CLAUDE.md`).
-Rows before that date are single totals under the old arrangement. Both numbers
-are core's. The `solvers` gate, added at M13.11, carries its own suite over the
-sibling package under `packages/` and is counted in neither.
+gate, because those are two commit gates and two commands. Rows before that date
+are single totals under the old arrangement. Both numbers are core's. The
+`solvers` gate, added at M13.11, carries its own suite over the sibling package
+under `packages/` and is counted in neither.
 
 | Milestone | Completed | Tests |
 |---|---|---|

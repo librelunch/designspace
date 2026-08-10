@@ -2,41 +2,32 @@
 
 These instructions govern all work in this repository.
 
-## Read order
+## The documents
 
 Before editing code, read:
 
-1. `API.md`, the normative product and semantic specification.
-2. `DECISIONS.md`, the record of genuine specification gaps and their
-   resolutions.
-3. `PLAN.md`, the current implementation milestone and acceptance criteria.
+1. `API.md`, the normative product and semantic specification. It defines what
+   the library is.
+2. `DECISIONS.md`, the interpretation ledger. It governs what counts as a
+   specification gap and who may resolve one.
+3. `PLAN.md`, the route toward the specification. It governs the milestone
+   protocol and holds the work that has not shipped.
 
-A direct user instruction overrides these repository documents. Otherwise, do
-not silently reinterpret a clear requirement in `API.md`.
+`PROGRESS.md` records the milestones that have shipped. Each rule of this
+repository is stated in exactly one of these files, the one whose subject it is.
 
-## Specification gaps
+## Precedence
 
-Use `DECISIONS.md` only when `API.md` is genuinely imprecise or incomplete and
-an answer is required to proceed.
+A direct user instruction overrides these documents. Otherwise `API.md` is
+normative: `PLAN.md` sequences it and never overrides it, and no requirement in
+it is silently reinterpreted.
 
-- State the exact question.
-- Explain why the specification does not answer it.
-- Compare the plausible answers and their consequences.
-- Record the chosen answer and reasoning.
+A stated law is frozen text. Conformance laws, the error table, the Kleene table
+and the chart formulas are never weakened, and an ambiguity is never resolved by
+weakening one.
 
 A clear specification that is inconvenient to implement is not ambiguous. An
-implementation that contradicts it is a bug, not a decision. Routine
-implementation details do not belong in `DECISIONS.md`.
-
-Ask the user before resolving a gap that changes public API, compatibility,
-scope, or mathematical meaning. An agent may resolve a low-risk, reversible
-implementation gap, but must still record it if it affects the contract.
-
-Who decided determines what happens to `API.md`. A gap the **user** resolves is
-folded into `API.md`, and its `DECISIONS.md` entry stays for reference. A gap an
-**agent** resolves is recorded in `DECISIONS.md` and is never folded into
-`API.md` on the agent's own authority. There the entry is the request for
-review, and `API.md` changes once the user has reviewed it.
+implementation that contradicts it is a bug, not a decision.
 
 ## Prose standards
 
@@ -61,54 +52,49 @@ These govern every authored document, docstring, and comment in the repository.
 Prose laws in `tests/test_docs_site.py` enforce what is mechanically checkable.
 Read a failure from that file as a rule, not as a lint to satisfy narrowly.
 
-## Work discipline
+## Standing rules
 
-- Work only on the current `PLAN.md` milestone (see `PROGRESS.md`) and keep its
-  acceptance criteria current.
-- When a milestone's exit criteria pass, delete its section from `PLAN.md` and
-  add its row to `PROGRESS.md`. `PLAN.md` holds only unshipped work;
-  `PROGRESS.md` is the record that a milestone shipped.
-- Prefer small, reviewable changes that preserve storage compatibility during
-  extraction.
-- Add dependencies only when the active milestone needs them.
+- All public objects immutable; RNG passed explicitly; error messages name the
+  offending definition path or paths.
+- The specification's *Out of Scope* section is binding as written, including
+  for anything offered as a helper. Read it there rather than from a copy.
 - Keep the public surface small; internal structure is not automatically public
   API.
+- Add a dependency only when the open milestone needs it.
+- Prefer small, reviewable changes that preserve storage compatibility during
+  extraction.
 - Do not commit or tag until the milestone is explicitly approved.
 - Do not open any PRs or push to remotes unless explicitly requested.
 
-## Commit gates
+## Commits
 
-Before every commit, run the gates from the repository root:
+Run `just gates` from the repository root before every commit. The `justfile` is
+the one definition of what that runs, and no other file lists or counts the
+gates. `just check` is the fast subset the pre-commit hook runs; the full set
+runs before a push. CI calls the same recipes, so a gate cannot differ between a
+working copy and CI. Do not skip a gate, weaken strictness, add a broad ignore,
+hide a failure, or change a recipe to make a commit pass.
 
-```console
-just gates
-```
+A subject is `type(scope): what changed` (Conventional Commits style).
 
-That runs seven recipes: `lint`, `format`, `types`, `test`, `doctest`, `docs`
-and `solvers`. All seven must pass. `just check` is the first three, which is
-what the pre-commit hook runs; the full set runs before a push.
+- Types: `feat`, `fix`, `docs`, `test`, `refactor`, `build`, `chore`.
+- Scope is optional and names the package directory or the document the change
+  touches. It is read off the tree rather than from a list kept here.
+- The subject states what changed, in the plain register the prose standard
+  sets, under 72 characters, lower case after the colon, no trailing period.
+- Milestone numbers stay in `PLAN.md` and `PROGRESS.md`. A commit that closes a
+  milestone says what it recorded, not which number it was.
+- Name a decision in words rather than by ledger number, for the reason
+  `DECISIONS.md` gives.
 
-`solvers` covers the sibling package under `packages/`, which holds the solver
-bindings core is barred from shipping. It runs inside the commit gates so that
-a change to the representation breaks its consumer on the day it lands.
+Bodies come in two sizes, wrapped at 72 columns.
 
-The `justfile` is the one definition of every gate. CI calls the same recipes,
-so a gate cannot differ between a working copy and CI. Do not skip a gate,
-weaken strictness, add broad ignores, hide a failure, or change a recipe to
-make a commit pass.
+- A routine commit gets at most three lines, and none at all where the subject
+  is enough. Use them for why the change was made, where the subject cannot
+  carry it.
+- A milestone commit, or one of comparable reach, gets at most three short
+  paragraphs: what shipped, what it cost, what it left open.
 
-
-## Additional instructions
-
-- Never weaken a stated law from `API.md` (conformance laws, error table, Kleene
-  table, chart formulas).
-- Laws-first: write the milestone's conformance-law tests before implementation;
-  existing conformance tests are permanent and may never be deleted or loosened.
-- No dead scaffolding: do not stub future milestones' public APIs.
-  `src/designspace/__init__.py` exports exactly the spec surface implemented so
-  far.
-- Out-of-scope list in the spec is binding even for "helpers": no search
-  operators, no distances, no tree generators, no algebraic expression
-  normalization, no clamping anywhere.
-- All public objects immutable; RNG passed explicitly; error messages name the
-  offending definition path(s).
+No body walks the diff file by file, narrates how the work went, or restates
+what `API.md`, `DECISIONS.md`, `PLAN.md` or `PROGRESS.md` already record. It
+names those documents instead.
