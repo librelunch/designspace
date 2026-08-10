@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from designspace.builder._space import Space
+from designspace.config import as_nested
 from designspace.identity._config_encode import encode_config
 from designspace.identity._jcs import canonical_digest
 
@@ -56,4 +57,6 @@ def config_hash(config: dict[str, Any], space: Space) -> str:
     >>> ds.config_hash({"algo": "exact", "depth": 2}, s) == ds.config_hash(a, s)
     False
     """
-    return canonical_digest(encode_config(config, space))
+    # The encoder walks the nested shape, so a config keyed by path is
+    # rebuilt first. Both spellings name one configuration and hash alike.
+    return canonical_digest(encode_config(as_nested(config, space), space))

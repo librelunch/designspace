@@ -380,6 +380,109 @@ class Space:
 
         return _dependency_graph(self)
 
+    def param_def(self, path: str) -> ParamDef:
+        """The parameter definition at a definition or instance path.
+
+        `params` is keyed by definition path, where every element of a
+        `.repeat()` shares one entry, as `workers[].timeout_s`. The surfaces
+        that name a parameter given a configuration report instance paths
+        instead, one per element, as `workers[0].timeout_s`. This resolves
+        either form, so what `next_assignable`, `missing_params`,
+        `param_activity` and `evaluate_partial` report can be looked up
+        directly.
+
+        Parameters
+        ----------
+        path : str
+            A definition path or an instance path.
+
+        Returns
+        -------
+        ParamDef
+            The definition, carrying the chart, prior and grid a caller needs
+            in order to choose a value. Every element of a lift shares one
+            definition, and equal paths give equal definitions.
+
+        Raises
+        ------
+        ResolutionError
+            When no parameter is defined at the path, naming it.
+
+        Examples
+        --------
+        >>> s = ds.space(
+        ...     ds.param("n").integer(0, 3),
+        ...     ds.param("timeouts").integer(1, 3600).log_scale().repeat(ds.param("n")),
+        ... )
+        >>> s.param_def("timeouts[0]").type_kind
+        'integer'
+
+        The element is described, not the list holding it, so the chart is
+        the one a value is drawn through.
+
+        >>> s.param_def("timeouts[0]").chart.from_unit(1.0)
+        3600
+        >>> s.params["timeouts"].type_kind, s.params["timeouts"].chart
+        ('list', None)
+
+        Every element resolves alike.
+
+        >>> s.param_def("timeouts[2]") == s.param_def("timeouts[0]")
+        True
+        """
+        from designspace.errors import ResolutionError
+        from designspace.paths import definition_form
+
+        key = path if path in self.params else definition_form(path)
+        if key in self.params:
+            return self.params[key]
+        derived = self._lift_element_def(key)
+        if derived is None:
+            raise ResolutionError(f"param_def(): no parameter is defined at {path!r}")
+        return derived
+
+    def _lift_element_def(self, key: str) -> ParamDef | None:
+        """The definition of a scalar lift's element, which `params` does not hold.
+
+        A struct or choice lift stores a template per field, `workers[].timeout_s`,
+        and needs nothing here. A scalar lift has no field to store, so its
+        element's kind, chart, prior and grid live on the container's
+        `ListDomain` instead, and the element path resolves to no entry at all.
+        The element is what a caller naming `timeouts[0]` means, so it is
+        assembled from those fields rather than the container being handed back
+        with the list's own kind and no chart.
+        """
+        depth = 0
+        container = key
+        while container.endswith("[]"):
+            container = container[:-2]
+            depth += 1
+        if depth == 0 or container not in self.params:
+            return None
+        defn = self.params[container]
+        domain = defn.domain
+        for _ in range(depth):
+            if not isinstance(domain, ListDomain):
+                return None
+            element = domain.element_domain
+            if domain.element_kind == "list":
+                domain = element
+                continue
+            return ParamDef(
+                path=key,
+                type_kind=domain.element_kind,
+                domain=element,
+                prior=domain.element_prior,
+                periodic=domain.element_periodic,
+                default=domain.element_default,
+                condition=None,
+                tags=defn.tags,
+                meta=defn.meta,
+                chart=domain.element_chart,
+                quantized=domain.element_quantized,
+            )
+        return None
+
     def param_constraints(self, path: str) -> list[Constraint]:
         """The constraints that mention `path`.
 

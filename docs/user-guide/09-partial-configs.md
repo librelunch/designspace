@@ -134,6 +134,11 @@ space.validate_param(
 `next_assignable` names what can be assigned now, `is_complete` says when to
 stop, and `missing_params` reports what is still absent.
 
+The loop builds its configuration **keyed by path**, which is the form
+`next_assignable` reports in, so each value is written at the path it was just
+given. A lift's elements are named one at a time, and assigned one at a time
+like everything else.
+
 ```{code-cell}
 target = space.sample_one(seed=0)
 flat = ds.flatten(target, space)
@@ -142,19 +147,64 @@ partial = {}
 steps = []
 while not space.is_complete(partial):
     path = space.next_assignable(partial)[0]
-    if "[" in path:
-        # A lift's instances become assignable together, once the count is
-        # known: the nested form has no slot for a partly-filled list.
-        path = path[: path.index("[")]
-        partial[path] = target[path]
-    else:
-        partial[path] = flat[path]
+    partial[path] = flat[path]
     steps.append(path)
 steps
 ```
 
 ```{code-cell}
 space.is_complete(partial), space.missing_params(partial), space.is_feasible(partial)
+```
+
+`ds.unflatten` returns the nested form, which is what `validate` and
+`sample_one` speak:
+
+```{code-cell}
+ds.unflatten(partial, space) == target
+```
+
+The two forms are told apart by `ds.is_flat`, and `ds.flatten` refuses a
+configuration that is already keyed by path rather than quietly dropping the
+lifts it cannot flatten twice:
+
+```{code-cell}
+ds.is_flat(partial, space), ds.is_flat(target, space)
+```
+
+## A count decided during the loop
+
+Above, the lift's length was fixed at declaration. When a count is itself a
+parameter, the elements cannot be named until it has a value, and the loop
+reflects that: first the count, then the instances it brought into being.
+
+```{code-cell}
+pipeline = ds.space(
+    ds.param("n_stages").integer(0, 3),
+    ds.param("stages")
+    .space(ds.space(ds.param("dwell_s").integer(1, 60)))
+    .repeat(ds.param("n_stages")),
+)
+pipeline.next_assignable({})
+```
+
+```{code-cell}
+pipeline.next_assignable({"n_stages": 2})
+```
+
+A count of zero is the case worth knowing. An active lift is present whatever
+its length, carrying `[]` when it has no elements, because absence is what
+marks a lift *inactive*. With no element to assign, the list itself is what
+becomes assignable, and it is the only time a container is:
+
+```{code-cell}
+pipeline.next_assignable({"n_stages": 0})
+```
+
+Assigned in the flat form, a list is written as its length:
+
+```{code-cell}
+empty = {"n_stages": 0, "stages": 0}
+pipeline.is_complete(empty), ds.unflatten(empty, pipeline)
 ```
 
 ## Positional vectors

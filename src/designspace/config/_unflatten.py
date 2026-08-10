@@ -76,18 +76,46 @@ def _is_fully_static(domain: ListDomain) -> bool:
     return True
 
 
+def _highest_index(flat: dict[str, Any], concrete_path: str) -> int | None:
+    """One past the greatest element index written under `concrete_path`.
+
+    `None` when the lift has no element key at all, which is the case that
+    carries no evidence of its own length.
+    """
+    marker = f"{concrete_path}["
+    highest = -1
+    for key in flat:
+        if not key.startswith(marker):
+            continue
+        digits, bracket, _ = key[len(marker) :].partition("]")
+        if bracket and digits.isdigit():
+            highest = max(highest, int(digits))
+    return None if highest < 0 else highest + 1
+
+
 def _resolve_count(flat: dict[str, Any], concrete_path: str, count: int | ArithExpr) -> int | None:
     """The lift's realized length at `concrete_path`.
 
     The flat bookkeeping key wins when present. On absence a literal
-    `ListDomain` count is used instead. The result is `None` when neither
-    resolves, meaning a dynamic count that is absent.
+    `ListDomain` count is used instead.
+
+    **The element-key fallback.** A dynamic count with no bookkeeping key
+    was unrecoverable, and the lift was dropped. Its elements establish its
+    length perfectly well: `next_assignable` reports a lift's instance
+    leaves and never its container, so the flat dict a driver loop builds
+    carries every element key and no bookkeeping key, and dropping the lift
+    lost the whole assignment. The greatest index written settles it.
+
+    The result is `None` only when nothing establishes a length: a dynamic
+    count, no bookkeeping key, and no element. There absence means the lift
+    is inactive, which is what an omitted list says, and an active lift of
+    length zero is told apart by the bookkeeping key it does carry.
     """
     if concrete_path in flat:
         return cast("int", flat[concrete_path])
     if isinstance(count, int):
         return count
-    return None
+    return _highest_index(flat, concrete_path)
 
 
 def _unflatten_level(
@@ -237,3 +265,16 @@ def unflatten(flat: dict[str, Any], space: Space) -> dict[str, Any]:
     {'opt': {'sgd': {'momentum': 0.5}}, 'lr': 0.1}
     """
     return _unflatten_level(flat, space, template_prefix="", concrete_prefix="")
+
+
+def as_nested(flat: dict[str, Any], space: Space) -> dict[str, Any]:
+    """A configuration in nested form, whichever form it arrived in.
+
+    The counterpart of `as_flat` for a surface whose own traversal walks the
+    nested shape, canonical encoding most of all. A caller holding the flat
+    form, which is what the surfaces reporting instance paths are phrased in,
+    hands it to those surfaces too and gets the same answer.
+    """
+    from designspace.config._flatten import flat_form_marks
+
+    return unflatten(flat, space) if flat_form_marks(flat, space) else flat

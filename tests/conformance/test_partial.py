@@ -256,3 +256,155 @@ class TestPartialEvalPartition:
         )
         pe = space.evaluate_partial({"a": 0.1})
         assert pe.n_remaining == 1
+
+
+class TestActiveEmptyLiftIsAssignable:
+    """An active lift carries its key, and the driver loop produces it.
+
+    Presence marks activity: an active lift is present in a complete
+    config, holding one element per unit of its count, and holds `[]`
+    when that count is zero. Absence marks inactivity and nothing else,
+    so a reader never has to tell an inactive lift from an empty one.
+
+    A count of zero is the case that has to be assigned deliberately.
+    Every other count leaves instance leaves to assign, and assigning
+    them creates the container on the way. With no leaf to assign,
+    nothing creates it, so the container itself is what
+    `next_assignable` reports. This is the one place a container is
+    assignable and the one place its own status is `active_unset`.
+    """
+
+    @staticmethod
+    def _space():
+        return ds.space(
+            ds.param("on").bool(),
+            ds.param("n").integer(0, 3),
+            ds.param("items")
+            .space(ds.space(ds.param("v").integer(1, 9)))
+            .repeat(ds.param("n"))
+            .when(ds.param("on")),
+        )
+
+    def test_zero_count_container_is_assignable(self):
+        space = self._space()
+        config = {"on": True, "n": 0}
+        assert space.next_assignable(config) == ["items"]
+        assert space.missing_params(config) == ["items"]
+        assert not space.is_complete(config)
+
+    def test_assigning_the_empty_list_completes_it(self):
+        space = self._space()
+        config = {"on": True, "n": 0, "items": []}
+        assert space.next_assignable(config) == []
+        assert space.is_complete(config)
+        assert space.validate(config).valid
+
+    def test_stripping_an_empty_list_reopens_it(self):
+        """The empty list is what completeness was waiting on, not nothing."""
+        space = self._space()
+        empty = [
+            config
+            for seed in range(60)
+            for config in [space.sample_one(seed=seed)]
+            if config["on"] and config["n"] == 0
+        ]
+        assert empty, "never drew the active zero-length case"
+        for config in empty:
+            assert config["items"] == []
+            assert space.is_complete(config)
+            stripped = {k: v for k, v in config.items() if k != "items"}
+            assert space.next_assignable(stripped) == ["items"]
+            assert not space.is_complete(stripped)
+
+    def test_an_inactive_lift_stays_absent(self):
+        space = self._space()
+        config = {"on": False, "n": 0}
+        assert space.next_assignable(config) == []
+        assert space.is_complete(config)
+        assert space.validate(config).valid
+        assert "items" not in config
+
+    def test_a_nonzero_count_still_assigns_leaves_not_the_container(self):
+        space = self._space()
+        assert space.next_assignable({"on": True, "n": 2}) == ["items[0].v", "items[1].v"]
+
+    def test_a_static_zero_count_behaves_the_same(self):
+        space = ds.space(
+            ds.param("items").space(ds.space(ds.param("v").integer(1, 9))).repeat(0),
+        )
+        assert space.next_assignable({}) == ["items"]
+        assert not space.is_complete({})
+        assert space.is_complete({"items": []})
+
+
+class TestPartialSurfaceAcceptsEitherSpelling:
+    """The partial-config surface reads a flat config as well as a nested one.
+
+    Every one of these reports instance paths, which is the flat
+    vocabulary, so a driver loop naturally accumulates its answers in a
+    flat dict. Reading that back has to mean the same thing as reading
+    the nested form, or the loop's own bookkeeping is misread. It was:
+    a flat config was flattened a second time, which drops every lift
+    key, and completeness then came back false for a complete config.
+    """
+
+    @staticmethod
+    def _space():
+        return ds.space(
+            ds.param("n").integer(0, 3),
+            ds.param("workers")
+            .space(ds.space(ds.param("timeout_s").integer(1, 3600)))
+            .repeat(ds.param("n")),
+        )
+
+    def _both(self, space, nested):
+        return nested, flatten(nested, space)
+
+    def test_completeness_agrees_across_spellings(self):
+        space = self._space()
+        nested = {"n": 2, "workers": [{"timeout_s": 30}, {"timeout_s": 900}]}
+        for config in self._both(space, nested):
+            assert space.is_complete(config)
+            assert space.next_assignable(config) == []
+            assert space.missing_params(config) == []
+
+    def test_incompleteness_agrees_across_spellings(self):
+        space = self._space()
+        nested = {"n": 2, "workers": [{"timeout_s": 30}]}
+        for config in self._both(space, nested):
+            assert not space.is_complete(config)
+            assert space.next_assignable(config) == ["workers[1].timeout_s"]
+
+    def test_activity_agrees_across_spellings(self):
+        space = self._space()
+        nested = {"n": 1, "workers": [{"timeout_s": 30}]}
+        nested_status, flat_status = (space.param_activity(c) for c in self._both(space, nested))
+        assert nested_status == flat_status
+
+    def test_evaluate_partial_agrees_across_spellings(self):
+        space = self._space()
+        nested = {"n": 1, "workers": [{"timeout_s": 30}]}
+        a, b = (space.evaluate_partial(c) for c in self._both(space, nested))
+        assert a.param_status == b.param_status
+        assert a.n_remaining == b.n_remaining
+
+    def test_a_loop_driven_in_flat_form_terminates_and_validates(self):
+        """The whole point: assign what it reports, where it reports it."""
+        space = self._space()
+        config: dict = {"n": 2}
+        for _ in range(10):
+            assignable = space.next_assignable(config)
+            if not assignable:
+                break
+            for path in assignable:
+                config[path] = 30
+        else:
+            raise AssertionError("the loop did not terminate")
+        assert space.is_complete(config)
+        assert space.validate(unflatten(config, space)).valid
+
+    def test_a_space_without_lifts_reads_the_same_either_way(self):
+        space = ds.space(ds.param("a").integer(0, 4), ds.param("b").real(0.0, 1.0))
+        config = {"a": 1, "b": 0.5}
+        assert flatten(config, space) == config
+        assert space.is_complete(config)

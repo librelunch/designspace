@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from designspace.builder._space import Space
-from designspace.config._flatten import flatten
+from designspace.config._flatten import as_flat
 from designspace.ir import ParamDiff
 
 if TYPE_CHECKING:
@@ -63,8 +63,8 @@ def config_diff(a: dict[str, Any], b: dict[str, Any], space: Space) -> list[Para
     >>> [(d.param, d.old, d.new) for d in ds.config_diff(a, b, s)]
     [('opt', 'sgd', 'adagrad'), ('opt.sgd.momentum', 0.5, None), ('lr', 0.1, 0.2)]
     """
-    flat_a = flatten(a, space)
-    flat_b = flatten(b, space)
+    flat_a = as_flat(a, space)
+    flat_b = as_flat(b, space)
     diffs: list[ParamDiff] = []
     seen: set[str] = set()
     for key, va in flat_a.items():

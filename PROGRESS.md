@@ -53,6 +53,9 @@ laws. No milestone row.
 
 | Date | Fix | Against |
 |---|---|---|
+| 2026-08-10 | The partial-config surface takes a config in either form, so a driver loop can assign at the instance paths it reports; `flatten` refuses an already-flat config instead of dropping every lift and `ds.is_flat` reports that condition, `unflatten` reads a dynamic lift's length off its element keys, and `Space.param_def` resolves either path form to its definition. Extended to every config-taking method, validation and identity included, after `is_feasible` disagreed with `is_complete` about one configuration | M3, M4, M6, M7 |
+| 2026-08-10 | An active lift is present whatever its count: a determined count of zero makes the container `active_unset` until its key holds `[]`, and `next_assignable` reports it, so the driver loop halts on a config that validates | M4, M6 |
+| 2026-08-10 | `floor_to_grid` recovers a grid index with the same tolerance `build_grid_shape` floors with, so a multiplicative grid round-trips its own points instead of losing a whole cell; vectors byte-identical | M2, M5 |
 | 2026-08-09 | The polars-free run selects on a `requires_polars` marker each test declares for itself, rather than on a list of ignored files and deselected node ids; it thereby regains 29 tests that list dropped, the missing-extra `ImportError` laws among them, and mypy resolves the two `TYPE_CHECKING` imports of the absent extra | M10, M12.5 |
 | 2026-08-08 | The six gates moved into a `justfile`, their one definition, called by CI and by pre-commit and pre-push git hooks; devenv went native, pinned to the revision `flake.lock` carried | M12.5 |
 | 2026-08-06 | Each commit gate became a command of its own, six rather than four; `core-only` CI job fixed for the polars-free install | M13, M13.5, M13.6 |

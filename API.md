@@ -89,9 +89,11 @@ IR is bidirectional, so spaces can be rebuilt from rewritten IR.
 consumer-specific. The library provides the morphism machinery and the sockets;
 consumers supply the semantics.
 
-**Priors are coordinate systems.** Every generative param resolves to a *chart*,
-a monotone map `[0,1] → domain` defining both sampling and solver geometry.
-There is no separate transform concept for priors.
+**Priors are coordinate systems.** Every `real` and `integer` param resolves to
+a *chart*, a monotone map `[0,1] → domain` defining both sampling and solver
+geometry. There is no separate transform concept for priors. Every other kind
+carries none, no monotone map onto its domain being canonical, and its geometry
+is a *chosen* genotype the consumer or type author supplies.
 
 **Inactive means absent.** A param that is not active does not appear in a
 config dict, as neither `None` nor `NaN`. Columnar containers necessarily use
@@ -824,9 +826,17 @@ error (row 20), whose stated workaround is the desugared form written by hand.
 
 ## Charts
 
-Every generative scalar param resolves to a **chart**, a monotone map `[0,1] →
-domain`. Sampling is `chart(u)`, solver geometry is u-space, and integers and
+Every `real` and `integer` param resolves to a **chart**, a monotone map `[0,1]
+→ domain`. Sampling is `chart(u)`, solver geometry is u-space, and integers and
 quantization are the same mechanism.
+
+Those two kinds and no others. `ParamDef.chart` is `None` for every other kind,
+including `bool`, `categorical` and `ordinal`, which the *Scalar* table lists
+alongside them: a chart is a monotone map onto the domain, and no such map is
+canonical for an unordered set, for a set of subsets, or for an ordering.
+Declaring one is a *chosen* genotype, which *Out of Scope* leaves to the
+consumer or the type author. A scalar lift keeps its element's chart on
+`ListDomain.element_chart`, the container itself having none.
 
 ### Built-in prior families
 
@@ -1163,15 +1173,38 @@ undetermined. `is_complete(config)` holds if and only if no param is
 `active_unset` or `unknown`, and `missing_params` lists the `active_unset`
 instance paths in `topological_order`.
 
+**Every method that takes a config takes either form**, nested or keyed by
+path, and reads the same answer from both. That covers this section,
+*Space: Validation*, `apply_defaults`, `active_subspace`, `config_hash` and
+`config_diff`. Those surfaces name parameters back, as `next_assignable` does
+and as `ParamError.param` does, and the names are instance paths, which is the
+flat vocabulary; a caller holding the form those names are phrased in hands it
+back. A config a driver loop built carries no length entry for a lift, no
+container ever being assigned, and is read as the same config as the flattened
+one that does. `flatten` itself refuses an already-flat config, under *Config
+Utilities*: it converts rather than reporting, so it has nothing to be
+consistent with.
+
 A lift contributes instance statuses only when its count is **determined**, per
 the count rule under *Defaults*, an inactive count-dependency yielding the
 complete `[]`. An **undetermined** count, meaning a pending count-dependency,
 contributes none, and the count param's own status carries the incompleteness. A
-list container is `set`, `unknown`, or `inactive`, never `active_unset`: `set`
-once its count is determined and its instances present, `unknown` while its
-count is still pending, and `inactive` when its condition is false. A **struct
-container** likewise collapses `active` to `set`, having no own value, so
-`active_unset` cannot apply.
+list container is `set`, `unknown`, or `inactive`, and is `active_unset` only in
+the zero-count case below: `set` once its count is determined and its instances
+present, `unknown` while its count is still pending, and `inactive` when its
+condition is false. A **struct container** likewise collapses `active` to `set`,
+having no own value, so `active_unset` cannot apply.
+
+**An active lift is present.** A complete config holds a key for every active
+lift, carrying one element per unit of its count and `[]` when that count is
+zero. Absence marks inactivity and nothing else, so no reader has to tell an
+inactive lift from an empty one, and the two are distinct configs under
+`config_hash`. Assigning an instance leaf creates its container on the way, so
+a determined count above zero needs nothing further. A **determined count of
+zero** has no leaf to assign and so would leave the key unwritten: there the
+container is `active_unset` until its own key is present, and `next_assignable`
+reports it. This is the only case in which a container carries that status or is
+assigned directly.
 
 `next_assignable` lists the `active_unset` params every one of whose referenced
 params, across condition, bound-origin bound, and repeat count, is `set` or
@@ -1179,8 +1212,9 @@ params, across condition, bound-origin bound, and repeat count, is `set` or
 if and only if `is_complete(config)`.** Following `topological_order`, the first
 param that is not `set` or `inactive` is always `active_unset` with all
 references settled, so a driver loop assigning `next_assignable` halts exactly
-at completeness. Assign a lift's count param and its instance leaves, never the
-container.
+at completeness, on a config that validates. Assign a lift's count param and its
+instance leaves, and its container only where the zero-count case above puts the
+container in the list.
 
 `remaining_domain` returns a per-kind descriptor, or `None` if the param is
 inactive: `RealRemaining` and `IntegerRemaining` give an interval,
@@ -1217,6 +1251,7 @@ for an inactive param and must not be overloaded to mean no such param.
 .subspaces -> dict[str, SubspaceInfo]        # struct and variant subspaces by prefix
 .dependency_graph -> dict[str, frozenset[str]]
 
+.param_def(path) -> ParamDef                  # definition or instance path
 .param_constraints(path) -> list[Constraint]
 .param_conditions(path) -> list[Condition]
 
@@ -1271,6 +1306,22 @@ unfiltered transparency.
 == path` and every condition that merely *references* `path` in its expression.
 `param_constraints(path)` returns every constraint that references `path`, a
 constraint having no target to distinguish.
+
+`param_def(path)` returns the definition at `path`, accepting either a
+definition path or an instance path. `params` is keyed by definition path,
+where every element of a lift shares one entry, while the surfaces that name a
+parameter given a config report instance paths, one per element. This resolves
+between them, so what `next_assignable`, `missing_params`, `param_activity` and
+`evaluate_partial` report can be looked up for the chart, prior and grid a
+caller needs in order to choose a value. An unknown path raises
+`ResolutionError` naming it.
+
+The definition returned describes what sits at the path. A struct or choice
+lift stores a template per field, `workers[].timeout_s`, which is returned as
+held. A **scalar lift** stores no field, its element's kind, chart, prior and
+grid living on the container's `ListDomain`, so the element's definition is
+assembled from those: `timeouts[0]` reports the element's own kind and chart,
+not the list's. Equal paths give equal definitions; identity is not promised.
 
 ---
 
@@ -1757,7 +1808,10 @@ in the `full` preimage use this same encoding.
 
 ```python
 ds.flatten(config, space) -> dict[str, Any]     # path-grammar keys; non-validating
-ds.unflatten(flat, space) -> dict               # inverse
+                                                #   TypeError if already flat
+ds.is_flat(config, space) -> bool               # what flatten refuses on
+ds.unflatten(flat, space) -> dict               # inverse; a lift's length comes
+                                                #   from its element keys
 ds.config_hash(config, space) -> str            # non-validating (built on flatten)
 ds.config_diff(a, b, space) -> list[ParamDiff]  # structural, no magnitude; plain ==; non-validating
 ds.variant(config, param_path) -> str           # active variant name of a choice
@@ -1809,6 +1863,14 @@ the key set config-dependent, so no positional layout exists, and both are
 path-named resolution errors (row 33) rather than a silently config-specific
 answer. Struct params never appear, having no value of their own.
 
+Those two conditions are exactly `is_conditional` and `has_variable_length`
+under *Space: Introspection*, so `not space.is_conditional and not
+space.has_variable_length` holds if and only if `coordinate_paths()` returns
+rather than raising. A consumer asks with those and needs no exception to find
+out. **`is_hierarchical` is not one of them**: a struct or a bare-variant
+choice nests without making the key set config-dependent, so a hierarchical
+space can have a fixed layout, and a flat one carrying a condition cannot.
+
 A fixed layout is not the same as numeric packability, and the two are kept
 apart because they fail differently. `subset` and `permutation` leaves have a
 **stable key** but a variable-length list value, and `categorical` and `ordinal`
@@ -1828,6 +1890,25 @@ posture everywhere else, the bookkeeping key being `flatten`'s own realized
 length for the config at hand and so the more specific of the two signals.
 Packing into any particular container, with its dtype, shape, and batch
 conventions, stays with the consumer.
+
+For a **dynamic** count with no bookkeeping key, the lift's own element keys
+establish its length, which is one past the greatest index written. A driver
+loop assigns a lift's count param and its instance leaves and never its
+container, so the flat dict such a loop builds carries every element key and no
+bookkeeping key, and it unflattens without the caller supplying one. A lift
+with no element key at all establishes nothing and is omitted, which is what an
+absent list says: an active lift of length zero carries the bookkeeping key
+that tells it from an inactive one.
+
+`flatten` refuses a config that is already keyed by path, raising `TypeError`
+and naming the parameters that show it. `is_flat(config, space)` reports that
+same condition, so a caller tests it rather than catching it: `is_flat` holds
+exactly when `flatten` raises. A config carrying neither mark reads the same in
+both forms, and is reported not flat, `flatten` returning it unchanged. A lift is a list in nested form and its
+length in flat form, so a second pass would meet a length where it wants a list
+and drop the lift together with its elements. The partial-config surface
+normalizes instead of refusing, as *Space: Partial Configs* states, because it
+reports in the flat vocabulary and so is read with it.
 
 `unflatten` takes no activity argument, so a struct's presence is inferred from
 whether any descendant leaf is present. A zero-declared-member struct

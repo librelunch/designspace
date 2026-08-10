@@ -91,15 +91,28 @@ def build_grid_shape(
 
 
 def floor_to_grid(shape: GridShape, x: float) -> float:
-    """Greatest grid point <= x ("emitted value = greatest grid point <= the continuous draw")."""
+    """Greatest grid point <= x ("emitted value = greatest grid point <= the continuous draw").
+
+    The recovered index carries `_K_EPS`, the same tolerance
+    `build_grid_shape` floors with. A grid point is computed, not stored:
+    `lo * factor**k` lands a few ulp either side of the exact value, so an
+    index recovered from one arrives as `k - 1e-16` about as often as `k`.
+    Flooring that untolerated drops a whole cell, which on a decade grid is
+    a factor of ten, and breaks the value round trip `Chart.to_unit`
+    promises. The tolerance is nine orders of magnitude below a cell, so it
+    recovers a grid point without rounding a draw from inside a cell up to
+    the next one.
+    """
     if shape.has_extra_hi and x >= shape.hi:
         return shape.hi
     if shape.step is not None:
-        k = math.floor((x - shape.lo) / shape.step)
-    else:
+        raw = (x - shape.lo) / shape.step
+    elif x > 0:
         assert shape.factor is not None
-        k = math.floor(math.log(x / shape.lo) / math.log(shape.factor)) if x > 0 else 0
-    k = max(0, min(k, shape.K))
+        raw = math.log(x / shape.lo) / math.log(shape.factor)
+    else:
+        raw = 0.0
+    k = max(0, min(math.floor(raw + _K_EPS), shape.K))
     return grid_point(shape.lo, shape.step, shape.factor, k)
 
 

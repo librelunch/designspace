@@ -84,9 +84,13 @@ Before every commit, run the gates from the repository root:
 just gates
 ```
 
-That runs six recipes: `lint`, `format`, `types`, `test`, `doctest` and `docs`.
-All six must pass. `just check` is the first three, which is what the
-pre-commit hook runs; the full set runs before a push.
+That runs seven recipes: `lint`, `format`, `types`, `test`, `doctest`, `docs`
+and `solvers`. All seven must pass. `just check` is the first three, which is
+what the pre-commit hook runs; the full set runs before a push.
+
+`solvers` covers the sibling package under `packages/`, which holds the solver
+bindings core is barred from shipping. It runs inside the commit gates so that
+a change to the representation breaks its consumer on the day it lands.
 
 The `justfile` is the one definition of every gate. CI calls the same recipes,
 so a gate cannot differ between a working copy and CI. Do not skip a gate,

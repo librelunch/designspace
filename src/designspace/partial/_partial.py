@@ -14,6 +14,7 @@ from typing import Any
 from designspace.builder._paramexpr import ParamExpr
 from designspace.builder._space import Space
 from designspace.config import flatten
+from designspace.config._flatten import flat_form_marks
 from designspace.eval import (
     Unknown,
     compute_activity_partial,
@@ -54,6 +55,18 @@ _ACTIVE_STATUSES = ("set", "active_unset")
 _PENDING_STATUSES = ("active_unset", "unknown")
 
 
+def _as_flat(space: Space, config: dict[str, Any]) -> dict[str, Any]:
+    """A configuration keyed by path, whichever form it arrived in.
+
+    The surfaces below report instance paths, which is the flat vocabulary,
+    so a driver loop accumulates their answers in a flat dict and reads it
+    back here. Flattening that a second time would drop every lift, a list's
+    entry holding its length rather than a list on the second pass, and
+    completeness would come back false for a complete configuration.
+    """
+    return config if flat_form_marks(config, space) else flatten(config, space)
+
+
 def topological_order(space: Space) -> list[str]:
     """Definition paths in dependency order, omitting lift descendant
     templates (API.md, "Space: Partial Configs")."""
@@ -65,28 +78,28 @@ def topological_order(space: Space) -> list[str]:
 
 def param_activity(space: Space, config: dict[str, Any]) -> dict[str, str]:
     check_fully_resolved(space)
-    flat = flatten(config, space)
+    flat = _as_flat(space, config)
     status, _order, _deps = compute_activity_partial(space, flat)
     return {p: ("active" if s in _ACTIVE_STATUSES else s) for p, s in status.items()}
 
 
 def is_complete(space: Space, config: dict[str, Any]) -> bool:
     check_fully_resolved(space)
-    flat = flatten(config, space)
+    flat = _as_flat(space, config)
     status, _order, _deps = compute_activity_partial(space, flat)
     return not any(s in _PENDING_STATUSES for s in status.values())
 
 
 def missing_params(space: Space, config: dict[str, Any]) -> list[str]:
     check_fully_resolved(space)
-    flat = flatten(config, space)
+    flat = _as_flat(space, config)
     status, order, _deps = compute_activity_partial(space, flat)
     return [p for p in order if status[p] == "active_unset"]
 
 
 def next_assignable(space: Space, config: dict[str, Any]) -> list[str]:
     check_fully_resolved(space)
-    flat = flatten(config, space)
+    flat = _as_flat(space, config)
     status, order, deps = compute_activity_partial(space, flat)
     result = []
     for p in order:
@@ -178,7 +191,7 @@ def _classify_constraint(
 
 def evaluate_partial(space: Space, config: dict[str, Any]) -> PartialEval:
     check_fully_resolved(space)
-    flat = flatten(config, space)
+    flat = _as_flat(space, config)
     status, _order, _deps = compute_activity_partial(space, flat)
     activity = status_activity_view(status)
 
@@ -430,7 +443,7 @@ def remaining_domain(space: Space, path: str, config: dict[str, Any]) -> Remaini
     pd = _lookup_param_shape(space, path)
     if pd.type_kind in ("space", "list"):
         raise TypeError(f"remaining_domain: {path!r} is a struct/list container, not a leaf param")
-    flat = flatten(config, space)
+    flat = _as_flat(space, config)
     status, _order, _deps = compute_activity_partial(space, flat)
     if status.get(path, "inactive") == "inactive":
         return None

@@ -365,3 +365,106 @@ class TestRow18CombinatorialExpressionChecks:
     def test_ordinal_compare_against_declared_literal_is_legal(self):
         space = ds.space(ds.param("size").ordinal("s", "m", "l")).encourage(ds.param("size") > "s")
         assert space.n_params == 1
+
+
+class TestEverySurfaceReadsBothConfigForms:
+    """A config-taking method reads the same answer from either spelling.
+
+    A config has two forms, nested and keyed by path, and the surfaces
+    that report a parameter name instance paths, which is the flat
+    vocabulary. `validate` names them too, reporting
+    `ParamError(param="w[1].t", ...)`. A caller holding the form those
+    reports are phrased in must be able to hand it back, or half the
+    surface reads it and half misreads it: `is_complete` answered while
+    `is_feasible` returned `False` for a feasible config, the flattening
+    step having met a list's length where it wanted the list.
+    """
+
+    @staticmethod
+    def _space():
+        return ds.space(
+            ds.param("n").integer(1, 3),
+            ds.param("w").space(ds.space(ds.param("t").integer(1, 9))).repeat(ds.param("n")),
+            ds.param("mode").categorical("a", "b"),
+        ).forbid(ds.param("w").field("t").sum() > 10)
+
+    def _both(self, space, nested):
+        return nested, ds.flatten(nested, space)
+
+    def test_feasibility_agrees_across_spellings(self):
+        space = self._space()
+        for nested in (
+            {"n": 2, "w": [{"t": 3}, {"t": 4}], "mode": "a"},
+            {"n": 2, "w": [{"t": 9}, {"t": 9}], "mode": "b"},
+        ):
+            a, b = self._both(space, nested)
+            assert space.is_feasible(a) == space.is_feasible(b)
+            assert space.infeasibility_reasons(a) == space.infeasibility_reasons(b)
+
+    def test_validation_agrees_across_spellings(self):
+        space = self._space()
+        for nested in (
+            {"n": 2, "w": [{"t": 3}, {"t": 4}], "mode": "a"},
+            {"n": 2, "w": [{"t": 3}, {"t": 99}], "mode": "a"},
+            {"n": 2, "w": [{"t": 3}, {"t": 4}], "mode": "zzz"},
+        ):
+            a, b = self._both(space, nested)
+            va, vb = space.validate(a), space.validate(b)
+            assert va.valid == vb.valid
+            assert va.param_errors == vb.param_errors
+
+    def test_constraint_evaluation_agrees_across_spellings(self):
+        space = self._space()
+        nested = {"n": 2, "w": [{"t": 9}, {"t": 9}], "mode": "a"}
+        a, b = self._both(space, nested)
+        assert space.evaluate_constraints(a) == space.evaluate_constraints(b)
+
+    def test_identity_agrees_across_spellings(self):
+        space = self._space()
+        nested = {"n": 2, "w": [{"t": 3}, {"t": 4}], "mode": "a"}
+        a, b = self._both(space, nested)
+        assert ds.config_hash(a, space) == ds.config_hash(b, space)
+
+    def test_a_loop_built_config_carries_no_length_entry_and_still_reads(self):
+        """The form a driver loop actually produces, not a flattened one.
+
+        `next_assignable` reports a lift's instance leaves and never its
+        container, so what a loop builds has every element key and no
+        length entry, while `flatten`'s own output has both. Reading that
+        called the lift missing, and a feasible config came back
+        infeasible while `is_complete` said it was finished.
+        """
+        space = ds.space(
+            ds.param("mode").categorical("a", "b"),
+            ds.param("profile").real(0.0, 1.0).repeat(3),
+        )
+        built: dict = {}
+        while not space.is_complete(built):
+            for path in space.next_assignable(built):
+                built[path] = 0.5 if "[" in path else "a"
+
+        assert "profile" not in built, "the loop never assigns a container"
+        nested = ds.unflatten(built, space)
+        assert space.is_feasible(built) == space.is_feasible(nested) is True
+        assert space.validate(built).param_errors == ()
+        assert ds.config_hash(built, space) == ds.config_hash(nested, space)
+
+    def test_the_whole_surface_agrees_over_the_corpus(self):
+        """Held across every fixture, not just one hand-written space."""
+        import sys
+        from pathlib import Path
+
+        corpus_dir = Path(__file__).resolve().parents[1] / "corpus"
+        if str(corpus_dir) not in sys.path:
+            sys.path.insert(0, str(corpus_dir))
+        from importlib import import_module
+
+        for name in ("delivery_routes", "greenhouse", "solver_portfolio"):
+            space = import_module(name).build_space()
+            for seed in range(8):
+                nested = space.sample_one(seed=seed)
+                flat = ds.flatten(nested, space)
+                assert space.is_feasible(nested) == space.is_feasible(flat)
+                assert space.validate(nested).valid == space.validate(flat).valid
+                assert space.is_complete(nested) == space.is_complete(flat)
+                assert ds.config_hash(nested, space) == ds.config_hash(flat, space)

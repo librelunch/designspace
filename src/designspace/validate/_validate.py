@@ -23,7 +23,7 @@ from typing import Any
 
 from designspace.builder._space import Space
 from designspace.charts import build_grid_shape, grid_membership
-from designspace.config import flatten, flatten_with_errors
+from designspace.config import as_flat, as_nested, flatten_with_errors
 from designspace.eval import (
     Unknown,
     compute_activity,
@@ -249,7 +249,7 @@ def _validate_lift_instances(
 
 def evaluate_constraints(space: Space, config: dict[str, Any]) -> list[ConstraintEval]:
     check_fully_resolved(space)
-    flat = flatten(config, space)
+    flat = as_flat(config, space)
     activity = compute_activity(space, flat)
     evals = [evaluate_constraint(c, flat, activity, space) for c in space.constraints]
     evals.extend(instance_constraint_evals(space, flat, activity))
@@ -258,7 +258,11 @@ def evaluate_constraints(space: Space, config: dict[str, Any]) -> list[Constrain
 
 def validate(space: Space, config: dict[str, Any]) -> ValidationResult:
     check_fully_resolved(space)
-    flat, param_errors_list = flatten_with_errors(config, space)
+    # A config keyed by path is rebuilt first, so the shape pass sees the
+    # nested form it reports errors about, and a lift's length entry is
+    # recovered rather than reported missing: a driver loop assigns instance
+    # leaves and never a container, so what it builds carries no such entry.
+    flat, param_errors_list = flatten_with_errors(as_nested(config, space), space)
     shape_error_paths = {pe.param for pe in param_errors_list}
     activity = compute_activity(space, flat)
     param_errors: list[ParamError] = list(param_errors_list)

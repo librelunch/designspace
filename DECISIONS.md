@@ -718,6 +718,204 @@ rendered value is exact while a rendered domain may still elide. The
 *Conformance Laws* table gains the new laws enforced in
 `tests/conformance/test_pretty.py`.
 
+## D-98: Is an active lift with a determined count of zero present in a config?
+
+- Status: Resolved
+- Date: 2026-08-10
+- Spec section: none (gap); resolved into API.md §Space: Partial Configs
+- Decided by: User
+
+### Question
+
+A lift whose condition holds and whose count resolves to zero has no
+instance leaves. Does a complete configuration carry its key, holding `[]`,
+or does it omit the key entirely?
+
+### Why the specification is insufficient
+
+*Space: Partial Configs* stated that a list container is "`set` once its
+count is determined and its instances present", and never `active_unset`. It
+stated separately that a driver loop assigns "a lift's count param and its
+instance leaves, never the container". Both readings of the zero-count case
+satisfy that text. With zero instances, "its instances present" is vacuously
+true, so `set` follows; but the container's own key is then never written by
+any assignment the loop is permitted to make.
+
+The two readings were observably inconsistent in the implementation rather
+than merely underdetermined. `next_assignable`, `is_complete` and
+`missing_params` took the vacuous reading and reported the configuration
+finished. `validate`, `apply_defaults` and the reference sampler took the
+other, requiring and supplying `[]`. A driver loop following the specified
+protocol therefore halted on a configuration that did not validate, which a
+solver binding written against the public surface hit immediately.
+
+### Possibilities considered
+
+1. **Absent is the complete `[]`.** `validate` accepts a missing key for an
+   active zero-count lift. Consistent with every sentence then in the
+   specification, and needs no change to the container status vocabulary or
+   to the assignment protocol. Rejected: it leaves one configuration with two
+   spellings, which `config_hash` maps to two different hashes, so a tuning
+   loop keyed on the observation pair fails to recognize a repeat. Repairing
+   that means canonicalizing inside identity, whose format is frozen.
+2. **The key is required, and the loop produces it.** An active lift is
+   present whatever its count. The zero-count container becomes
+   `active_unset` until its key is written, and `next_assignable` reports the
+   container in that one case. Costs an exception to two stated sentences.
+3. **Leave both behaviours and document the seam.** Declare assignment
+   completeness and validity to be different notions, and require a consumer
+   to call `apply_defaults` before validating. Rejected: it publishes a
+   protocol whose output is not valid, and every consumer writing a loop pays
+   for it once.
+
+### Decision
+
+Possibility 2. Presence marks activity, without exception. An active lift is
+present in a complete configuration, carrying one element per unit of its
+count and `[]` when that count is zero; absence marks inactivity and nothing
+else.
+
+The deciding argument is consistency of the reader's rule rather than economy
+of specification text. Under possibility 1 a reader meeting an absent key
+must consult the count to learn whether the lift was inactive or merely
+empty, and two configurations that denote the same assignment carry different
+identities. Under possibility 2 absence has one meaning everywhere, which is
+the rule *Design Principles* already states as "inactive means absent", and
+identity needs no special case: an absent key is an incomplete configuration
+rather than a second spelling of a complete one. `config_hash` and the frozen
+format are therefore untouched, and no known-answer vector changes, the
+reference sampler having always emitted `[]`.
+
+The exception is narrow and is forced by the shape of the problem rather than
+chosen. Assigning an instance leaf creates its container on the way, so every
+count above zero already writes the key without the container being
+assignable. Only a count of zero has no leaf to carry it.
+
+### Specification update
+
+`API.md`'s *Space: Partial Configs* section states that an active lift is
+present, that absence marks inactivity alone, and that a determined count of
+zero makes the container `active_unset` until its key is written and puts it
+in `next_assignable`. The sentence excluding `active_unset` for a list
+container, and the sentence forbidding assignment of a container, both carry
+that one exception. The driver loop is stated to halt on a configuration that
+validates.
+
+
+## D-99: Which surface speaks the flat config form, and how does a caller cross to it?
+
+- Status: Resolved
+- Date: 2026-08-10
+- Spec section: none (gap); resolved into API.md §Space: Partial Configs,
+  §Space: Introspection and §Config Utilities
+- Decided by: User
+
+### Question
+
+A config has two forms, nested and keyed by path, with `flatten` and
+`unflatten` between them. The partial-config surface reports instance
+paths, which is the flat vocabulary, but consumed only the nested form.
+Which form does that surface take, what does a caller do with a path it
+reports, and what happens at the boundary when a form arrives where the
+other was expected?
+
+### Why the specification is insufficient
+
+*Space: Partial Configs* said what those surfaces report and *Config
+Utilities* said what `flatten` and `unflatten` do, and neither said how the
+two meet. The gap was not theoretical. Three behaviours followed from it,
+none of them stated and none of them intended:
+
+`flatten` of an already-flat config dropped every lift and its elements,
+silently, a list being a list nested and its length flat, so the second pass
+met a length where it wanted a list and skipped the parameter. Every
+partial-config surface began by flattening its argument, so a flat config
+lost its lifts the same way, and `is_complete` returned `False` for a
+complete config. `unflatten` of a dynamic-count lift with no bookkeeping key
+dropped the list, and no such key is among the paths a driver loop is told
+to assign, so the flat dict such a loop builds did not round-trip.
+
+The documented loop, "ask what is assignable, assign one, ask again", could
+therefore not be run at all against a space with a lift. Writing back the
+key it reported did not register the assignment, and the loop repeated that
+path forever.
+
+Separately, nothing published resolved an instance path to its definition.
+`params` is keyed by definition path, and a solver needs the chart on that
+definition to choose a value.
+
+### Possibilities considered
+
+1. **Document the boundary, change no behaviour.** State which surface takes
+   which form. Rejected: it publishes a protocol whose output is not valid,
+   and leaves three calls returning wrong answers rather than failing.
+2. **Accept both forms everywhere, including the converters.** Make
+   `flatten` idempotent. Rejected: `flatten` would have to tell a flat
+   length from a nested list value on every lift, and idempotence is not
+   what a caller who flattened twice meant.
+3. **The reporting surface accepts both; the converters are strict.** The
+   partial-config surface normalizes, `flatten` refuses an already-flat
+   config, and `unflatten` reads a lift's length from the element keys it
+   already has. Chosen.
+4. **Enrich the walker**, `next_assignable` returning definitions alongside
+   paths. Rejected: `missing_params`, `param_activity` and
+   `evaluate_partial` report instance paths too and would each need the same
+   treatment, and a mapping return would break the stated law that
+   `next_assignable(config) == []` coincides with completeness.
+
+### Decision
+
+Possibility 3, with `param_def` for the lookup.
+
+The rule that decides it is that a surface accepts what it reports. The
+partial-config surface reports instance paths, so a caller accumulates its
+answers in the flat form, and reading them back has to mean what the nested
+form means. The converters report nothing and are free to be strict, and a
+config arriving in the form a converter exists to produce is a caller error
+rather than an ambiguity to resolve.
+
+`unflatten` reading the length off the element keys is a recovery of
+evidence rather than an inference. Element keys prove both that the lift is
+active and how long it is, where the count param proves neither: a lift may
+be conditional, so deriving a length from the count param would require
+evaluating activity, turning a structural rearrangement into a semantic one
+that must also answer for Kleene-Unknown. Where there is no element key
+there is no evidence, and the lift is omitted, which is what an absent list
+already says.
+
+`param_def` is one method rather than a richer walker because the mismatch
+is not the walker's. Four surfaces report instance paths that `params`
+cannot hold, and one accessor answers all four.
+
+### Scope
+
+The rule is about reporting, not about the partial-config section, so it
+reaches every method that takes a config and names parameters back:
+*Space: Validation* included, `validate` reporting `ParamError(param=...)` at
+instance paths exactly as `next_assignable` reports them. Fixing only the
+partial-config section left `is_complete` answering while `is_feasible`
+returned `False` for a feasible config, which is the same defect wearing a
+different method's name and worse for being half-corrected.
+
+Normalizing means round-tripping a flat config rather than passing it
+through. A driver loop assigns a lift's instance leaves and never its
+container, so what it builds carries no length entry, while the flat form
+these surfaces read internally expects one. Rebuilding the nested form
+recovers the length and flattening that restores the entry, which reuses the
+recovery already specified rather than teaching each surface about a missing
+bookkeeping key.
+
+### Specification update
+
+*Space: Partial Configs* states that every method taking a config takes
+either form and reads the same answer from both, naming the surfaces it
+covers. *Space: Introspection* gains
+`param_def(path)`. *Config Utilities* states that `flatten` raises
+`TypeError` on an already-flat config, naming what shows it, and that
+`unflatten` takes a dynamic lift's length from its element keys, omitting a
+lift that has none.
+
+
 ---
 
 _Numbering._ D-1 through D-90 were resolved into `API.md` and removed from this

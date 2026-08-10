@@ -32,6 +32,103 @@ if TYPE_CHECKING:
     import designspace as ds  # noqa: F401  (doctest namespace; see conftest.py)
 
 
+def flat_form_marks(config: dict[str, Any], space: Space) -> list[str]:
+    """The parameters showing that `config` is already keyed by path.
+
+    Two marks distinguish the forms, and either one settles it. A path below
+    the top level carries a `.` or a `[`, which no parameter name may
+    contain, so such a key can only come from the flat form. A lift with no
+    elements leaves no such key, and is told instead by its own entry, which
+    holds a list nested and that list's length flat.
+
+    A configuration carrying neither mark reads the same either way, every
+    value sitting at a bare name, and the result is empty.
+
+    Shared with `partial/`, which normalizes rather than refusing: the
+    surfaces there report instance paths, so a driver loop accumulates its
+    answers in the flat form and reads them back.
+    """
+    marks = sorted(key for key in config if "." in key or "[" in key)
+    marks += [
+        path
+        for path, pd in space.params.items()
+        if pd.type_kind == "list" and path in config and not isinstance(config[path], list)
+    ]
+    return marks
+
+
+def as_flat(config: dict[str, Any], space: Space) -> dict[str, Any]:
+    """A configuration keyed by path, whichever form it arrived in.
+
+    Every surface that takes a configuration and names a parameter back
+    normalizes through this, so a caller may hand back the form those names
+    are phrased in. Flattening an already-flat configuration a second time
+    would meet a list's length where it wants the list, dropping the lift and
+    its elements with it, and the answer would be about a configuration
+    missing parameters the caller supplied.
+
+    An already-flat configuration is **round-tripped** rather than passed
+    through. A driver loop assigns a lift's instance leaves and never its
+    container, so the flat dict it builds carries no length entry, while the
+    flat form these surfaces read expects one. Rebuilding the nested form
+    recovers the length, from a static count or from the element keys
+    themselves, and flattening that restores the entry.
+    """
+    if flat_form_marks(config, space):
+        from designspace.config._unflatten import unflatten
+
+        return flatten(unflatten(config, space), space)
+    return flatten(config, space)
+
+
+def is_flat(config: dict[str, Any], space: Space) -> bool:
+    """Whether a configuration is already keyed by path.
+
+    `ds.flatten()` refuses a configuration in the form it exists to produce,
+    so this asks that question first. Two marks tell the forms apart, and
+    either one settles it: a key below the top level carries a `.` or a `[`,
+    which no parameter name may contain, and a lift's own entry holds a list
+    nested and that list's length flat.
+
+    A configuration carrying neither mark reads the same in both forms, every
+    value sitting at a bare name, and is reported not flat. `ds.flatten()`
+    accepts it, returning it unchanged.
+
+    Parameters
+    ----------
+    config : dict[str, Any]
+        The configuration to inspect. It is read structurally and is not
+        validated against the space.
+    space : Space
+        The space it belongs to, which supplies the parameter kinds.
+
+    Returns
+    -------
+    bool
+        Whether the configuration is keyed by path.
+
+    Examples
+    --------
+    >>> s = ds.space(
+    ...     ds.param("n").integer(0, 3),
+    ...     ds.param("timeouts").integer(1, 60).repeat(ds.param("n")),
+    ... )
+    >>> config = {"n": 2, "timeouts": [30, 45]}
+    >>> ds.is_flat(config, s)
+    False
+    >>> ds.is_flat(ds.flatten(config, s), s)
+    True
+
+    It reports exactly what `ds.flatten()` refuses.
+
+    >>> ds.flatten(ds.flatten(config, s), s)
+    Traceback (most recent call last):
+        ...
+    TypeError: flatten(): the configuration is already keyed by path, at ...
+    """
+    return bool(flat_form_marks(config, space))
+
+
 def _split_choice_value(value: Any) -> tuple[str | None, dict[str, Any] | None, bool]:
     """`(variant_name, payload_dict, well_formed)`. A bare string is a
     parameterless variant (`payload_dict=None`); a single-key dict whose
@@ -230,7 +327,23 @@ def flatten(config: dict[str, Any], space: Space) -> dict[str, Any]:
     {'opt': 'sgd', 'opt.sgd.momentum': 0.5, 'lr': 0.1}
     >>> ds.unflatten(ds.flatten(config, s), s) == config
     True
+
+    Raises
+    ------
+    TypeError
+        When the configuration is already keyed by path. Flattening it again
+        would drop every lift, a list's entry holding its length rather than
+        a list on the second pass, so this refuses rather than returning a
+        configuration with parameters missing.
     """
+    marks = flat_form_marks(config, space)
+    if marks:
+        raise TypeError(
+            "flatten(): the configuration is already keyed by path, at "
+            f"{', '.join(repr(m) for m in marks[:3])}"
+            f"{' and others' if len(marks) > 3 else ''}. Flattening it again would drop "
+            "every lift it holds."
+        )
     out: dict[str, Any] = {}
     _flatten_level(config, space, template_prefix="", concrete_prefix="", out=out, errors=None)
     return out

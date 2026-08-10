@@ -16,7 +16,12 @@ import numpy as np
 import pytest
 
 from designspace.charts._build import build_chart
-from designspace.charts._grid import build_grid_shape, grid_membership
+from designspace.charts._grid import (
+    build_grid_shape,
+    floor_to_grid,
+    grid_membership,
+    grid_point,
+)
 from designspace.ir import IntegerDomain, Log, Logit, Power, QuantizedSpec, RealDomain
 
 
@@ -236,3 +241,84 @@ class TestGridCanonicalizationInvariance:
         # 0.3 doesn't evenly divide 1.0: grid is 0.0, 0.3, 0.6, 0.9, plus hi=1.0
         assert grid_membership(shape, 1.0) == 1.0
         assert grid_membership(shape, 0.9) == pytest.approx(0.9)
+
+
+class TestQuantizedChartValueRoundTrip:
+    """`from_unit(to_unit(v)) == v` for every point of a quantized grid.
+
+    `Chart.to_unit`'s docstring states this: a quantizing chart is
+    many-to-one from coordinates to values, so the value round trip holds
+    while the coordinate one does not. A multiplicative grid broke it. A
+    grid point is built as `lo * factor**k`, which lands a few ulp below
+    the exact value, and the recovered index then floored to `k - 1`, so
+    the value came back a whole cell low. On a decade grid that is a
+    factor of ten.
+
+    Grid index recovery is tolerant at construction, where
+    `build_grid_shape` floors `raw + _K_EPS`. The same tolerance belongs
+    in `floor_to_grid`, which is the reverse direction of the same
+    arithmetic.
+    """
+
+    @pytest.mark.parametrize(
+        ("lo", "hi", "prior", "step", "factor"),
+        [
+            (1e-6, 1e-2, Log(), None, 10.0),
+            (1e-6, 1e-2, Log(), None, 2.0),
+            (1e-3, 1e3, Log(), None, 10.0),
+            (0.0, 1.0, None, 0.1, None),
+            (0.0, 1.0, None, 0.25, None),
+            (16.0, 512.0, None, 16.0, None),
+        ],
+        ids=["decade", "octave", "wide-decade", "step-tenth", "step-quarter", "step-16"],
+    )
+    def test_every_grid_point_returns_itself(self, lo, hi, prior, step, factor):
+        chart = _chart(
+            "real",
+            RealDomain(lo, hi),
+            prior,
+            QuantizedSpec(step=step, factor=factor),
+        )
+        shape = build_grid_shape(lo, hi, step, factor, False)
+        for k in range(shape.K + 1):
+            point = chart.from_unit(chart.to_unit(grid_point(lo, step, factor, k)))
+            assert point == grid_point(lo, step, factor, k), f"grid index {k}"
+
+    def test_a_decade_grid_does_not_lose_a_decade(self):
+        chart = _chart("real", RealDomain(1e-6, 1e-2), Log(), QuantizedSpec(None, 10.0))
+        for k in range(5):
+            value = 1e-6 * 10.0**k
+            assert chart.from_unit(chart.to_unit(value)) == value
+
+    def test_integer_grid_round_trips(self):
+        chart = _chart("integer", IntegerDomain(1, 1024), Log(), QuantizedSpec(None, 2.0))
+        for k in range(11):
+            value = 2**k
+            assert chart.from_unit(chart.to_unit(value)) == value
+
+    def test_a_value_inside_a_cell_still_floors_down(self):
+        """Tolerance recovers a grid point; it does not round a real draw up."""
+        shape = build_grid_shape(0.0, 1.0, 0.1, None, False)
+        assert floor_to_grid(shape, 0.37) == pytest.approx(0.3)
+        assert floor_to_grid(shape, 0.29) == pytest.approx(0.2)
+
+    def test_the_round_trip_returns_the_canonical_point_not_the_literal(self):
+        """A written literal round-trips to the grid point it names.
+
+        `1e-5` and `1e-6 * 10**1` name the same grid point and differ in
+        the last place, the grid being computed rather than stored. The
+        round trip returns the computed point, which is what
+        `grid_membership` canonicalizes a literal to, and both spellings
+        validate. Returning the literal instead would put the chart and
+        grid membership at odds.
+        """
+        chart = _chart("real", RealDomain(1e-6, 1e-2), Log(), QuantizedSpec(None, 10.0))
+        shape = build_grid_shape(1e-6, 1e-2, None, 10.0, False)
+        for k in range(shape.K + 1):
+            literal = 10.0 ** (k - 6)
+            assert chart.from_unit(chart.to_unit(literal)) == grid_membership(shape, literal)
+
+    def test_the_round_trip_is_idempotent(self):
+        chart = _chart("real", RealDomain(1e-6, 1e-2), Log(), QuantizedSpec(None, 10.0))
+        once = chart.from_unit(chart.to_unit(1e-5))
+        assert chart.from_unit(chart.to_unit(once)) == once

@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from designspace.builder._space import Space
-from designspace.config import flatten, unflatten
+from designspace.config import as_flat, unflatten
 from designspace.config._flatten import _flatten_list_element
 from designspace.eval import (
     Unknown,
@@ -35,7 +35,7 @@ from designspace.resolve._relocate import instantiate_element
 
 def apply_defaults(space: Space, config: dict[str, Any]) -> dict[str, Any]:
     check_fully_resolved(space)
-    flat = flatten(config, space)
+    flat = as_flat(config, space)
     status: dict[str, str] = {}
     conditions_by_target = {c.target: c for c in space.conditions}
     for path in topological_order(space):

@@ -450,11 +450,11 @@ def active_subspace(space: Space, config: dict[str, Any]) -> Space:
     Every inactive param is dropped, along with any condition or constraint
     that referenced one.
     """
-    from designspace.config import flatten
+    from designspace.config import as_flat
     from designspace.eval import compute_activity
     from designspace.meta import space_from_ir
 
-    flat = flatten(config, space)
+    flat = as_flat(config, space)
     activity = compute_activity(space, flat)
     active_paths = {p for p, is_active in activity.items() if is_active}
     new_params = {p: pd for p, pd in space.params.items() if p in active_paths}

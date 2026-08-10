@@ -62,6 +62,7 @@ Reshaping a config without going through a space.
    designspace.config_diff
    designspace.destructure
    designspace.flatten
+   designspace.is_flat
    designspace.payload
    designspace.unflatten
    designspace.variant

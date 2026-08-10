@@ -36,7 +36,24 @@ dev = [
     # need: ruff's D1xx rules never fire here, every implementation module
     # being private.
     "griffe>=2.0",
+    # The sibling package and the backends its gate exercises. They sit in this
+    # group because the workspace shares one environment: were they declared
+    # only on the member, a per-package sync would evict what the other gates
+    # need, and the gates would reinstall over each other in turn. One `uv
+    # sync` here serves all seven. Both backends are pure Python and support
+    # every version in the CI matrix.
+    "designspace-solvers[optuna,cmaes]",
 ]
+
+# Solver bindings live in a sibling distribution, never in core (API.md,
+# "Solver Integration"): core ships no adapter and takes no dependency, the
+# public IR being the socket. `uv sync` here still syncs this package alone;
+# the member needs `--package` or `--all-packages`.
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+designspace-solvers = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -63,6 +80,14 @@ python_version = "3.12"
 # real types exactly as before, and every other module stays under `strict`.
 [[tool.mypy.overrides]]
 module = ["polars", "polars.*"]
+ignore_missing_imports = true
+
+# `cmaes` ships no `py.typed`, so its types are invisible to a strict run. This
+# covers that package alone: the binding that imports it stays under `strict`,
+# and the boundary is annotated by hand where the library cannot speak for
+# itself.
+[[tool.mypy.overrides]]
+module = ["cmaes", "cmaes.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

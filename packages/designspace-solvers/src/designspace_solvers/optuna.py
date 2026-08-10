@@ -1,0 +1,308 @@
+"""Optuna binding.
+
+`suggest(trial, space)` builds one complete configuration inside an objective
+function. It draws every parameter the space reports as assignable, in
+dependency order, and returns the configuration in nested form. A parameter
+that is inactive under the choices already drawn is never suggested, so it is
+absent from the result, and the result is always a configuration the space
+calls complete.
+
+`constraint_values(space, config)` scores a configuration for a sampler's
+`constraints_func`, one value per hard constraint, at most zero where the
+configuration is feasible.
+
+Priors reach Optuna two ways. A real or integer parameter with no
+quantization and either no prior or a log scale is drawn from Optuna's own
+distribution, so a log-scaled one carries `log=True` and the sampler perturbs
+it multiplicatively. Any other prior, and any quantized parameter, is drawn
+in unit coordinates and decoded through the parameter's chart, which
+reproduces the declared shape and lands on the declared grid without Optuna
+representing either. An ordinal is drawn as an index, keeping its order
+visible to the sampler, and a categorical as an unordered choice.
+
+`KINDS` holds the parameter kinds this binding places. A space carrying any
+other kind raises `UnsupportedSpace` naming the parameter.
+
+Examples
+--------
+A conditional space, searched as declared:
+
+>>> import optuna
+>>> import designspace as ds
+>>> from designspace_solvers.optuna import suggest
+>>> optuna.logging.set_verbosity(optuna.logging.WARNING)
+>>> space = ds.space(
+...     ds.param("lr").real(1e-4, 1e-1).log_scale(),
+...     ds.param("use_warmup").bool(),
+...     ds.param("warmup_steps").integer(1, 100).when(ds.param("use_warmup")),
+... )
+>>> seen = []
+>>> def objective(trial):
+...     config = suggest(trial, space)
+...     seen.append(config)
+...     return config["lr"] * 100 + config.get("warmup_steps", 0)
+>>> study = optuna.create_study(sampler=optuna.samplers.RandomSampler(seed=0))
+>>> study.optimize(objective, n_trials=5)
+>>> all(space.is_complete(config) for config in seen)
+True
+
+An inactive parameter is absent rather than filled, so a trial that turned
+warmup off carries no step count at all.
+
+>>> sorted({"warmup_steps" in config for config in seen})
+[False, True]
+
+A constrained space, where the sampler reads the margin rather than a verdict.
+Score the configuration in the objective, store the values on the trial, and
+hand the sampler a `constraints_func` that reads them back:
+
+>>> from designspace_solvers.optuna import constraint_values
+>>> budget = ds.space(
+...     ds.param("workers").integer(1, 16),
+...     ds.param("memory_gb").integer(1, 64),
+... ).forbid(ds.param("workers") * ds.param("memory_gb") > 64)
+>>> def throughput(trial):
+...     config = suggest(trial, budget)
+...     trial.set_user_attr("constraints", constraint_values(budget, config))
+...     return -float(config["workers"])
+>>> sampler = optuna.samplers.TPESampler(
+...     seed=0, constraints_func=lambda trial: trial.user_attrs["constraints"]
+... )
+>>> study = optuna.create_study(sampler=sampler)
+>>> study.optimize(throughput, n_trials=30)
+
+A constraint informs the sampler; it does not filter the study. Read the
+stored values back to keep the feasible trials:
+
+>>> feasible = [t for t in study.trials if t.user_attrs["constraints"][0] <= 0.0]
+>>> best = min(feasible, key=lambda t: t.value)
+>>> best.params["workers"] * best.params["memory_gb"] <= 64
+True
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+import designspace as ds
+from designspace_solvers._profile import Rejection, UnsupportedSpace, require
+
+if TYPE_CHECKING:
+    import optuna
+
+__all__ = ["KINDS", "constraint_values", "suggest"]
+
+#: The parameter kinds this binding places. Absent are the program kinds, a
+#: symbolic or code parameter having no Optuna counterpart, and the custom
+#: kind, whose genotype its type author supplies. Generating either is a
+#: strategy the library leaves to its consumer.
+KINDS = frozenset(
+    {
+        "real",
+        "integer",
+        "bool",
+        "categorical",
+        "ordinal",
+        "subset",
+        "permutation",
+        "choice",
+        "space",
+        "list",
+    }
+)
+
+
+def _require_optuna() -> None:
+    try:
+        import optuna  # noqa: F401
+    except ImportError as exc:  # pragma: no cover - exercised by the core install path
+        raise ImportError(
+            "the Optuna binding needs Optuna, which is an optional dependency. "
+            "Install it with `pip install designspace-solvers[optuna]`."
+        ) from exc
+
+
+def _suggest_scalar(trial: optuna.Trial, name: str, defn: ds.ParamDef) -> Any:
+    """Suggest a real or integer value.
+
+    Optuna's own distributions are used only where they reproduce the declared
+    chart exactly, which is when the parameter is not quantized and its prior
+    is either absent or a log scale. Everything else is suggested in unit
+    coordinates and decoded through the chart. Reading the domain's ends and
+    suggesting between them would ignore a grid or a shaped prior, and produce
+    values the space rejects.
+    """
+    chart = defn.chart
+    assert chart is not None, f"{name}: a real or integer parameter always carries a chart"
+    log = isinstance(defn.prior, ds.Log)
+    native = defn.quantized is None and (defn.prior is None or log)
+    if not native:
+        return chart.from_unit(trial.suggest_float(name, 0.0, 1.0))
+    # The chart's ends are the envelope bounds already resolved to numbers. The
+    # domain's own `lo` and `hi` may be expressions, so reading them here would
+    # mean re-deriving an envelope the library has derived.
+    lo = chart.from_unit(0.0)
+    hi = chart.from_unit(1.0)
+    if defn.type_kind == "integer":
+        return trial.suggest_int(name, int(lo), int(hi), log=log)
+    return trial.suggest_float(name, float(lo), float(hi), log=log)
+
+
+def _suggest_one(trial: optuna.Trial, space: ds.Space, path: str) -> Any:
+    defn = space.param_def(path)
+    kind = defn.type_kind
+    domain = defn.domain
+
+    if kind in ("real", "integer"):
+        return _suggest_scalar(trial, path, defn)
+
+    if kind == "list":
+        # A lift is assignable only when its count is zero, every other count
+        # being assigned through its elements. In the flat form a list is
+        # written as its length, and zero is what marks it active and empty
+        # rather than inactive.
+        return 0
+
+    if kind == "bool":
+        return trial.suggest_categorical(path, [False, True])
+
+    if kind in ("categorical", "ordinal"):
+        assert isinstance(domain, ds.CategoricalDomain | ds.OrdinalDomain)
+        values = domain.values
+        # Optuna restricts a categorical's choices to its own scalar types,
+        # while a domain here holds arbitrary objects. The index carries the
+        # choice instead. An ordinal suggests an integer rather than a
+        # category, which is what keeps its order visible to the sampler.
+        if kind == "ordinal":
+            return values[trial.suggest_int(path, 0, len(values) - 1)]
+        return values[trial.suggest_categorical(path, list(range(len(values))))]
+
+    if kind == "choice":
+        assert isinstance(domain, ds.ChoiceDomain)
+        return trial.suggest_categorical(path, list(domain.variants))
+
+    if kind == "subset":
+        assert isinstance(domain, ds.SubsetDomain)
+        # One inclusion flag per item. The size bounds are left to validation
+        # rather than repaired here: a repair would silently move the proposal
+        # Optuna is trying to learn from.
+        return [
+            item
+            for index, item in enumerate(domain.items)
+            if trial.suggest_categorical(f"{path}[{index}]", [False, True])
+        ]
+
+    if kind == "permutation":
+        assert isinstance(domain, ds.PermutationDomain)
+        # Random keys: a real coordinate per item, ordered by value. Every
+        # draw is a valid permutation, so there is nothing to reject.
+        keys = [trial.suggest_float(f"{path}[{i}]", 0.0, 1.0) for i in range(len(domain.items))]
+        return [item for _, item in sorted(zip(keys, domain.items, strict=True))]
+
+    raise UnsupportedSpace(
+        "the Optuna binding",
+        [Rejection(path=path, kind=kind, reason="no suggestion is defined for this kind")],
+    )
+
+
+def suggest(trial: optuna.Trial, space: ds.Space) -> dict[str, Any]:
+    """Build one complete configuration by suggesting each active parameter.
+
+    Parameters
+    ----------
+    trial : optuna.Trial
+        The trial to draw suggestions from.
+    space : designspace.Space
+        The space to configure.
+
+    Returns
+    -------
+    dict[str, Any]
+        A complete configuration. An inactive parameter is absent rather than
+        filled, which is what the space means by inactive.
+
+    Raises
+    ------
+    UnsupportedSpace
+        When the space holds a parameter kind this binding cannot place.
+
+    Examples
+    --------
+    >>> import optuna
+    >>> import designspace as ds
+    >>> from designspace_solvers.optuna import suggest
+    >>> optuna.logging.set_verbosity(optuna.logging.WARNING)
+    >>> space = ds.space(ds.param("n").integer(1, 4))
+    >>> study = optuna.create_study(sampler=optuna.samplers.RandomSampler(seed=0))
+    >>> trial = study.ask()
+    >>> config = suggest(trial, space)
+    >>> space.is_complete(config)
+    True
+    """
+    _require_optuna()
+    require(space, backend="the Optuna binding", kinds=KINDS)
+
+    # Built in the flat form, which is the vocabulary `next_assignable`
+    # reports in, so a suggestion is written at the path it named.
+    config: dict[str, Any] = {}
+    while True:
+        assignable = space.next_assignable(config)
+        if not assignable:
+            return ds.unflatten(config, space)
+        for path in assignable:
+            config[path] = _suggest_one(trial, space, path)
+
+
+def constraint_values(space: ds.Space, config: dict[str, Any]) -> tuple[float, ...]:
+    """Score a configuration against every hard constraint, in Optuna's convention.
+
+    Optuna reads a constraint as satisfied when its value is at most zero. Each
+    evaluation contributes its margin, which measures the predicate rather than
+    the constraint, oriented so that a feasible configuration scores at most
+    zero. A `require` is feasible when its predicate holds, so its margin is
+    negated; a `forbid` names a bad state, so its margin passes through. The
+    result is a graded distance from feasibility rather than a flag, which is
+    what a constrained sampler can actually descend.
+
+    Soft constraints are excluded. `encourage` and `discourage` express
+    preference, not feasibility, and folding them in here would make a merely
+    unfashionable configuration look infeasible.
+
+    An inapplicable constraint scores zero: one whose parameters are inactive
+    is never violated.
+
+    Parameters
+    ----------
+    space : designspace.Space
+        The space the configuration belongs to.
+    config : dict[str, Any]
+        The configuration to score.
+
+    Returns
+    -------
+    tuple[float, ...]
+        One value per hard constraint evaluation, in a stable order. Pass it to
+        a sampler's `constraints_func`.
+
+    Examples
+    --------
+    >>> import designspace as ds
+    >>> from designspace_solvers.optuna import constraint_values
+    >>> space = ds.space(
+    ...     ds.param("a").integer(0, 10), ds.param("b").integer(0, 10)
+    ... ).forbid(ds.param("a") > ds.param("b"))
+    >>> constraint_values(space, {"a": 1, "b": 5})
+    (-4.0,)
+    >>> constraint_values(space, {"a": 9, "b": 5})
+    (4.0,)
+    """
+    values = []
+    for evaluation in space.evaluate_constraints(config):
+        if not evaluation.constraint.hard:
+            continue
+        if not evaluation.applicable or evaluation.margin is None:
+            values.append(0.0)
+            continue
+        margin = float(evaluation.margin)
+        values.append(-margin if evaluation.constraint.feasible_when_satisfied else margin)
+    return tuple(values)

@@ -57,7 +57,15 @@ from designspace.builder import (
     param,
     space,
 )
-from designspace.config import config_diff, destructure, flatten, payload, unflatten, variant
+from designspace.config import (
+    config_diff,
+    destructure,
+    flatten,
+    is_flat,
+    payload,
+    unflatten,
+    variant,
+)
 from designspace.custom import ParamType
 from designspace.display import pretty
 from designspace.errors import DesignSpaceError, ResolutionError, SamplingError, SerializationError
@@ -206,6 +214,7 @@ __all__ = [
     "count",
     "destructure",
     "flatten",
+    "is_flat",
     "param",
     "param_from_def",
     "payload",

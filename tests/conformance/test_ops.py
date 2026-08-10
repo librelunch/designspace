@@ -11,6 +11,8 @@ report.
 
 from __future__ import annotations
 
+import pytest
+
 import designspace as ds
 from designspace.ir import SubspaceInfo
 
@@ -147,3 +149,85 @@ class TestBooleanFlags:
     def test_is_finite_true_for_quantized_list_element(self):
         space = ds.space(ds.param("x").real(0.0, 1.0).quantized(step=0.1).repeat(3))
         assert space.is_finite is True
+
+
+class TestParamDef:
+    """`.param_def()` resolves either path form to its definition.
+
+    A lift reports instance paths, `workers[0].timeout_s`, from every
+    surface that names a parameter given a config: `next_assignable`,
+    `missing_params`, `param_activity` and `evaluate_partial`. Those are
+    not keys of `.params`, which holds the one definition each instance
+    shares, `workers[].timeout_s`. Assigning what those surfaces report
+    needs the chart, prior and grid on the definition, so this crosses
+    between them, as `.param_constraints` and `.param_conditions`
+    already do.
+    """
+
+    @staticmethod
+    def _space():
+        return ds.space(
+            ds.param("n").integer(0, 3),
+            ds.param("workers")
+            .space(ds.space(ds.param("timeout_s").integer(1, 3600).log_scale()))
+            .repeat(ds.param("n")),
+        )
+
+    def test_a_definition_path_resolves(self):
+        space = self._space()
+        assert space.param_def("n") is space.params["n"]
+        assert space.param_def("workers[].timeout_s") is space.params["workers[].timeout_s"]
+
+    def test_an_instance_path_resolves_to_its_template(self):
+        space = self._space()
+        template = space.params["workers[].timeout_s"]
+        for index in range(3):
+            assert space.param_def(f"workers[{index}].timeout_s") is template
+
+    def test_it_answers_what_next_assignable_reports(self):
+        """The loop's own output is a legal argument, which is the point."""
+        space = self._space()
+        for path in space.next_assignable({"n": 3}):
+            defn = space.param_def(path)
+            assert defn.type_kind == "integer"
+            assert defn.chart is not None
+
+    def test_a_scalar_lift_element_resolves_to_its_own_definition(self):
+        """A scalar lift stores no field template, so the element is derived.
+
+        `params` holds only the container, whose kind is `list` and whose
+        `chart` is `None`, the element's kind and chart living on the
+        `ListDomain`. Handing the container back would tell a caller the
+        thing at `timeouts[0]` is a list without a chart.
+        """
+        space = ds.space(
+            ds.param("n").integer(0, 3),
+            ds.param("timeouts").integer(1, 3600).log_scale().repeat(ds.param("n")),
+        )
+        assert list(space.params) == ["n", "timeouts"]
+        for path in space.next_assignable({"n": 2}):
+            defn = space.param_def(path)
+            assert defn.type_kind == "integer"
+            assert defn.chart is not None
+            assert defn.chart.from_unit(0.0) == 1
+            assert defn.chart.from_unit(1.0) == 3600
+
+    def test_a_nested_scalar_lift_resolves_at_the_innermost_level(self):
+        space = ds.space(ds.param("grid").real(0.0, 1.0).repeat(2).repeat(3))
+        defn = space.param_def("grid[0][1]")
+        assert defn.type_kind == "real"
+        assert defn.chart is not None
+
+    def test_a_nested_lift_resolves_at_every_level(self):
+        space = ds.space(
+            ds.param("grid").space(ds.space(ds.param("cells").real(0.0, 1.0).repeat(2))).repeat(2),
+        )
+        template = space.params["grid[].cells"]
+        assert space.param_def("grid[0].cells") is template
+        assert space.param_def("grid[1].cells") is template
+
+    def test_an_unknown_path_raises_naming_it(self):
+        space = self._space()
+        with pytest.raises(Exception) as caught:
+            space.param_def("nope")
+        assert "nope" in str(caught.value)

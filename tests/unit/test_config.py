@@ -181,3 +181,169 @@ class TestInstancePathVariantPayloadDestructure:
         cfg = self._cfg()
         with pytest.raises(KeyError):
             ds.variant(cfg, "pipeline[9]")
+
+
+class TestFlattenRejectsAnAlreadyFlatConfig:
+    """Flattening twice dropped every lift key. It now says so.
+
+    A lift's value is a list in nested form and its length in flat form,
+    so a second pass met an `int` where it wanted a list and skipped the
+    parameter, taking the element keys with it. Nothing was raised, so a
+    caller who flattened twice lost the lift and read a complete config
+    as incomplete.
+    """
+
+    @staticmethod
+    def _space():
+        return ds.space(
+            ds.param("n").integer(0, 3),
+            ds.param("workers")
+            .space(ds.space(ds.param("timeout_s").integer(1, 3600)))
+            .repeat(ds.param("n")),
+        )
+
+    def test_flattening_twice_raises_naming_the_parameter(self):
+        space = self._space()
+        flat = ds.flatten({"n": 1, "workers": [{"timeout_s": 30}]}, space)
+        with pytest.raises(TypeError) as caught:
+            ds.flatten(flat, space)
+        assert "workers" in str(caught.value)
+
+    def test_a_struct_config_flattened_twice_raises(self):
+        space = ds.space(ds.param("s").space(ds.space(ds.param("a").integer(0, 4))))
+        flat = ds.flatten({"s": {"a": 1}}, space)
+        with pytest.raises(TypeError):
+            ds.flatten(flat, space)
+
+    def test_a_space_whose_two_forms_coincide_is_unaffected(self):
+        """With no lift and no struct, flat and nested are the same dict."""
+        space = ds.space(ds.param("a").integer(0, 4), ds.param("b").real(0.0, 1.0))
+        config = {"a": 1, "b": 0.5}
+        assert ds.flatten(config, space) == config
+        assert ds.flatten(ds.flatten(config, space), space) == config
+
+
+class TestUnflattenReadsLengthFromElementKeys:
+    """A lift's element keys establish its length, with no count entry.
+
+    `flatten` writes a bookkeeping entry holding the realized length, but
+    `next_assignable` never reports it: a driver loop assigns the count
+    param and the instance leaves. The flat dict such a loop builds
+    therefore has every element key and no entry, and unflattening it
+    dropped the whole lift.
+
+    The entry stays required where it is the only evidence there is. With
+    no element key present, absence means the lift is inactive, and an
+    entry of `0` is what distinguishes an active empty one.
+    """
+
+    @staticmethod
+    def _space():
+        return ds.space(
+            ds.param("on").bool(),
+            ds.param("n").integer(0, 3),
+            ds.param("workers")
+            .space(ds.space(ds.param("timeout_s").integer(1, 3600)))
+            .repeat(ds.param("n"))
+            .when(ds.param("on")),
+        )
+
+    def test_element_keys_alone_rebuild_the_list(self):
+        space = self._space()
+        flat = {
+            "on": True,
+            "n": 2,
+            "workers[0].timeout_s": 30,
+            "workers[1].timeout_s": 900,
+        }
+        assert ds.unflatten(flat, space) == {
+            "on": True,
+            "n": 2,
+            "workers": [{"timeout_s": 30}, {"timeout_s": 900}],
+        }
+
+    def test_a_present_entry_still_wins(self):
+        space = self._space()
+        flat = {"on": True, "n": 2, "workers": 2, "workers[0].timeout_s": 30}
+        rebuilt = ds.unflatten(flat, space)
+        assert len(rebuilt["workers"]) == 2
+
+    def test_an_active_empty_lift_needs_its_entry(self):
+        space = self._space()
+        assert ds.unflatten({"on": True, "n": 0, "workers": 0}, space)["workers"] == []
+
+    def test_an_inactive_lift_stays_absent(self):
+        space = self._space()
+        assert "workers" not in ds.unflatten({"on": False, "n": 0}, space)
+
+    def test_it_round_trips_what_a_driver_loop_builds(self):
+        space = self._space()
+        flat: dict = {}
+        for _ in range(10):
+            assignable = space.next_assignable(flat)
+            if not assignable:
+                break
+            for path in assignable:
+                flat[path] = 30 if path.endswith("timeout_s") else (True if path == "on" else 2)
+        else:
+            raise AssertionError("the loop did not terminate")
+        assert space.validate(ds.unflatten(flat, space)).valid
+
+
+class TestIsFlat:
+    """`is_flat` answers what `flatten` refuses on, before it refuses.
+
+    A function that raises on a condition has to let a caller test that
+    condition. `flatten` rejects a config already keyed by path, so the
+    same question it asks is available to ask first.
+    """
+
+    @staticmethod
+    def _space():
+        return ds.space(
+            ds.param("n").integer(0, 3),
+            ds.param("workers")
+            .space(ds.space(ds.param("timeout_s").integer(1, 3600)))
+            .repeat(ds.param("n")),
+        )
+
+    def test_it_agrees_with_what_flatten_refuses(self):
+        """The law: flat exactly when flatten will not take it."""
+        space = self._space()
+        configs = [
+            {"n": 0, "workers": []},
+            {"n": 1, "workers": [{"timeout_s": 30}]},
+            {"n": 2, "workers": [{"timeout_s": 30}, {"timeout_s": 900}]},
+            {"n": 2},
+            {},
+        ]
+        for nested in configs:
+            assert not ds.is_flat(nested, space)
+            flat = ds.flatten(nested, space)
+            assert ds.is_flat(flat, space) == (flat != nested)
+            if ds.is_flat(flat, space):
+                with pytest.raises(TypeError):
+                    ds.flatten(flat, space)
+            else:
+                ds.flatten(flat, space)
+
+    def test_a_lift_is_told_by_its_own_entry(self):
+        """Zero elements leave no path key, so the entry settles it."""
+        space = self._space()
+        assert ds.is_flat({"n": 0, "workers": 0}, space)
+        assert not ds.is_flat({"n": 0, "workers": []}, space)
+
+    def test_a_struct_is_told_by_its_dotted_key(self):
+        space = ds.space(ds.param("s").space(ds.space(ds.param("a").integer(0, 4))))
+        assert ds.is_flat({"s.a": 1}, space)
+        assert not ds.is_flat({"s": {"a": 1}}, space)
+
+    def test_a_space_whose_two_forms_coincide_is_never_flat(self):
+        """With no lift and no nesting there is nothing to tell apart."""
+        space = ds.space(ds.param("a").integer(0, 4), ds.param("b").real(0.0, 1.0))
+        config = {"a": 1, "b": 0.5}
+        assert not ds.is_flat(config, space)
+        assert ds.flatten(config, space) == config
+
+    def test_an_empty_config_is_not_flat(self):
+        assert not ds.is_flat({}, self._space())

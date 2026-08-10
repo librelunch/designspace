@@ -1134,12 +1134,18 @@ def _resolve_list_status(
 ) -> None:
     """Assign a list container's partial status.
 
-    A list container is `"set"`, `"unknown"` or `"inactive"`, and never
-    `"active_unset"` (API.md, "Space: Partial Configs"). There is no value
-    to await
-    for the container itself, only for its count param, which appears
-    elsewhere in `topological_order`, and for its instance leaves, expanded
-    below once the count is known.
+    A list container is `"set"`, `"unknown"` or `"inactive"`, and is
+    `"active_unset"` only when its determined count is zero and its own key
+    is absent (API.md, "Space: Partial Configs"). Ordinarily there is no
+    value to await for the container itself, only for its count param, which
+    appears elsewhere in `topological_order`, and for its instance leaves,
+    expanded below once the count is known. Assigning a leaf creates the
+    container on the way, so the container never has to be awaited itself.
+
+    A count of zero has no leaf to assign, so nothing creates the container,
+    and the empty list that marks the lift active rather than inactive would
+    never be written. There the container awaits its own value, and
+    `next_assignable` reports it.
     """
     if activity_class != "active":
         status[path] = activity_class
@@ -1150,7 +1156,7 @@ def _resolve_list_status(
         status[path] = "unknown"  # count is pending on an unresolved dependency
         order.append(path)
         return
-    status[path] = "set"
+    status[path] = "active_unset" if n == 0 and path not in config else "set"
     order.append(path)
     for i in range(n):
         _expand_instance_status(space, f"{path}[{i}]", domain, config, status, order, deps)

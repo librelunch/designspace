@@ -24,6 +24,9 @@ jobs:
       - run: just types
       - run: just test
       - run: just doctest
+      # The sibling solver package, across the same interpreter matrix. Both
+      # backends it exercises declare support for every version listed above.
+      - run: just solvers
 
   docs:
     # The sixth commit gate. The recipe carries `--extra docs`, which installs

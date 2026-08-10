@@ -1,0 +1,32 @@
+[project]
+name = "designspace-solvers"
+version = "0.0.0"
+description = "Solver bindings for designspace"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "designspace",
+    "numpy>=1.26",
+]
+
+# One extra per backend. A backend imports its solver lazily and raises a plain
+# `ImportError` naming its extra when the install is absent, matching how core
+# treats its own optional dependencies.
+[project.optional-dependencies]
+optuna = ["optuna>=4"]
+# `CatCMAwM` lives behind the `cmawm` extra, which is what brings scipy.
+cmaes = ["cmaes[cmawm]>=0.13"]
+
+[tool.uv.sources]
+designspace = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/designspace_solvers"]
+
+# No lint, type or test configuration here. The workspace shares one
+# environment and one set of tool settings, defined at the root, so a standard
+# cannot drift between core and this package.
