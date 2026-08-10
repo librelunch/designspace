@@ -13,6 +13,15 @@ the combinations that are legal. The resulting `Space` can then be sampled,
 validated against, handed to a solver, serialized, or compared with another
 space by fingerprint.
 
+> [!NOTE]
+> This project is research software, and may contain bugs.
+> Please open an issue if you encounter one!
+
+> [!IMPORTANT]
+> This project uses AI-assisted development tools.
+> Code contributions generated or modified with the help of AI tools
+> are reviewed and tested by maintainers before release.
+
 ## Example
 
 ```pycon
