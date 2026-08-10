@@ -130,164 +130,6 @@ sample 200, validate all, round-trip once serialization exists).
 
 ## Milestones
 
-### M13.11: Solver socket prototype (pre-v0.1)
-
-**Spec:** no core runtime surface. A sibling distribution,
-`designspace-solvers`, lands as a uv workspace member under `packages/`, with
-one extra per backend and bindings for Optuna and cmaes. Core ships no adapter
-and takes no dependency, per `API.md`'s *Solver Integration* section, so the
-package exists to prove the public representation is a sufficient socket and to
-find where it is not. It is not published; its version stays `0.0.0`.
-
-**Build:** done. `[tool.uv.workspace]` at the root, the member's own
-`pyproject.toml`, and a seventh gate recipe, `solvers`, inside `just gates`, so
-a change to the representation breaks its consumer on the day it lands rather
-than at release. The workspace shares one environment and one tool
-configuration, so lint and type strictness cannot drift between the two
-packages. The bindings run against the existing corpus fixtures rather than
-spaces written to make them pass, and the two runnable examples under
-`examples/` are executed by the package's own tests, so neither the bindings
-nor what a reader is shown of them can rot quietly.
-
-**Findings.** The prototype's deliverable. Three defects in shipped behaviour,
-two gaps in the published surface, and one imprecision. Each needs a decision
-before v0.1 tags, because every one of them is visible to a consumer.
-
-**All five findings are fixed.** Each landed with its own conformance tests,
-written first, except F5, which is specification text with no behaviour behind
-it.
-
-**F1. A factor-quantized real chart loses a grid step under round trip.**
-*Fixed.*
-`Chart.from_unit(chart.to_unit(v)) != v` for a real parameter with a
-multiplicative grid, landing on the adjacent grid point. For
-`real(1e-6, 1e-2).log_scale().quantized(factor=10)`, two of the five grid
-points come back a full decade low, a ratio of `0.100`. `to_unit(1e-5)` returns
-`0.19999999999999996`, just under the bucket boundary, and `from_unit` floors
-it into the bucket below. The grid itself is built as `9.999999999999999e-06`
-rather than `1e-05`, so the value an expert writes is not the value the chart
-holds. Scope: multiplicative grids on reals only. Additive `step=` grids on
-reals and integers, and multiplicative grids on integers, all round-trip
-exactly. `Chart`'s own docstring promises this round trip holds for a
-quantizing chart, and `API.md`'s *Solver Integration* section directs solvers
-to embed through charts, so this is the operation a warm start runs: seeding an
-optimizer from a known-good configuration silently moves a learning rate by a
-decade. Fixed by recovering the grid index with the `_K_EPS` tolerance
-`build_grid_shape` already floors with, the two directions of one piece of
-arithmetic having disagreed on it. Known-answer vectors are byte-identical.
-
-**F2. `validate` rejects the configuration the assignment protocol produces.**
-For a lift whose count resolves to zero while its condition holds,
-`next_assignable` returns `[]`, `is_complete` returns `True` and
-`missing_params` returns `[]`, while `validate` reports the parameter missing.
-A driver loop that follows the documented protocol therefore halts on a
-configuration that does not validate. Reproduced on `solver_portfolio`, whose
-own comments show the active-empty case was intended.
-
-The three partial-config predicates are right and `validate` is the outlier.
-*Space: Partial Configs* fixes all three: a list container is "`set`,
-`unknown`, or `inactive`, never `active_unset`", `next_assignable` and
-completeness coincide by stated law, and the loop assigns "a lift's count param
-and its instance leaves, never the container". Under those rules the loop can
-only produce the configuration it produces, and it is complete. The container's
-status is `set` because its count is determined, and the justification given
-for a container never needing a pending status of its own, that its instance
-leaves carry one, holds for every count except zero.
-
-Everything canonical disagrees with the loop, not with `validate`: the
-reference sampler emits `items: []`, `apply_defaults` fills it in, and
-`config_hash` gives the two spellings different hashes, so a tuning loop keyed
-on one cannot recognize the other.
-
-This was a specification gap rather than a bug: *Space: Partial Configs* did
-not say whether a determined count of zero makes the container's own key
-required, and both readings satisfied its text. *Fixed*, the user having
-resolved it that presence marks activity without exception. An active lift is
-present whatever its count, carrying `[]` when that count is zero, so absence
-marks inactivity and nothing else. A zero-count container is `active_unset`
-until its key is written and `next_assignable` reports it, which is the one
-case where a container is assigned directly. `validate` was already correct and
-is unchanged, and an absent key is now an incomplete config rather than a second
-spelling of a complete one, so `config_hash` and the frozen format are
-untouched and no vector changes. Recorded in `DECISIONS.md` and folded into
-`API.md`.
-
-**F3. `Space.next_assignable` reports paths its own configuration cannot
-hold.** *Fixed.* Its docstring calls it the driver of an interactive loop. Under a
-`.repeat()` lift it reports instance paths such as `workers[0].timeout_s`,
-while the configuration it consumes is nested. Assigning the key it just
-reported does not register, and the loop repeats that path forever. Routing
-through `flatten` and `unflatten` does not rescue it either: `unflatten` needs
-the lift's own count key, which is not among the reported paths, and without it
-discards the element values silently rather than failing. Route: user
-decision. Fixed by having the surface accept what it reports: every
-partial-config surface now takes a config in either form and reads the same
-answer from both, so a loop accumulates its answers at the paths it was given.
-`flatten` refuses an already-flat config rather than dropping its lifts, with
-`ds.is_flat` reporting that condition so a caller tests it instead of catching
-it, and
-`unflatten` takes a dynamic lift's length from the element keys it already
-holds, so what the loop builds round-trips without a bookkeeping key the loop is
-never told to write. Recorded in `DECISIONS.md` and folded into `API.md`.
-
-**F4. The instance-to-definition path mapping is not published.** *Fixed.* Resolving
-`workers[0].timeout_s` to the `workers[].timeout_s` key of `Space.params`, which
-a consumer must do to learn the domain it is assigning, is performed by
-`designspace.paths.definition_form`. That module appears in no `__all__`, in
-`docs/reference.md`, or in `docs/api/`. The binding reimplements it against the
-path grammar. Fixed by `Space.param_def(path)`, which takes either form and
-returns the definition, joining `param_constraints` and `param_conditions`,
-which already accepted both. One accessor rather than a richer walker: four
-surfaces report instance paths that `params` cannot hold, and enriching
-`next_assignable` alone would have served one of them while breaking the law
-that its emptiness coincides with completeness.
-
-**F5. Charts cover two kinds, not every generative one.** *Fixed.* `API.md`'s *Design
-Principles* say every generative param resolves to a chart. The *Charts*
-section says every generative *scalar* param does, and the IR comment says
-`None for non-chart kinds`. Only real and integer carry one; bool, ordinal,
-categorical, subset and permutation do not. The narrower reading is the
-implemented one and is the right one, ordinal and bool being the only arguable
-cases. Both sentences overstated, as it turned out, not just the informative
-one: the *Scalar* table groups `bool`, `categorical` and `ordinal` with `real`
-and `integer`, so "every generative scalar param" names five kinds where two
-carry a chart. Both now name the two kinds and say why the rest carry none.
-
-**What the socket got right**, recorded because it is load-bearing and was not
-obvious in advance: `ConstraintEval.margin` with `Constraint.feasible_when_satisfied`
-yields a graded, correctly oriented penalty rather than a flag, which is what a
-constrained sampler can descend; `coordinate_paths()` refuses a conditional
-space rather than quietly padding it; `Representation.decode(encode(config))`
-is exact, and `config_hash` survives the round trip, so warm start and
-observation identity both work; reading a scalar's bounds off its chart rather
-than its domain sidesteps expression bounds entirely; and a lifted element's
-`ParamDef` carries its own chart, so the element-chart indirection never has to
-be walked.
-
-**A declared prior reaches a solver that has somewhere to put it**, the
-discrete kinds included. A real or integer parameter's prior travels in its
-chart, so it arrives with the coordinate whichever backend is driving.
-`CatCMAwM` holds one categorical distribution per variable and adapts it as the
-run proceeds, and takes its starting point as `cat_param`, so `Weights` on a
-`categorical`, `bool` or `subset` param normalizes into that argument and the
-run begins where the space says the good values are, rather than starting
-uniform and being corrected afterwards by the consumer. The exception is
-`ordinal`, which the binding places in the solver's integer block, where the
-solver holds a Gaussian rather than a distribution over levels: nothing there
-takes weights, and summarizing them as a mean index would substitute a point
-for a distribution. That is a limit of the solver's model rather than of the
-representation, so it is documented and left.
-
-**Gate:** the seven commit gates green, `solvers` among them.
-
-**Exit:** met. All five findings resolved, two as out-of-band fixes, two as a
-user-resolved specification gap, and one as a specification correction.
-
-**Still open.** Whether the walk deserves a convenience method, `assignable(config) ->
-dict[str, ParamDef]`, deferred deliberately: it is additive, and the bindings
-now run on the fixed surface, so whether the two-line form reads badly is a
-question the corpus can answer rather than one to guess at.
-
 ### M14: v0.1 release
 
 **Spec:** no new runtime surface; release packaging only. `pyproject.toml` gains
@@ -336,11 +178,24 @@ matching the existing `builder/_space.py` pattern. New
 milestone writes its own user-facing docstrings, under the same coverage gates,
 before merging.
 
-**Gate:** the six commit gates plus the docstring-coverage gates, all green;
+**Gate:** the seven commit gates plus the docstring-coverage gates, all green;
 pre-existing known-answer vectors byte-identical; every corpus fixture's
 `to_json_schema()` output validates that fixture's own sampled configs;
 `examples/README.md`'s "Not yet implemented" section, which currently names
 exactly `.to_json_schema()`, is deleted. **Exit:** tag **v0.2**.
+
+---
+
+## Deferred questions
+
+Raised by a milestone that has shipped and deliberately left unanswered. Each
+is additive, so none blocks a release.
+
+- **`assignable(config) -> dict[str, ParamDef]`**, raised at M13.11. The
+  partial-config walk reports instance paths and `param_def` resolves each one,
+  so pairing them is two lines at a call site. Whether that reads badly is a
+  question the corpus can answer once the bindings have run on the fixed
+  surface, rather than one to guess at now.
 
 ---
 
@@ -350,7 +205,7 @@ exactly `.to_json_schema()`, is deleted. **Exit:** tag **v0.2**.
 2. Corpus fixtures for the milestone added and passing end-to-end.
 3. Error-table rows introduced by the milestone each have a message-content
    test.
-4. The six commit gates in `CLAUDE.md` green.
+4. The seven commit gates in `CLAUDE.md` green.
 5. `PROGRESS.md` updated; `DECISIONS.md` entries for anything the spec left
    open.
 6. Public `__init__.py` exports exactly the spec surface implemented so far,

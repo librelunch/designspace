@@ -9,7 +9,9 @@ the same time. Decisions live in `DECISIONS.md`; this file does not index them.
 
 From 2026-08-06 the test count is two numbers, `pytest -q` plus the doctest
 gate, because those are two commit gates and two commands (see `CLAUDE.md`).
-Rows before that date are single totals under the old arrangement.
+Rows before that date are single totals under the old arrangement. Both numbers
+are core's. The `solvers` gate, added at M13.11, carries its own suite over the
+sibling package under `packages/` and is counted in neither.
 
 | Milestone | Completed | Tests |
 |---|---|---|
@@ -45,6 +47,7 @@ Rows before that date are single totals under the old arrangement.
 | M13.8: Source and test prose (`src/` and `tests/` to the standard; prose laws widened; two new laws) | 2026-08-08 | 3156 + 123 |
 | M13.9: User-facing text stands on its own (row citations out of messages and published docstrings; four new laws) | 2026-08-08 | 3462 + 123 |
 | M13.10: Human-readable rendering (`__str__` on every public type, and `pretty(obj, space=None, ...)` | 2026-08-09 | 3820 + 126 |
+| M13.11: Solver socket prototype (`designspace-solvers` under `packages/`, Optuna and cmaes bindings, a seventh gate) | 2026-08-10 | 3877 + 128 |
 
 ## Out-of-band fixes
 
