@@ -87,7 +87,9 @@ _SOURCE = sorted((_ROOT / "src").rglob("*.py"))
 _TESTS = sorted(p for p in (_ROOT / "tests").rglob("*.py") if "__pycache__" not in p.parts)
 _CONFIG = [
     _ROOT / "pyproject.toml",
-    _ROOT / ".github" / "workflows" / "ci.yml",
+    # Every workflow, matched rather than listed, so that adding one brings it
+    # under these laws instead of quietly falling outside them.
+    *sorted((_ROOT / ".github" / "workflows").glob("*.yml")),
     _DOCS / "conf.py",
     # The gate commands moved out of `ci.yml` and into the justfile, which is
     # now their one definition. Leaving it out would quietly shrink what the

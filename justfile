@@ -56,7 +56,10 @@ release-check:
     uv build --package designspace
     wheel="$(ls dist/*.whl)"
 
-    uv run python -c "import sys, zipfile; names = zipfile.ZipFile(sys.argv[1]).namelist(); sys.exit(None if 'designspace/py.typed' in names else 'py.typed is absent from the wheel')" "$wheel"
+    # `--no-project` because this reads the archive with the standard library
+    # alone. Without it the check would sync the whole development environment,
+    # the documentation toolchain included, to run one line.
+    uv run --no-project python -c "import sys, zipfile; names = zipfile.ZipFile(sys.argv[1]).namelist(); sys.exit(None if 'designspace/py.typed' in names else 'py.typed is absent from the wheel')" "$wheel"
 
     work="$(mktemp -d)"
     trap 'rm -rf "$work"' EXIT

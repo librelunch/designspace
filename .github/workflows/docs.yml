@@ -1,0 +1,47 @@
+name: docs
+# Publishes the documentation site. The site describes what ships, so it deploys
+# from a tag rather than from `main`: a build off `main` would document surface
+# no release carries, and would stamp the last released version on it.
+#
+# `workflow_dispatch` is the exception, for a correction to the site that should
+# not wait for a release, and for proving this workflow before the first tag.
+#
+# The build step is a `just` recipe, the same one the `ci` gate runs, so the
+# published site cannot be built differently from the one that gets checked.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Both are for Pages: `id-token` mints the OIDC token the deployment
+      # authenticates with, and neither grants anything else.
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    # One deployment at a time, and never cancelled: a half-applied site is
+    # worse than a queued one.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - uses: extractions/setup-just@v4
+      - run: just build-docs
+      # Artifact deployment does not run Jekyll, so the underscore-prefixed
+      # `_static` and `_sources` directories serve as they are and need no
+      # `.nojekyll` marker.
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_build
+      - id: deploy
+        uses: actions/deploy-pages@v4

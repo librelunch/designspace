@@ -1,0 +1,81 @@
+name: release
+# Publishes the distribution. A tag publishes to PyPI, and the `pypi`
+# environment holds the job for a reviewer, so the release is an approval rather
+# than a consequence of pushing a tag.
+#
+# TestPyPI is a rehearsal reached only by dispatch, not a stage of every
+# release. It proves the upload path and this file's publisher configuration;
+# what it would otherwise check, `release-check` checks without consuming a
+# version number on an index.
+#
+# Both indexes authenticate by OIDC, so no API token exists here or in the
+# repository's secrets. Each index matches the claims GitHub signs against the
+# publisher registered with it: this file's name and the environment name below
+# are part of that match, and renaming either breaks publishing until the
+# registration is updated.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      rehearse_on_testpypi:
+        description: "Publish to TestPyPI instead of PyPI"
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - uses: extractions/setup-just@v4
+      # Builds the distributions and then proves the wheel installs into a clean
+      # environment and carries types a consumer's checker reads. The recipe is
+      # the one definition of that check, shared with a maintainer's own run.
+      - run: just release-check
+      # Named globs rather than `dist/`: `uv build` leaves a `.gitignore` there,
+      # and the publish action rejects a directory holding anything that is not
+      # a distribution.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+
+  testpypi:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.rehearse_on_testpypi == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/designspace
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  pypi:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/designspace
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
