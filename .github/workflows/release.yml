@@ -31,6 +31,9 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
+          # As above: a tag fires this workflow alongside the others, and each
+          # needs a key of its own.
+          cache-suffix: release
       - uses: extractions/setup-just@v4
       # Builds the distributions and then proves the wheel installs into a clean
       # environment and carries types a consumer's checker reads. The recipe is

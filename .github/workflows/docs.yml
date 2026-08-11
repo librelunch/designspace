@@ -35,6 +35,9 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
+          # Its own suffix, so a tag push does not race the gate's docs build
+          # for one cache key.
+          cache-suffix: docs-publish
       - uses: extractions/setup-just@v4
       - run: just build-docs
       # Artifact deployment does not run Jekyll, so the underscore-prefixed

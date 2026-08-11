@@ -5,6 +5,12 @@ name: ci
 on:
   push:
   pull_request:
+
+# Every job that sets uv up names its own cache suffix. The generated key
+# otherwise covers only the interpreter and the lockfile, so jobs sharing a
+# Python version collide and race to save one key. Pruning is on by default, so
+# a per-job cache holds just what that job installed rather than a copy of
+# everything.
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -16,6 +22,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
+          cache-suffix: checks
       - uses: extractions/setup-just@v4
       - run: uv sync
       # One step per gate, so a failure names itself in the job summary.
@@ -36,6 +43,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
+          cache-suffix: build-docs
       - uses: extractions/setup-just@v4
       - run: just build-docs
 
@@ -49,6 +57,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
+          cache-suffix: core-only
       - uses: extractions/setup-just@v4
       - run: uv sync --no-install-package polars
       - run: uv run python -c "import designspace"
