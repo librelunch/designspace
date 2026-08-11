@@ -727,11 +727,11 @@ on it. It is fingerprint-equal to `.encourage(~e)` and fingerprint-distinct from
 **White, grey, and black box.** A predicate's transparency decides how much of
 the library's machinery can act on it:
 
-| tier | form | margins | `remaining_domain` narrowing | tighten-not-reject |
+| transparency | form | margins | `remaining_domain` narrowing | tighten-not-reject |
 |---|---|---|---|---|
-| white | expression over param values | yes | yes | yes (bound-origin) |
-| grey | opaque scalar under a structural comparison: `prop("n") > 3`, `ds.value(f, …, returns=float) <= c` | yes | no | no |
-| black | opaque predicate: `ds.value(f, …, returns=bool)` | no (`None`) | no | no |
+| white box | expression over param values | yes | yes | yes (bound-origin) |
+| grey box | opaque scalar under a structural comparison: `prop("n") > 3`, `ds.value(f, …, returns=float) <= c` | yes | no | no |
+| black box | opaque predicate: `ds.value(f, …, returns=bool)` | no (`None`) | no | no |
 
 Margins, `evaluate_partial`, `remaining_domain`, and bound-origin tightening all
 run on structure. A grey predicate is available wherever the quantity under test
@@ -1611,9 +1611,10 @@ Because nothing is dropped, target activity always matches source activity, and
 `represent()` successfully builds. What differs is *quality*, reported as
 `opaque_conditions` and `opaque_constraints`: structurally transported
 expressions keep margins and partial evaluation, and opaque ones do not (see
-*Constraints and Feasibility* on the white, grey, and black tiers). Expressions
-are rewritten in all four stores they inhabit: `Space.conditions`, each
-`ParamDef.condition`, `Space.constraints`, and `ListDomain.element_constraints`.
+*Constraints and Feasibility* on white, grey, and black box predicates).
+Expressions are rewritten in all four stores they inhabit: `Space.conditions`,
+each `ParamDef.condition`, `Space.constraints`, and
+`ListDomain.element_constraints`.
 A projection such as `p.field("w").sum()` reads the lift's *descendant* rather
 than the lift its `params` set names, and must be rewritten at the projection
 node.
@@ -2679,7 +2680,7 @@ identifiers: where an implementation reports a law by name, as
 | `opaque_identity` | `to_json` and `fingerprint` raise with the closed-set message by default, `mark` yields `{"$opaque": true}`, and `drop` yields the same marker plus a manifest entry naming the site, across all three positions a `ds.value` can occupy: a constraint, a `.when()` condition, and a dynamic repeat count | `tests/conformance/test_opaque_values.py` |
 | `opaque_dependency_graph` | `dependency_graph` includes the operands' referenced params | `tests/conformance/test_opaque_values.py` |
 | `opaque_cardinality` | `.cardinality()` is conservatively `None` wherever structural equality cannot see through the opacity | `tests/conformance/test_opaque_values.py` |
-| `opaque_no_narrowing` | `remaining_domain` never narrows off a grey or black predicate, per the tier table | `tests/conformance/test_opaque_values.py` |
+| `opaque_no_narrowing` | `remaining_domain` never narrows off a grey or black predicate, per the transparency table | `tests/conformance/test_opaque_values.py` |
 
 ### Program-type laws
 

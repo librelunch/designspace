@@ -1,8 +1,8 @@
 """Conformance laws: `ds.value`, the opaque derived quantity.
 
 See API.md, "Expressions" > `ds.value`, Kleene rule 1's declared-operand
-rule, the tier table under "Constraints", row 30, and the non-serializable
-set.
+rule, the transparency table under "Constraints", row 30, and the
+non-serializable set.
 
 Laws enforced here: `opaque_float_margin`, `opaque_bool_bare`,
 `opaque_int_count`, `opaque_declaration_errors`, `opaque_calling_convention`,
@@ -488,10 +488,10 @@ class TestCardinalityConservativeNone:
         assert space.cardinality() is None
 
 
-# -- tier table: no narrowing off a grey/black predicate ----------------------
+# -- transparency table: no narrowing off a grey/black predicate --------------
 
 
-class TestTierNoNarrowing:
+class TestTransparencyNoNarrowing:
     def test_remaining_domain_does_not_narrow_off_a_bare_value_predicate(self):
         space = ds.space(ds.param("x").real(0.0, 10.0)).forbid(
             ds.value(lambda x: x > 5.0, ds.param("x"), returns=bool)

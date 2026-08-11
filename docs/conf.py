@@ -59,7 +59,7 @@ exclude_patterns = [
 napoleon_numpy_docstring = True
 napoleon_google_docstring = False
 
-# Cross-document links to a heading (`structured-values.md#tier-3-a-custom-type`)
+# Cross-document links to a heading (`structured-values.md#a-custom-type`)
 # need MyST to emit anchor targets. docutils gives the rendered HTML an `id`
 # either way, so without this a link silently points at nothing.
 myst_heading_anchors = 3

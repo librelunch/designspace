@@ -62,16 +62,3 @@ predicate-transparency
 rejection
 anchors
 ```
-
-## Terminology
-
-The word *tier* names three unrelated scales across the documentation:
-
-| "tier" | where | what it ranks |
-|---|---|---|
-| white / grey / black | [predicate transparency](predicate-transparency.md) | how much of a *predicate* the library can see into |
-| 1 / 2 / 3 | [structured values](structured-values.md) | how much of a *structure* is handed to a custom type |
-| derived / supplied | [identity and solver hand-off](../user-guide/11-identity-and-solvers.md) | where a `Representation` came from |
-
-The three scales are independent. A tier-3 structured value can carry a
-white-box predicate, and a tier-1 family can carry a black-box one.

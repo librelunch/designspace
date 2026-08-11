@@ -80,8 +80,8 @@ that make the measure-zero constraint disappear.
 Where the invariant is global and has no primitive spelling, covering
 connectivity, minimum pairwise spacing, or a packing that must fit, construction
 moves inside a `.custom()` type whose sampler cannot produce an invalid value.
-That is tier 3 in [structured values](structured-values.md), and hostility to
-rejection is the main reason to reach for it.
+That is the custom-type mechanism in [structured values](structured-values.md),
+and hostility to rejection is the main reason to reach for it.
 
 ## Softening hard constraints
 

@@ -4,17 +4,11 @@ The way a predicate is *written* decides how much of the library's machinery can
 act on it. All three forms below are one line and all three are enforced
 correctly, so the cost is invisible at the call site.
 
-| tier | form | margins | `remaining_domain` narrowing | tighten-not-reject |
+| transparency | form | margins | `remaining_domain` narrowing | tighten-not-reject |
 |---|---|---|---|---|
-| white | an expression over parameter values | yes | yes | yes (bound-origin) |
-| grey | opaque scalar under a structural comparison | yes | no | no |
-| black | an opaque predicate | no | no | no |
-
-```{note}
-These tiers are unrelated to the tier 1/2/3 of
-[structured values](structured-values.md). This scale ranks predicates; that
-one ranks structures.
-```
+| white box | an expression over parameter values | yes | yes | yes (bound-origin) |
+| grey box | opaque scalar under a structural comparison | yes | no | no |
+| black box | an opaque predicate | no | no | no |
 
 ## White box
 
