@@ -31,8 +31,8 @@ jobs:
       group: pages
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v4
@@ -40,8 +40,8 @@ jobs:
       # Artifact deployment does not run Jekyll, so the underscore-prefixed
       # `_static` and `_sources` directories serve as they are and need no
       # `.nojekyll` marker.
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs/_build
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
