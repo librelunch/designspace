@@ -454,7 +454,7 @@ requires-dist = [
     { name = "cmaes", extras = ["cmawm"], marker = "extra == 'cmaes'", specifier = ">=0.13" },
     { name = "designspace", editable = "." },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "optuna", marker = "extra == 'optuna'", specifier = ">=4" },
+    { name = "optuna", marker = "extra == 'optuna'", specifier = ">=5.0.0rc1" },
 ]
 provides-extras = ["optuna", "cmaes"]
 
@@ -1186,7 +1186,7 @@ wheels = [
 
 [[package]]
 name = "optuna"
-version = "4.9.0"
+version = "5.0.0rc1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -1197,9 +1197,9 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f4/aa/05f5e3f662cc96a4c478fc3446b8ed6359825a2b504ecb614a9ac84e4a4d/optuna-4.9.0.tar.gz", hash = "sha256:b322e5cbdf1655fb84c37646c4a7a1f391de1b47806bbe222e015825d0a82b87", size = 485834, upload-time = "2026-06-01T06:23:30.424Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/90/93f60a1638efed2e43900b9f841f560f8086f130dc175faa7022caa86852/optuna-5.0.0rc1.tar.gz", hash = "sha256:0d83ae482798aabccef75ef5daeecea76f35b46c3a458bf5d2cb413bbca50ad9", size = 498596, upload-time = "2026-08-03T05:31:13.564Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ab/f3/e5fcd5d9b15771ed6dc10e3a7eeddc672e418f4f4c4653d216cc1d857e2d/optuna-4.9.0-py3-none-any.whl", hash = "sha256:f52f3be6148654850c92a5860d398fd88ec6b2c84ab68d9c3d07dcff02e7afee", size = 425553, upload-time = "2026-06-01T06:23:28.804Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/1b/2075628a7748a99fcdc7f1fc662e51c765aeba89fad86b71b56cf7e740c1/optuna-5.0.0rc1-py3-none-any.whl", hash = "sha256:dfd1da2c2087bfa53ac580e9933149764fdd5f8e53572aa46139817bc091771a", size = 436386, upload-time = "2026-08-03T05:31:12.174Z" },
 ]
 
 [[package]]

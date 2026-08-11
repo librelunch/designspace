@@ -24,24 +24,29 @@ naming the extra to install.
 objective, drawing each parameter as the trial runs. A parameter that is
 inactive under the choices already drawn is never suggested, so it is absent
 from the result rather than filled with a stand-in.
-`constraint_values(space, config)` scores a configuration for a sampler's
-`constraints_func`, one value per hard constraint, at most zero where the
-configuration is feasible.
+`set_constraints(trial, space, config)` scores the configuration against every
+hard constraint and writes the scores onto the trial, at most zero where the
+configuration is feasible. The sampler reads them from there and steers toward
+feasibility. Each score is named for the constraint it measures, by that
+constraint's tags where it carries any, so a trial reads back in the terms the
+space was declared in. `constraint_values(space, config)` computes the same
+scores without a trial.
 
 ```python
 import optuna
 import designspace as ds
-from designspace_solvers.optuna import suggest
+from designspace_solvers.optuna import set_constraints, suggest
 
 space = ds.space(
     ds.param("lr").real(1e-4, 1e-1).log_scale(),
     ds.param("use_warmup").bool(),
     ds.param("warmup_steps").integer(1, 100).when(ds.param("use_warmup")),
-)
+).forbid(ds.param("lr") * ds.param("warmup_steps") > 1.0, tags=("budget",))
 
 def objective(trial):
-    config = suggest(trial, space)
-    return train(**config)          # `warmup_steps` is present only when it applies
+    config = suggest(trial, space)      # `warmup_steps` is there only when it applies
+    set_constraints(trial, space, config)   # scored under `forbid[budget]`
+    return train(**config)
 
 study = optuna.create_study()
 study.optimize(objective, n_trials=50)

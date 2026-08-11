@@ -13,7 +13,7 @@ import math
 from typing import Any
 
 import optuna
-from designspace_solvers.optuna import constraint_values, suggest
+from designspace_solvers.optuna import set_constraints, suggest
 
 import designspace as ds
 
@@ -37,8 +37,12 @@ def build_space() -> ds.Space:
         ds.param("warmup_steps").integer(1, 2000).when(ds.param("use_warmup")),
         # A long warmup at a large batch exceeds the step budget of the run.
         # Declared as a constraint rather than folded into the objective, so
-        # the sampler learns the boundary from a margin.
-    ).forbid(ds.param("batch_size") * ds.param("warmup_steps") > 250_000)
+        # the sampler learns the boundary from a margin. The tag names it, and
+        # is what each trial's score is reported under.
+    ).forbid(
+        ds.param("batch_size") * ds.param("warmup_steps") > 250_000,
+        tags=("step_budget",),
+    )
 
 
 def objective_value(config: dict[str, Any]) -> float:
@@ -68,16 +72,12 @@ def search(space: ds.Space, n_trials: int, seed: int) -> tuple[dict[str, Any], f
     def objective(trial: optuna.Trial) -> float:
         config = suggest(trial, space)
         tried[trial.number] = config
-        # Read by the sampler through `constraints_func` below. Storing them
-        # here means each trial is scored exactly once.
-        trial.set_user_attr("constraints", constraint_values(space, config))
+        # The sampler reads the scores off the trial, so writing them here is
+        # all the search needs, and each trial is scored exactly once.
+        set_constraints(trial, space, config)
         return objective_value(config)
 
-    sampler = optuna.samplers.TPESampler(
-        seed=seed,
-        constraints_func=lambda trial: trial.user_attrs["constraints"],
-    )
-    study = optuna.create_study(sampler=sampler)
+    study = optuna.create_study(sampler=optuna.samplers.TPESampler(seed=seed))
     study.optimize(objective, n_trials=n_trials)
 
     # A constraint informs the sampler; it does not filter the study, so the
@@ -86,8 +86,7 @@ def search(space: ds.Space, n_trials: int, seed: int) -> tuple[dict[str, Any], f
         (
             (trial.number, trial.value)
             for trial in study.trials
-            if trial.value is not None
-            and all(score <= 0.0 for score in trial.user_attrs["constraints"])
+            if trial.value is not None and all(score <= 0.0 for score in trial.constraints.values())
         ),
         key=lambda scored: scored[1],
     )

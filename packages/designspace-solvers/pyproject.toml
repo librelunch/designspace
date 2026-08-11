@@ -13,7 +13,9 @@ dependencies = [
 # `ImportError` naming its extra when the install is absent, matching how core
 # treats its own optional dependencies.
 [project.optional-dependencies]
-optuna = ["optuna>=4"]
+# The floor names a pre-release, which is what admits one: the binding writes
+# constraints through `Trial.set_constraint`, added in this release.
+optuna = ["optuna>=5.0.0rc1"]
 # `CatCMAwM` lives behind the `cmawm` extra, which is what brings scipy.
 cmaes = ["cmaes[cmawm]>=0.13"]
 

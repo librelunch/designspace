@@ -7,9 +7,11 @@ that is inactive under the choices already drawn is never suggested, so it is
 absent from the result, and the result is always a configuration the space
 calls complete.
 
-`constraint_values(space, config)` scores a configuration for a sampler's
-`constraints_func`, one value per hard constraint, at most zero where the
-configuration is feasible.
+`set_constraints(trial, space, config)` scores a configuration against every
+hard constraint and writes the scores onto the trial, each under a name
+derived from the declaration it came from. A sampler reads them from there
+and steers toward feasibility. `constraint_values(space, config)` computes
+the same scores without a trial.
 
 Priors reach Optuna two ways. A real or integer parameter with no
 quantization and either no prior or a log scale is drawn from Optuna's own
@@ -53,35 +55,38 @@ warmup off carries no step count at all.
 [False, True]
 
 A constrained space, where the sampler reads the margin rather than a verdict.
-Score the configuration in the objective, store the values on the trial, and
-hand the sampler a `constraints_func` that reads them back:
+Score the configuration in the objective and the sampler picks the scores up
+from the trial:
 
->>> from designspace_solvers.optuna import constraint_values
+>>> from designspace_solvers.optuna import set_constraints
 >>> budget = ds.space(
 ...     ds.param("workers").integer(1, 16),
 ...     ds.param("memory_gb").integer(1, 64),
-... ).forbid(ds.param("workers") * ds.param("memory_gb") > 64)
+... ).forbid(ds.param("workers") * ds.param("memory_gb") > 64, tags=("budget",))
 >>> def throughput(trial):
 ...     config = suggest(trial, budget)
-...     trial.set_user_attr("constraints", constraint_values(budget, config))
+...     set_constraints(trial, budget, config)
 ...     return -float(config["workers"])
->>> sampler = optuna.samplers.TPESampler(
-...     seed=0, constraints_func=lambda trial: trial.user_attrs["constraints"]
-... )
->>> study = optuna.create_study(sampler=sampler)
+>>> study = optuna.create_study(sampler=optuna.samplers.TPESampler(seed=0))
 >>> study.optimize(throughput, n_trials=30)
 
-A constraint informs the sampler; it does not filter the study. Read the
-stored values back to keep the feasible trials:
+A constraint informs the sampler; it does not filter the study. Each trial
+carries its own scores, named for the constraint they measure, and a trial is
+feasible when none of them is above zero:
 
->>> feasible = [t for t in study.trials if t.user_attrs["constraints"][0] <= 0.0]
->>> best = min(feasible, key=lambda t: t.value)
+>>> best = min(
+...     (t for t in study.trials if all(v <= 0.0 for v in t.constraints.values())),
+...     key=lambda t: t.value,
+... )
+>>> sorted(best.constraints)
+['forbid[budget]']
 >>> best.params["workers"] * best.params["memory_gb"] <= 64
 True
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 import designspace as ds
@@ -90,7 +95,7 @@ from designspace_solvers._profile import Rejection, UnsupportedSpace, require
 if TYPE_CHECKING:
     import optuna
 
-__all__ = ["KINDS", "constraint_values", "suggest"]
+__all__ = ["KINDS", "constraint_values", "set_constraints", "suggest"]
 
 #: The parameter kinds this binding places. Absent are the program kinds, a
 #: symbolic or code parameter having no Optuna counterpart, and the custom
@@ -253,7 +258,68 @@ def suggest(trial: optuna.Trial, space: ds.Space) -> dict[str, Any]:
             config[path] = _suggest_one(trial, space, path)
 
 
-def constraint_values(space: ds.Space, config: dict[str, Any]) -> tuple[float, ...]:
+#: A hard constraint's name before collisions are resolved: its kind, the
+#: label read off its tags or its position, and the element it belongs to.
+_Name = tuple[str, str, str | None]
+
+
+def _names(space: ds.Space, config: dict[str, Any]) -> list[tuple[_Name, ds.ConstraintEval]]:
+    """Name every hard constraint evaluated against a configuration.
+
+    A constraint's tags name it, one used as written and several sorted and
+    joined, which is what makes a score legible where it is read back. An
+    untagged constraint takes its position among the constraints of its kind
+    instead. Positions count every hard evaluation, including the ones this
+    configuration leaves inapplicable, so that a name is a fact about the
+    space rather than about the configuration being scored.
+    """
+    counters: Counter[tuple[str, str | None]] = Counter()
+    named: list[tuple[_Name, ds.ConstraintEval]] = []
+    for evaluation in space.evaluate_constraints(config):
+        constraint = evaluation.constraint
+        if not constraint.hard:
+            continue
+        scope = (constraint.kind, evaluation.instance_path)
+        position = counters[scope]
+        counters[scope] += 1
+        label = ",".join(sorted(constraint.tags)) or str(position)
+        named.append(((constraint.kind, label, evaluation.instance_path), evaluation))
+    return named
+
+
+def _scored(space: ds.Space, config: dict[str, Any]) -> list[tuple[str, float | None, bool]]:
+    """Key and score every applicable hard constraint, in Optuna's convention.
+
+    Each entry is the key, the score, and whether the evaluation is violated.
+    The score is `None` where the predicate carries no numeric distance, which
+    is a question the caller settles.
+    """
+    named = _names(space, config)
+    shared: Counter[_Name] = Counter(name for name, _ in named)
+    ordinals: Counter[_Name] = Counter()
+    scored: list[tuple[str, float | None, bool]] = []
+    for name, evaluation in named:
+        kind, label, instance_path = name
+        if shared[name] > 1:
+            # Two constraints of one kind carrying the same tags. Each keeps
+            # the tags and takes an ordinal, rather than one of them landing
+            # on the other's key and being dropped.
+            label = f"{label}.{ordinals[name]}"
+            ordinals[name] += 1
+        if not evaluation.applicable:
+            continue
+        key = f"{kind}[{label}]"
+        if instance_path is not None:
+            key = f"{key}@{instance_path}"
+        value: float | None = None
+        if evaluation.margin is not None:
+            margin = float(evaluation.margin)
+            value = -margin if evaluation.constraint.feasible_when_satisfied else margin
+        scored.append((key, value, evaluation.violated))
+    return scored
+
+
+def constraint_values(space: ds.Space, config: dict[str, Any]) -> dict[str, float | None]:
     """Score a configuration against every hard constraint, in Optuna's convention.
 
     Optuna reads a constraint as satisfied when its value is at most zero. Each
@@ -268,8 +334,17 @@ def constraint_values(space: ds.Space, config: dict[str, Any]) -> tuple[float, .
     preference, not feasibility, and folding them in here would make a merely
     unfashionable configuration look infeasible.
 
-    An inapplicable constraint scores zero: one whose parameters are inactive
-    is never violated.
+    A constraint this configuration leaves inapplicable is absent rather than
+    scored zero: one whose parameters are inactive is never violated, and
+    Optuna reads a constraint it was never told about as satisfied. One that
+    applies but carries no numeric distance, such as an opaque predicate
+    returning a bool, scores `None`. There is a verdict and nothing to
+    measure, and `set_constraints` is where that verdict becomes a number.
+
+    Each score is keyed by the constraint's tags where it carries any and by
+    its position among the constraints of its kind otherwise. A constraint
+    declared on the element of a repeated block is scored once per element,
+    keyed with that element's path.
 
     Parameters
     ----------
@@ -280,9 +355,8 @@ def constraint_values(space: ds.Space, config: dict[str, Any]) -> tuple[float, .
 
     Returns
     -------
-    tuple[float, ...]
-        One value per hard constraint evaluation, in a stable order. Pass it to
-        a sampler's `constraints_func`.
+    dict[str, float | None]
+        One entry per applicable hard constraint evaluation.
 
     Examples
     --------
@@ -290,19 +364,61 @@ def constraint_values(space: ds.Space, config: dict[str, Any]) -> tuple[float, .
     >>> from designspace_solvers.optuna import constraint_values
     >>> space = ds.space(
     ...     ds.param("a").integer(0, 10), ds.param("b").integer(0, 10)
-    ... ).forbid(ds.param("a") > ds.param("b"))
+    ... ).forbid(ds.param("a") > ds.param("b"), tags=("ordering",))
     >>> constraint_values(space, {"a": 1, "b": 5})
-    (-4.0,)
+    {'forbid[ordering]': -4.0}
     >>> constraint_values(space, {"a": 9, "b": 5})
-    (4.0,)
+    {'forbid[ordering]': 4.0}
+
+    An untagged constraint is named by its position instead:
+
+    >>> plain = ds.space(ds.param("a").integer(0, 10)).forbid(ds.param("a") > 5)
+    >>> constraint_values(plain, {"a": 9})
+    {'forbid[0]': 4.0}
     """
-    values = []
-    for evaluation in space.evaluate_constraints(config):
-        if not evaluation.constraint.hard:
-            continue
-        if not evaluation.applicable or evaluation.margin is None:
-            values.append(0.0)
-            continue
-        margin = float(evaluation.margin)
-        values.append(-margin if evaluation.constraint.feasible_when_satisfied else margin)
-    return tuple(values)
+    return {key: value for key, value, _ in _scored(space, config)}
+
+
+def set_constraints(trial: optuna.Trial, space: ds.Space, config: dict[str, Any]) -> None:
+    """Write a configuration's constraint scores onto a trial.
+
+    A sampler reads a trial's constraints for itself, so scoring the
+    configuration inside the objective is the whole of what a constrained
+    search needs. The scores and their keys are the ones `constraint_values`
+    computes.
+
+    A constraint that applies but carries no numeric distance is written as a
+    verdict, `1.0` where the evaluation is violated and `-1.0` where it is
+    not. Optuna takes a number, and writing zero would report a violated
+    constraint as feasible.
+
+    Parameters
+    ----------
+    trial : optuna.Trial
+        The trial to write the scores onto.
+    space : designspace.Space
+        The space the configuration belongs to.
+    config : dict[str, Any]
+        The configuration to score.
+
+    Examples
+    --------
+    >>> import optuna
+    >>> import designspace as ds
+    >>> from designspace_solvers.optuna import set_constraints, suggest
+    >>> optuna.logging.set_verbosity(optuna.logging.WARNING)
+    >>> space = ds.space(
+    ...     ds.param("a").integer(0, 10), ds.param("b").integer(0, 10)
+    ... ).forbid(ds.param("a") > ds.param("b"), tags=("ordering",))
+    >>> study = optuna.create_study(sampler=optuna.samplers.RandomSampler(seed=0))
+    >>> trial = study.ask()
+    >>> config = suggest(trial, space)
+    >>> set_constraints(trial, space, config)
+    >>> sorted(trial.constraints)
+    ['forbid[ordering]']
+    """
+    _require_optuna()
+    for key, value, violated in _scored(space, config):
+        if value is None:
+            value = 1.0 if violated else -1.0
+        trial.set_constraint(key, value)

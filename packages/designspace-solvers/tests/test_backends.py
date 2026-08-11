@@ -14,16 +14,18 @@ repairing proposals behind the solver's back.
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import numpy as np
 import pytest
 from designspace_solvers import UnsupportedSpace, profile, rejections
 from designspace_solvers.cmaes import Optimizer, _categorical_start, _layout
-from designspace_solvers.optuna import constraint_values, suggest
+from designspace_solvers.optuna import constraint_values, set_constraints, suggest
 
 import designspace as ds
 from corpus.compiler_pipeline import build_space as build_compiler_pipeline
+from corpus.delivery_routes import build_space as build_delivery_routes
 from corpus.flat_hpo import build_space as build_flat_hpo
 from corpus.solver_portfolio import build_space as build_solver_portfolio
 
@@ -162,15 +164,189 @@ def test_constraint_values_grade_distance_from_feasibility() -> None:
 
     for a, b in [(1, 5), (5, 5), (6, 5), (9, 5)]:
         config = {"a": a, "b": b}
-        (value,) = constraint_values(space, config)
+        ((value,),) = (constraint_values(space, config).values(),)
+        assert value is not None
         assert (value <= 0.0) == space.is_feasible(config)
+
+
+def test_constraint_values_negate_a_require() -> None:
+    """A `require` is feasible when satisfied, so its margin is negated.
+
+    The polarity-opposite of the `forbid` above, over the same predicate and
+    the same configurations, and it has to score the same way round.
+    """
+    space = ds.space(
+        ds.param("a").integer(0, 10),
+        ds.param("b").integer(0, 10),
+    ).require(ds.param("a") <= ds.param("b"))
+
+    for a, b in [(1, 5), (5, 5), (6, 5), (9, 5)]:
+        config = {"a": a, "b": b}
+        assert constraint_values(space, config) == {"require[0]": float(a - b)}
+        assert (a - b <= 0.0) == space.is_feasible(config)
 
 
 def test_constraint_values_ignore_soft_constraints() -> None:
     """A preference does not make a configuration look infeasible."""
     space = ds.space(ds.param("a").integer(0, 10)).discourage(ds.param("a") > 5)
-    assert constraint_values(space, {"a": 9}) == ()
+    assert constraint_values(space, {"a": 9}) == {}
     assert space.is_feasible({"a": 9})
+
+
+def test_constraint_values_omit_an_inapplicable_constraint() -> None:
+    """A constraint over an inactive parameter is absent, not scored zero.
+
+    Zero would say the configuration sits exactly on the boundary. Absence
+    says the constraint never applied, which is what an inactive parameter
+    makes true, and Optuna reads a constraint it was not told about as
+    satisfied.
+    """
+    space = ds.space(
+        ds.param("on").bool(),
+        ds.param("n").integer(0, 10).when(ds.param("on")),
+    ).forbid(ds.param("n") > 5, tags=("cap",))
+
+    assert constraint_values(space, {"on": True, "n": 9}) == {"forbid[cap]": 4.0}
+    assert constraint_values(space, {"on": False}) == {}
+
+
+def test_constraint_values_leave_an_opaque_predicate_unmeasured() -> None:
+    """An opaque predicate has a verdict and no distance, so it scores `None`."""
+    space = ds.space(ds.param("n").integer(1, 20)).forbid(
+        ds.value(lambda v: v % 2 == 0, ds.param("n"), returns=bool),
+        tags=("even",),
+    )
+
+    assert constraint_values(space, {"n": 4}) == {"forbid[even]": None}
+    assert constraint_values(space, {"n": 3}) == {"forbid[even]": None}
+
+
+def test_set_constraints_writes_a_verdict_for_an_opaque_predicate() -> None:
+    """An unmeasured constraint reaches the trial as its verdict.
+
+    Writing zero would report a violated constraint as feasible, which is the
+    one thing a constrained sampler must not be told.
+    """
+    import optuna
+
+    space = ds.space(ds.param("n").integer(1, 20)).forbid(
+        ds.value(lambda v: v % 2 == 0, ds.param("n"), returns=bool),
+        tags=("even",),
+    )
+    study = optuna.create_study(sampler=optuna.samplers.RandomSampler(seed=0))
+
+    violated = study.ask()
+    set_constraints(violated, space, {"n": 4})
+    assert violated.constraints == {"forbid[even]": 1.0}
+    assert not space.is_feasible({"n": 4})
+
+    feasible = study.ask()
+    set_constraints(feasible, space, {"n": 3})
+    assert feasible.constraints == {"forbid[even]": -1.0}
+    assert space.is_feasible({"n": 3})
+
+
+def test_constraint_keys_are_named_by_tags() -> None:
+    """Tags name a constraint; position names one that carries none.
+
+    Positions count every hard constraint of the kind, tagged ones included,
+    so naming one constraint never renumbers another.
+    """
+    space = (
+        ds.space(*[ds.param(name).integer(0, 10) for name in "abcde"])
+        .forbid(ds.param("a") > 8, tags=("budget",))
+        .forbid(ds.param("b") > 8)
+        .forbid(ds.param("c") > 8, tags=("memory", "latency"))
+        .forbid(ds.param("d") > 8, tags=("budget",))
+        .require(ds.param("e") <= 8)
+    )
+    config = dict.fromkeys("abcde", 0)
+
+    assert sorted(constraint_values(space, config)) == [
+        # Untagged, and second among the forbids.
+        "forbid[1]",
+        # Two constraints share the `budget` tag. Each keeps it and takes an
+        # ordinal rather than one landing on the other's key.
+        "forbid[budget.0]",
+        "forbid[budget.1]",
+        # Several tags read as labels rather than as one name, so all of them
+        # are used, sorted.
+        "forbid[latency,memory]",
+        # A separate kind counts its own positions.
+        "require[0]",
+    ]
+
+
+def test_constraint_keys_name_each_element_of_a_lift() -> None:
+    """A per-element constraint is scored once per element, keyed by its path.
+
+    The count follows the realized length, which is what a variable-length
+    lift means and what a single ordered sequence of scores could not carry.
+    """
+    space = build_delivery_routes()
+
+    for n_stops in (1, 3, 5):
+        config = {
+            "n_stops": n_stops,
+            "stops": [{"location": i, "dwell_min": 20} for i in range(n_stops)],
+        }
+        keys = sorted(constraint_values(space, config))
+        assert keys == ["forbid[0]"] + [f"forbid[0]@stops[{i}]" for i in range(n_stops)]
+
+
+def test_constraint_keys_are_stable_across_trials() -> None:
+    """One constraint keeps one key however the configuration changes.
+
+    A key is derived from the space, so a constraint that goes inapplicable on
+    one trial and applies on the next is scored under the same name both
+    times, and the sampler reads a single series rather than two.
+    """
+    space = (
+        ds.space(
+            ds.param("on").bool(),
+            ds.param("n").integer(0, 10).when(ds.param("on")),
+            ds.param("m").integer(0, 10),
+        )
+        .forbid(ds.param("n") > 5, tags=("shared",))
+        .forbid(ds.param("m") > 5, tags=("shared",))
+    )
+
+    off = constraint_values(space, {"on": False, "m": 9})
+    on = constraint_values(space, {"on": True, "n": 9, "m": 9})
+
+    assert off == {"forbid[shared.1]": 4.0}
+    assert on == {"forbid[shared.0]": 4.0, "forbid[shared.1]": 4.0}
+    assert off.keys() <= on.keys()
+
+
+def test_set_constraints_reaches_the_sampler() -> None:
+    """A constrained study runs on the current API and carries its scores.
+
+    The deprecated `constraints_func` route would warn here, so its absence is
+    asserted rather than assumed.
+    """
+    import optuna
+
+    space = ds.space(
+        ds.param("workers").integer(1, 16),
+        ds.param("memory_gb").integer(1, 64),
+    ).forbid(ds.param("workers") * ds.param("memory_gb") > 64, tags=("budget",))
+
+    def objective(trial: optuna.Trial) -> float:
+        config = suggest(trial, space)
+        set_constraints(trial, space, config)
+        return -float(config["workers"])
+
+    study = optuna.create_study(sampler=optuna.samplers.TPESampler(seed=0))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        study.optimize(objective, n_trials=25)
+
+    assert all(sorted(trial.constraints) == ["forbid[budget]"] for trial in study.trials)
+    feasible = [t for t in study.trials if all(v <= 0.0 for v in t.constraints.values())]
+    assert feasible, "no feasible trial in a study whose space has feasible corners"
+    for trial in feasible:
+        assert trial.params["workers"] * trial.params["memory_gb"] <= 64
 
 
 # -- CMA-ES, the fixed-width shape -----------------------------------------
