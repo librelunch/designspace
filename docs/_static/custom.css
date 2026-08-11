@@ -1,0 +1,20 @@
+/* The release label in the navbar.
+ *
+ * Bootstrap's `navbar-text` class, which this element used to carry, takes its
+ * color from `--bs-navbar-color`. That is a Bootstrap variable, and the light
+ * and dark switch redefines only the theme's own `--pst-` ones, so the label
+ * held a fixed color from outside the palette in both schemes.
+ *
+ * Every token below is redefined per color scheme by the theme, so this one
+ * rule serves both and no media query or `[data-theme]` selector is needed
+ * here. The color is the one the navbar's own links use, so the label sits
+ * beside them as a peer, and it carries no border: the theme's bordered
+ * treatment belongs to the version *switcher*, which is a dropdown, and
+ * borrowing it would make a static label look like a control.
+ */
+.designspace-version {
+  color: var(--pst-color-text-muted);
+  font-size: 0.9em;
+  padding-block: 0.5rem;
+  white-space: nowrap;
+}

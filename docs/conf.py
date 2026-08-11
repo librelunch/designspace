@@ -92,6 +92,9 @@ autodoc_typehints = "signature"
 html_theme = "pydata_sphinx_theme"
 html_title = "designspace"
 html_static_path = ["_static"]
+# Carries the navbar release label's color. It states the color in the theme's
+# own tokens, which are the ones the light and dark switch redefines.
+html_css_files = ["custom.css"]
 
 # The wordmark carries the project name, so the theme renders the image alone
 # and omits the text title beside it. Without `alt_text` the images would carry
