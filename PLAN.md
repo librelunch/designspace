@@ -68,26 +68,6 @@ sample 200, validate all, round-trip once serialization exists).
 
 ## Milestones
 
-### M14: v0.1 release
-
-**Spec:** no new runtime surface; release packaging only. `pyproject.toml` gains
-`version = "0.1.0"`, `license`, `authors`, `classifiers`, and `[project.urls]`,
-and the `LICENSE` file lands here. A real `README.md` (install, a short
-quickstart, feature summary, links to the docs site and `API.md`, project
-status) replaces today's three-line stub. New `CHANGELOG.md`.
-
-**Gate:** `uv build` emits a wheel containing `py.typed`; a clean-venv install
-of that wheel imports `designspace` and type-checks correctly from a consumer's
-perspective, which proves `py.typed` took effect rather than merely being
-present in the archive.
-
-**Exit:** the first public release. With the full feature set, the user docs,
-and release packaging in place, tag **v0.1**. The wire format ships as
-format-version `1`, unchanged and vector-tested byte-identical. `to_json_schema`
-ships with M15 rather than v0.1, at the user's direction, so `API.md`'s
-*Staging* section governs it until then. This is the first artifact intended for
-public consumption; everything before M14 was a pre-release checkpoint.
-
 ### M15: Optional extras and `to_json_schema` (v0.2, post-release)
 
 **Spec:** the `[pydantic]` extra with `to_pydantic_model`; `to_dataclass() ->
@@ -120,7 +100,7 @@ before merging.
 pre-existing known-answer vectors byte-identical; every corpus fixture's
 `to_json_schema()` output validates that fixture's own sampled configs;
 `examples/README.md`'s "Not yet implemented" section, which currently names
-exactly `.to_json_schema()`, is deleted. **Exit:** tag **v0.2**.
+exactly `.to_json_schema()`, is deleted. **Exit:** tag **v0.2.0**.
 
 ---
 

@@ -1,6 +1,6 @@
 # Progress
 
-Current milestone: **M14 (open)**
+Current milestone: **M15 (open)**
 
 One row per completed milestone: date and total test count at completion. This
 file is the record that a milestone shipped; `PLAN.md` holds the protocol and
@@ -48,6 +48,7 @@ under `packages/` and is counted in neither.
 | M13.9: User-facing text stands on its own (row citations out of messages and published docstrings; four new laws) | 2026-08-08 | 3462 + 123 |
 | M13.10: Human-readable rendering (`__str__` on every public type, and `pretty(obj, space=None, ...)` | 2026-08-09 | 3820 + 126 |
 | M13.11: Solver socket prototype (`designspace-solvers` under `packages/`, Optuna and cmaes bindings, a seventh gate) | 2026-08-10 | 3877 + 128 |
+| M14: v0.1 release (MIT, release metadata, `CHANGELOG.md`, the release check, the documentation site, PyPI) | 2026-08-11 | 3897 + 128 |
 
 ## Out-of-band fixes
 
