@@ -69,7 +69,14 @@ pip install "designspace[polars]"
 
 ## Documentation
 
-<https://todo.github.io/designspace>
+<https://librelunch.github.io/designspace>
+
+## Stability
+
+While the major version is zero, a minor release may change the Python API.
+The serialized format carries a version of its own, independent of the release
+version, so a space written to JSON by one release reads back in every later
+release that keeps that number. `CHANGELOG.md` says when it changes.
 
 ## Development
 
@@ -82,6 +89,10 @@ devenv shell
 The commit gates install as git hooks on first entry: a fast subset on commit,
 the full set before a push. Run them by hand with `just gates`.
 
+[API.md](./API.md) is the normative specification. It states the target rather
+than the current release, so it also describes surface that is not built yet.
+The documentation site describes what ships.
+
 ## License
 
-This project is licensed under the [GNU General Public License v3.0](./LICENSE).
+This project is licensed under the [MIT License](./LICENSE).

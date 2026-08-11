@@ -1,12 +1,15 @@
 # designspace-solvers
 
-Search a [`designspace`](https://github.com/wurthjon/designspace) space with a
+Search a [`designspace`](https://github.com/librelunch/designspace) space with a
 real optimizer. One module per solver, each taking a space as declared and
 handing back ordinary configurations that the space itself validates.
 
+This package is not published to an index yet. Install it from the repository,
+choosing a backend:
+
 ```console
-pip install designspace-solvers[optuna]
-pip install designspace-solvers[cmaes]
+pip install "designspace-solvers[optuna] @ git+https://github.com/librelunch/designspace.git#subdirectory=packages/designspace-solvers"
+pip install "designspace-solvers[cmaes] @ git+https://github.com/librelunch/designspace.git#subdirectory=packages/designspace-solvers"
 ```
 
 Each backend imports its solver lazily, so installing one extra never drags in

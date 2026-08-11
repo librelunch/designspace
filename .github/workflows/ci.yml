@@ -26,11 +26,10 @@ jobs:
       - run: just doctest
       # The sibling solver package, across the same interpreter matrix. Both
       # backends it exercises declare support for every version listed above.
-      - run: just solvers
+      - run: just gates-solvers
 
   docs:
-    # The docs gate. The recipe carries `--extra docs`, which installs the extra
-    # for that run alone.
+    # The docs gate.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +37,7 @@ jobs:
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v4
-      - run: just docs
+      - run: just build-docs
 
   core-only:
     # Proves the core install path (numpy + rfc8785 only, no `polars` extra)

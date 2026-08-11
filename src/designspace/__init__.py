@@ -124,7 +124,7 @@ from designspace.meta import param_from_def, space_from_ir
 from designspace.program import FloatLiteral, IntLiteral, Primitive, Signature
 from designspace.represent import Config, Encoding, EncodingRule, Representation
 
-__version__ = "0.0.0"
+__version__ = "0.1.0"
 
 __all__ = [
     "ArithExpr",

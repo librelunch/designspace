@@ -14,8 +14,18 @@ relaxed:
 
 from __future__ import annotations
 
+from importlib.metadata import version as _distribution_version
+
 project = "designspace"
 author = "Jonathan Wurth"
+# Read from the installed distribution rather than written here, so the release
+# the site reports cannot disagree with the one it documents.
+release = _distribution_version("designspace")
+version = release
+
+# The deployed host. Canonical link tags resolve against it, so a page served
+# from the site does not advertise a relative address.
+html_baseurl = "https://librelunch.github.io/designspace/"
 
 extensions = [
     "sphinx.ext.autodoc",

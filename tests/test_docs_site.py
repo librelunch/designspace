@@ -81,6 +81,7 @@ _ROOT_MARKDOWN = [
     _ROOT / "DECISIONS.md",
     _ROOT / "CLAUDE.md",
     _ROOT / "README.md",
+    _ROOT / "CHANGELOG.md",
 ]
 _SOURCE = sorted((_ROOT / "src").rglob("*.py"))
 _TESTS = sorted(p for p in (_ROOT / "tests").rglob("*.py") if "__pycache__" not in p.parts)

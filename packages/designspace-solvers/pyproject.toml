@@ -5,7 +5,12 @@ description = "Solver bindings for designspace"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "designspace",
+    # A floor, so that an install outside the workspace resolves core from an
+    # index rather than accepting whatever version is present. `tool.uv.sources`
+    # below redirects this to the workspace member and is read by uv alone, so
+    # pip installing this package from the repository needs the floor to be
+    # right.
+    "designspace>=0.1",
     "numpy>=1.26",
 ]
 

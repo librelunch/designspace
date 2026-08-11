@@ -1,16 +1,45 @@
 [project]
 name = "designspace"
-version = "0.0.0"
+version = "0.1.0"
 description = "Declarative design spaces with a polars-like expression API"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Jonathan Wurth", email = "jonathan.wurth@uni-a.de" }]
+keywords = [
+    "configuration",
+    "declarative",
+    "design-space",
+    "hyperparameters",
+    "optimization",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
+]
 dependencies = [
     "numpy>=1.26",
     "rfc8785==0.1.4",
 ]
 
+[project.urls]
+Homepage = "https://librelunch.github.io/designspace/"
+Repository = "https://github.com/librelunch/designspace"
+Changelog = "https://github.com/librelunch/designspace/blob/main/CHANGELOG.md"
+Issues = "https://github.com/librelunch/designspace/issues"
+
 [project.optional-dependencies]
 polars = ["polars>=1.0"]
+
+[dependency-groups]
 docs = [
     "sphinx>=8",
     "pydata-sphinx-theme>=0.16",
@@ -22,8 +51,6 @@ docs = [
     "sphinx-copybutton>=0.5",
     "sphinx-design>=0.6",
 ]
-
-[dependency-groups]
 dev = [
     "pytest>=8",
     "hypothesis>=6",
@@ -43,6 +70,7 @@ dev = [
     # sync` here serves every gate. Both backends are pure Python and support
     # every version in the CI matrix.
     "designspace-solvers[optuna,cmaes]",
+    {include-group = "docs"},
 ]
 
 # Solver bindings live in a sibling distribution, never in core (API.md,

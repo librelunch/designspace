@@ -374,7 +374,7 @@ wheels = [
 
 [[package]]
 name = "designspace"
-version = "0.0.0"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
@@ -382,14 +382,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-docs = [
-    { name = "myst-nb" },
-    { name = "myst-parser" },
-    { name = "pydata-sphinx-theme" },
-    { name = "sphinx" },
-    { name = "sphinx-copybutton" },
-    { name = "sphinx-design" },
-]
 polars = [
     { name = "polars" },
 ]
@@ -401,24 +393,32 @@ dev = [
     { name = "hypothesis" },
     { name = "ipython" },
     { name = "mypy" },
+    { name = "myst-nb" },
+    { name = "myst-parser" },
     { name = "polars" },
+    { name = "pydata-sphinx-theme" },
     { name = "pytest" },
     { name = "ruff" },
+    { name = "sphinx" },
+    { name = "sphinx-copybutton" },
+    { name = "sphinx-design" },
+]
+docs = [
+    { name = "myst-nb" },
+    { name = "myst-parser" },
+    { name = "pydata-sphinx-theme" },
+    { name = "sphinx" },
+    { name = "sphinx-copybutton" },
+    { name = "sphinx-design" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "myst-nb", marker = "extra == 'docs'", specifier = ">=1.4" },
-    { name = "myst-parser", marker = "extra == 'docs'", specifier = ">=4" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "polars", marker = "extra == 'polars'", specifier = ">=1.0" },
-    { name = "pydata-sphinx-theme", marker = "extra == 'docs'", specifier = ">=0.16" },
     { name = "rfc8785", specifier = "==0.1.4" },
-    { name = "sphinx", marker = "extra == 'docs'", specifier = ">=8" },
-    { name = "sphinx-copybutton", marker = "extra == 'docs'", specifier = ">=0.5" },
-    { name = "sphinx-design", marker = "extra == 'docs'", specifier = ">=0.6" },
 ]
-provides-extras = ["polars", "docs"]
+provides-extras = ["polars"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -427,9 +427,23 @@ dev = [
     { name = "hypothesis", specifier = ">=6" },
     { name = "ipython", specifier = ">=9" },
     { name = "mypy", specifier = ">=1.10" },
+    { name = "myst-nb", specifier = ">=1.4" },
+    { name = "myst-parser", specifier = ">=4" },
     { name = "polars", specifier = ">=1.0" },
+    { name = "pydata-sphinx-theme", specifier = ">=0.16" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.5" },
+    { name = "sphinx", specifier = ">=8" },
+    { name = "sphinx-copybutton", specifier = ">=0.5" },
+    { name = "sphinx-design", specifier = ">=0.6" },
+]
+docs = [
+    { name = "myst-nb", specifier = ">=1.4" },
+    { name = "myst-parser", specifier = ">=4" },
+    { name = "pydata-sphinx-theme", specifier = ">=0.16" },
+    { name = "sphinx", specifier = ">=8" },
+    { name = "sphinx-copybutton", specifier = ">=0.5" },
+    { name = "sphinx-design", specifier = ">=0.6" },
 ]
 
 [[package]]
