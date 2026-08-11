@@ -1,0 +1,13 @@
+{% extends "!layout.html" %}
+
+{# Sphinx titles a page as its heading followed by the site's title. On the
+   landing page those are the same string, which rendered as the project name
+   twice. Suppress the suffix in exactly that case, so a tab reads "designspace"
+   there and "Declaring a space - designspace" everywhere else. #}
+{% block htmltitle %}
+{%- if title|striptags|e == docstitle|e %}
+<title>{{ title|striptags|e }}</title>
+{%- else %}
+<title>{{ title|striptags|e }}{{ titlesuffix }}</title>
+{%- endif %}
+{% endblock %}

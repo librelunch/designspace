@@ -101,7 +101,28 @@ html_theme_options = {
         "image_light": "_static/navbar-light.svg",
         "image_dark": "_static/navbar-dark.svg",
         "alt_text": "designspace",
-    }
+    },
+    # `version.html` is ours. The theme reports the versions of Sphinx and of
+    # itself in the footer and has no component for the project's own, which
+    # left the release a page describes as the one version the page omitted.
+    # The two names after it are the theme's defaults for this slot, repeated
+    # because assigning the key replaces the list rather than adding to it.
+    "navbar_end": ["version", "theme-switcher", "navbar-icon-links"],
+    # What fills the last of those. Without these the component renders an empty
+    # list, which is what left a reader of the site no route to the source or to
+    # the package.
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/librelunch/designspace",
+            "icon": "fa-brands fa-github",
+        },
+        {
+            "name": "PyPI",
+            "url": "https://pypi.org/project/designspace/",
+            "icon": "fa-brands fa-python",
+        },
+    ],
 }
 
 # One file for both color schemes. The icon selects between them with a
