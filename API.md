@@ -151,6 +151,7 @@ Types*). `ParamExpr` remains the base type of every param object.
 Names may not contain `.`, `[`, or `]`, which the path grammar reserves.
 Declaration order is **significant**: it is preserved through composition, it
 aligns `.prior(weights=...)`, and it enters `fingerprint()`.
+
 ---
 
 ## Parameter Types
@@ -946,6 +947,7 @@ draw time fall through unchanged to rejection. Correctness requires only that
 tightening never fire where truncation differs from conditioning; completeness
 of the tightened-family list is not required, since every un-tightened case
 rejects and rejection is always sound.
+
 ---
 
 ## Sampling and Generativity
@@ -1103,6 +1105,7 @@ choice, and a template key's value uses the identical per-draw fold, the
 fraction of draws in which at least one of its instances was active. Every row
 and every key therefore shares one denominator, `n`, and stays comparable to
 `acceptance_rate` and to each other.
+
 ---
 
 ## Space: Validation
@@ -1489,6 +1492,7 @@ generated constraint sets. Degenerate arities produced by generators are legal
 with defined semantics (see the degeneracy table). A space-valued param, as in
 searching a catalog of inner spaces, needs no new machinery: use a `.custom()`
 type with `fingerprint()` as value identity.
+
 ---
 
 ## The Representation Layer
@@ -1649,6 +1653,7 @@ domain check while meaning something else entirely.
 
 Operators never live on `ParamType`: neighborhoods and distances are properties
 of a genotype, and the same phenotype admits many.
+
 ---
 
 ## Identity and Serialization
@@ -2517,6 +2522,7 @@ for model export. `space.sample()` is the only surface that imports `polars`,
 lazily. Absent it, the call raises a plain `ImportError` naming the extra and
 pointing at the no-extra sampling paths (see *Errors and Concurrency* for why
 this stays outside the exception taxonomy).
+
 ---
 
 ## Conformance Laws
