@@ -88,6 +88,7 @@ from designspace.ir import (
     SymbolicDomain,
     Weights,
 )
+from designspace.ir._domain import TypeKind, kind_of_domain
 from designspace.paths import element_prefix, instance_prefix
 from designspace.program import FloatLiteral, IntLiteral, Primitive
 from designspace.program._validate import program_value_error
@@ -322,6 +323,34 @@ _VIEW_BY_KIND: dict[str, type[ParamExpr]] = {
 }
 
 
+def _check_kind_matches_domain(path: str, kind: TypeKind, domain: object) -> None:
+    """Reject a definition whose `type_kind` and `domain` disagree.
+
+    A `ParamDef` states its kind twice, once as a string and once as the
+    class of its domain, and the two are in bijection. A definition built by
+    the builders cannot separate them, `_emit` reading both from one view.
+    A hand-assembled one can, `ds.space_from_ir`, `Space.map_params` and an
+    `Encoding.target` all returning whatever `ParamDef` the caller wrote.
+
+    Checking here covers both routes into a `ParamExpr`, and is what lets
+    `_VIEW_BY_KIND` below be indexed without a guard of its own. A lift is
+    checked at every level, its `ListDomain` restating the same pairing for
+    the element.
+    """
+    declared = kind_of_domain(domain)
+    if declared is None:
+        raise ResolutionError(
+            f"param {path!r}: domain is {type(domain).__name__}, which is not a domain type"
+        )
+    if declared != kind:
+        raise ResolutionError(
+            f"param {path!r}: type_kind {kind!r} does not match its domain "
+            f"{type(domain).__name__}, which declares {declared!r}"
+        )
+    if isinstance(domain, ListDomain):
+        _check_kind_matches_domain(f"{path}[]", domain.element_kind, domain.element_domain)
+
+
 def param_def_to_view(pd: ParamDef) -> ParamExpr:
     """Invert a resolved `ParamDef` into the `ParamExpr` view that built it.
 
@@ -338,6 +367,7 @@ def param_def_to_view(pd: ParamDef) -> ParamExpr:
     before reaching this function rather than returning a view silently
     short of its descendants.
     """
+    _check_kind_matches_domain(pd.path, pd.type_kind, pd.domain)
     if pd.type_kind == "list":
         assert isinstance(pd.domain, ListDomain)
         return ListParamExpr(
@@ -402,10 +432,13 @@ def validate_param_defs(defs_by_path: Mapping[str, ParamDef]) -> None:
     references checked.
 
     These are the per-definition checks `_validate_declarations` runs during
-    ordinary builder resolution. Row 2's "more than one type" cannot recur
-    here, since a `ParamDef.type_kind` string names exactly one kind by
-    construction, unlike a hand-built `ParamExpr`. Conditions and cycles are
-    `check_fully_resolved`'s separate job, over the merged `Space`.
+    ordinary builder resolution. Row 2's "more than one type" takes a
+    different form here. A `ParamDef.type_kind` string names one kind, but it
+    sits beside a `domain` naming one too, and a hand-assembled record can
+    set them to different kinds where a hand-built `ParamExpr` cannot;
+    `param_def_to_view` above rejects that pairing before this runs.
+    Conditions and cycles are `check_fully_resolved`'s separate job, over the
+    merged `Space`.
     """
     views: dict[str, ParamExpr] = {path: param_def_to_view(pd) for path, pd in defs_by_path.items()}
     for path, pd in defs_by_path.items():
@@ -429,7 +462,14 @@ def rebuild_charts(pd: ParamDef) -> ParamDef:
     `space_from_ir` in `meta/_meta.py`, assembling a `Space` from raw
     `ParamDef` records. Both start from a `pd.chart` that is absent or not
     to be trusted.
+
+    This is the earlier of the two points a foreign `ParamDef` reaches, so
+    the kind and domain are checked against each other here as well as in
+    `param_def_to_view`. Chart building reads both and has no path of its own
+    to report, so an unchecked disagreement would surface from inside
+    `build_chart` without naming the parameter.
     """
+    _check_kind_matches_domain(pd.path, pd.type_kind, pd.domain)
     if pd.type_kind == "list":
         assert isinstance(pd.domain, ListDomain)
         return replace(pd, domain=rebuild_list_domain_charts(pd.path, pd.domain))
@@ -1085,7 +1125,14 @@ def _validate_default(d: ParamExpr) -> None:
             ok = domain.validator(value)
     elif isinstance(domain, SymbolicDomain | CodeDomain):
         ok = program_value_error(domain, value) is None
-    else:  # pragma: no cover - unreachable: every Domain variant handled above
+    else:  # pragma: no cover
+        # What is left is a lift: `.repeat()` resets `domain` to `None`, and
+        # the `ListDomain` replacing it is not built until after this step.
+        # `_validate_declarations` sends a lift to `_validate_lift` instead of
+        # here, and a list default is checked against the built domain later,
+        # by `_validate_list_defaults_deep`. So this is ruled out by the
+        # caller rather than by the branches above, which is why it is not
+        # `assert_never`.
         ok = True
     if not ok:
         raise ResolutionError(f"param {d.path!r}: default {value!r} is outside its domain")

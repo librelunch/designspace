@@ -936,6 +936,93 @@ lift that has none.
 
 ---
 
+## D-100: What happens when a hand-assembled `ParamDef` names two kinds?
+
+- Status: Resolved
+- Date: 2026-08-11
+- Spec section: none (gap); resolved into API.md §IR and the error table
+- Decided by: User
+
+### Question
+
+A `ParamDef` names its kind twice, once as the `type_kind` string and once
+as the class of its `domain`, and the two vocabularies are in bijection.
+`ds.space_from_ir`, `Space.map_params` and an `Encoding.target` each accept
+a definition the caller assembled, so the two can name different kinds, or
+`type_kind` can name no kind at all. What should happen then?
+
+### Why the specification is insufficient
+
+*IR* lists both fields and says what each holds. It does not say they are
+two spellings of one fact, which of them is authoritative, or what a
+disagreement means. *Space: Metaprogramming* says resolution "re-validates
+whatever comes in" without listing this among the checks.
+
+Nothing enforced it, and three behaviours followed, none of them stated:
+
+- A definition whose two spellings disagreed passed `space_from_ir` and the
+  validation it runs. It failed later, inside chart building or the
+  canonical encoder, as a bare `AssertionError` naming no parameter. Which
+  call raised, and whether any did, depended on the pair.
+- A `type_kind` naming no kind reached a lookup keyed by that string and
+  left `space_from_ir` as `KeyError`, which is outside the taxonomy *Errors
+  and Concurrency* defines.
+- `ListDomain` restates the pairing for a lift's element, with the same gap.
+
+A declaration cannot reach any of this: a builder view fixes `type_kind` on
+the class, so the fluent and programmatic routes both derive the pair from
+one object. The gap belongs to assembled IR alone.
+
+### Possibilities considered
+
+1. **Derive `type_kind` from the domain class.** A disagreement becomes
+   unrepresentable. Rejected: *IR* declares `type_kind` a field, and reading
+   it out and writing it back is how `Encoding.target` and `map_params` are
+   written, so removing it from the constructor breaks the surface *Space:
+   Metaprogramming* documents.
+2. **Name one authoritative and ignore the other.** Cheapest, and it
+   matches what parts of resolution already do by dispatching on the domain
+   class alone. Rejected: the two fields stay observable and a consumer
+   reading the other one gets a different answer, which is the present
+   defect written down rather than fixed.
+3. **Reject the disagreement where assembled IR enters.** Chosen.
+
+### Answer
+
+Resolution rejects a definition whose `type_kind` and `domain` name
+different kinds, a `type_kind` naming no kind, and a `domain` that is not a
+domain, with a `ResolutionError` naming the parameter's path. A lift is
+checked at every level, its `ListDomain` restating the pairing for the
+element, and the element is named at its own bracketed path.
+
+Neither field is authoritative. They are required to agree, which is what
+lets the rest of resolution read either one.
+
+### Reasoning
+
+The bijection is real and was already relied on everywhere; it was simply
+written down nowhere, and re-spelled at each site that needed it. Naming it
+once and checking it at the two points assembled IR arrives turns a class of
+message-less failures deep in unrelated machinery into one path-named error
+at the boundary, which is what "re-validates whatever comes in" already
+promises for every other property of a definition.
+
+Rejecting rather than repairing follows from the same promise. A definition
+that names two kinds does not say which was meant, and picking one would
+silently discard the caller's other statement.
+
+### Specification update
+
+*IR* states that `type_kind` and the class of `domain` are two spellings of
+one fact, that `ListDomain` says the same of its element, that neither is
+authoritative, and that resolution rejects a definition where they differ,
+naming the three surfaces that accept assembled IR. The `Domain` listing
+records that the correspondence runs both ways. Row 2 widens to cover the
+assembled-IR form of "more than one type", the fluent form having been its
+only reading before.
+
+---
+
 _Numbering._ D-1 through D-90 were resolved into `API.md` and removed from this
 file, and are recoverable from git history. Numbering continues unbroken, so a
 number always names one question.

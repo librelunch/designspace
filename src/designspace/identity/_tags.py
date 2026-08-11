@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 from typing import Literal as TypingLiteral
 
 from designspace.builder._paramexpr import ParamExpr
@@ -33,6 +33,7 @@ from designspace.expr import (
     BoolLiteral,
     BoolOp,
     ChartApply,
+    ChartKind,
     Compare,
     Contains,
     Count,
@@ -500,17 +501,27 @@ def decode_expr(tree: dict[str, Any]) -> Expr:
         from designspace.charts import build_chart
         from designspace.identity._ir_codec import decode_domain, decode_prior, decode_quantized
 
-        type_kind = tree["type_kind"]
+        # Only a chart-bearing kind can have produced this node, and the
+        # value arrives from the document rather than from the encoder, so
+        # it is checked before it is used. Chart building below reports no
+        # kind of its own, and a domain of the wrong kind would reach it as
+        # a chartless `None`.
+        raw_kind = tree["type_kind"]
+        if raw_kind not in ("real", "integer"):
+            raise SerializationError(
+                f"chart_apply node: type_kind {raw_kind!r} bears no chart; "
+                "expected 'real' or 'integer'"
+            )
+        type_kind = cast("ChartKind", raw_kind)
         domain = decode_domain(type_kind, tree["domain"], "<chart_apply>")
         prior = decode_prior(tree.get("prior"))
         quantized = decode_quantized(tree.get("quantized"))
         # Rebuilt fresh and never trusted from input, under the same
         # "charts are always derived" rule `resolve.rebuild_charts` applies
-        # to `ParamDef.chart`. The source facts just decoded were valid once
-        # already, the original param having resolved successfully, so this
-        # cannot raise.
+        # to `ParamDef.chart`. The kind is chart-bearing by the check above,
+        # so this is a chart.
         chart = build_chart("<chart_apply>", type_kind, domain, prior, quantized)
-        assert chart is not None  # type_kind is always "real"/"integer" here
+        assert chart is not None
         return ChartApply(
             operand=operand,
             chart=chart,

@@ -138,7 +138,7 @@ class _Slot:
     """Where one parameter lives in the solver's fixed layout."""
 
     path: str
-    kind: str
+    kind: ds.TypeKind
     block: str
     start: int
     width: int

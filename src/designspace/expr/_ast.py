@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, NoReturn
+from typing import Literal as TypingLiteral
 
 from designspace.display._hooks import displayable
 
@@ -22,6 +23,18 @@ if TYPE_CHECKING:
 # which imports it back. `resolve` already depends on `expr`, never the
 # reverse.
 SCALAR_TYPES = (int, float, bool, str)
+
+# The kinds that bear a chart, and so the only kinds a `ChartApply` can carry
+# as its source (API.md, "Charts": those two kinds and no others). Spelled
+# here rather than imported as a subset of the IR's kind vocabulary, this
+# module never importing `ir/`. Narrowing to it is `_charts.py`'s job when a
+# node is built and `_tags.py`'s when one is decoded; the rewriters in
+# `ops/`, `resolve/` and `represent/` copy the field and so carry the
+# restriction without restating it.
+#
+# `typing.Literal` is aliased because `Literal` is an expression node here,
+# as `identity/_tags.py` aliases it for the same reason.
+ChartKind = TypingLiteral["real", "integer"]
 
 _BOOL_GUARD = (
     "designspace expressions cannot be coerced to bool (this is what makes "
@@ -867,7 +880,7 @@ class ChartApply(ArithExpr, VectorExpr):
 
     operand: Expr
     chart: Any  # designspace.ir.Chart: decodes a unit coordinate to a source value
-    type_kind: str  # "real" | "integer" -- the SOURCE kind
+    type_kind: ChartKind  # the SOURCE kind
     domain: Any  # designspace.ir.RealDomain | IntegerDomain (source)
     prior: Any = None  # designspace.ir.PriorSpec | None (source)
     quantized: Any = None  # designspace.ir.QuantizedSpec | None (source)

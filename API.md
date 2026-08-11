@@ -2147,7 +2147,7 @@ the whole param.
 @dataclass
 class ParamDef:
     path: str                     # definition path
-    type_kind: str                # "real" | "integer" | ... | "space" | "choice" | "list"
+    type_kind: TypeKind           # "real" | "integer" | ... | "space" | "choice" | "list"
     domain: Domain                # type-specific; recursive: list(element_domain)
     prior: Prior | None           # also holds a Weights payload for categorical/ordinal/bool/choice/subset
     quantized: QuantizedSpec | None   # step/factor/include_hi grid spec; None otherwise
@@ -2158,7 +2158,17 @@ class ParamDef:
     meta: dict[str, Any]
     chart: Chart | None           # None for non-chart kinds; always static
 
-# One domain class per kind, each carrying exactly that kind's declared facts
+# The kind vocabulary. Exported, so a consumer dispatching on kind can name
+# what it dispatches over; every member is a string, so `type_kind` reads as
+# one wherever it is compared or serialized.
+TypeKind = Literal[
+    "real", "integer", "categorical", "ordinal", "bool", "subset",
+    "permutation", "choice", "space", "custom", "symbolic", "code", "list",
+]
+
+# One domain class per kind, and one kind per domain class, so `type_kind` and
+# the class of `domain` always name the same kind. Each carries exactly that
+# kind's declared facts
 # (RealDomain(lo, hi), SubsetDomain(items, min_size, max_size), ...). ListDomain
 # is recursive and holds every element-level fact: element_chart,
 # element_default, count, list_default, element_constraints. That is why a
@@ -2344,6 +2354,19 @@ preimage; its target is an ordinary `Space` and serializes as one. `then`
 requires `other.source` to fingerprint equal to `self.target`, raising a
 `TypeError` otherwise, which is misuse rather than resolution. `decode` composes
 right-to-left and `encode` in reverse, and only when both sides are invertible.
+
+**A definition names its kind once, in two places.** `ParamDef.type_kind` and
+the class of `ParamDef.domain` are two spellings of one fact, and
+`ListDomain.element_kind` and `element_domain` are the same pair for a lift's
+element. Neither spelling is authoritative; they are required to agree, which
+is what lets a consumer read either one. A declaration cannot separate them,
+the builder deriving both from the view that produced them. Assembled IR can,
+so resolution rejects a definition whose two spellings differ, one naming no
+kind at all, or a `domain` that is no domain, naming the offending parameter
+and, for an element, its bracketed path (row 2). This is checked wherever
+assembled IR enters: `space_from_ir`, `map_params`, and the `ParamDef` an
+`Encoding.target()` returns.
+
 ---
 
 ## Resolution
@@ -2404,7 +2427,7 @@ Tagged **R** for resolution-time or **V** for validation, fill, or sample-time.
 | # | Error | Tag |
 |---|---|---|
 | 1 | Duplicate param names in a scope | R |
-| 2 | Param with no type, or more than one type method | R |
+| 2 | Param with no type, or more than one type method; a `ParamDef` or `ListDomain` element whose kind string and domain class name different kinds, whose kind string names no kind, or whose domain is no domain | R |
 | 3 | Duplicate declared values (categorical, ordinal, subset items, permutation items; type-tagged equality) | R |
 | 4 | Mixed-type categorical values sharing a string image | R |
 | 5 | Name or variant name containing `.` `[` `]`, checked on the resolved name for all syntactic routes; duplicate variant names within one choice | R |

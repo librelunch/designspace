@@ -17,7 +17,7 @@ import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, assert_never, cast
 
 import numpy as np
 
@@ -2194,4 +2194,4 @@ def _param_cardinality(path: str, pd: ParamDef, space: Space) -> int | None:
         return None
     if isinstance(domain, ListDomain):
         return _list_cardinality(path, domain, space)
-    return None  # pragma: no cover - unreachable: every Domain variant handled above
+    assert_never(domain)

@@ -13,7 +13,7 @@ from this module. Defining it there would make a cycle.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from designspace.display._hooks import displayable
 from designspace.expr import ArithExpr
@@ -21,6 +21,34 @@ from designspace.expr import ArithExpr
 if TYPE_CHECKING:
     from designspace.ir._chart import Chart
     from designspace.ir._priors import PriorSpec
+
+
+TypeKind = Literal[
+    "real",
+    "integer",
+    "categorical",
+    "ordinal",
+    "bool",
+    "subset",
+    "permutation",
+    "choice",
+    "space",
+    "custom",
+    "symbolic",
+    "code",
+    "list",
+]
+"""Every parameter kind, as the string a resolved definition carries.
+
+What `ParamDef.type_kind` and `ListDomain.element_kind` hold, with one member
+per domain type. Annotating with this rather than `str` puts a misspelled
+kind within reach of a type checker, and gives code that dispatches on kind,
+such as an `Encoding` or a solver backend carrying the kind through its own
+types, a name for what it dispatches over.
+
+A definition's kind and the class of its domain always name the same kind, so
+either one answers the question and the two can never disagree.
+"""
 
 
 @displayable("designspace.display._space.render_quantized")
@@ -316,7 +344,7 @@ class ListDomain:
         template and instantiated per element during evaluation.
     """
 
-    element_kind: str
+    element_kind: TypeKind
     element_domain: Domain
     element_chart: Chart | None
     element_prior: PriorSpec | None
@@ -354,3 +382,34 @@ The union of every domain type, and what `ParamDef.domain` holds. Match on
 it to handle a parameter by kind; `ParamDef.type_kind` gives the same
 information as a string.
 """
+
+
+_KIND_BY_DOMAIN: dict[type, TypeKind] = {
+    RealDomain: "real",
+    IntegerDomain: "integer",
+    CategoricalDomain: "categorical",
+    OrdinalDomain: "ordinal",
+    BoolDomain: "bool",
+    SubsetDomain: "subset",
+    PermutationDomain: "permutation",
+    ChoiceDomain: "choice",
+    StructDomain: "space",
+    CustomDomain: "custom",
+    SymbolicDomain: "symbolic",
+    CodeDomain: "code",
+    ListDomain: "list",
+}
+
+
+def kind_of_domain(domain: object) -> TypeKind | None:
+    """The kind `domain` declares, or `None` if it declares none.
+
+    Kind and domain class are in bijection, so a definition states the same
+    fact twice and the two spellings can contradict each other. This is the
+    one place the pairing is written down, and resolution reads it to reject
+    a definition where they do.
+
+    `None` reports a `domain` outside the thirteen domain classes, which a
+    hand-assembled definition can hold and a declared one cannot.
+    """
+    return _KIND_BY_DOMAIN.get(type(domain))

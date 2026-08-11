@@ -27,8 +27,9 @@ from dataclasses import replace
 from typing import Any
 
 from designspace.builder._paramexpr import ParamExpr
-from designspace.expr import ChartApply, Expr
+from designspace.expr import ChartApply, ChartKind, Expr
 from designspace.ir import Chart, ListDomain, ParamDef, RealDomain
+from designspace.ir._domain import TypeKind
 
 
 def _bottom_list_domain(domain: ListDomain) -> ListDomain:
@@ -109,7 +110,7 @@ def _unit_list_domain(domain: ListDomain) -> ListDomain:
     )
 
 
-def _target_domain_facts(param: ParamDef) -> tuple[str, Any, bool]:
+def _target_domain_facts(param: ParamDef) -> tuple[TypeKind, Any, bool]:
     """`(type_kind, domain, periodic)` for the target `ParamDef`.
 
     Always `real(0, 1)` at whatever level the chart was found, API.md
@@ -121,19 +122,25 @@ def _target_domain_facts(param: ParamDef) -> tuple[str, Any, bool]:
     return "real", RealDomain(0.0, 1.0), param.periodic
 
 
-def _element_expr_facts(param: ParamDef) -> tuple[Chart, str, Any, Any, Any, bool]:
+def _element_expr_facts(param: ParamDef) -> tuple[Chart, ChartKind, Any, Any, Any, bool]:
     """The source chart's own declaration facts.
 
     Returns `(chart, type_kind, domain, prior, quantized, periodic)` at the
     level `decode` and `decode_expr` must read: the own-level facts for a
     plain scalar, or the bottom `ListDomain` level's element facts for a
     lift.
+
+    Reached only for a chart-bearing param, callers selecting on
+    `is_chart_bearing`, and only the two chart-bearing kinds have a chart to
+    find. The kind is narrowed to that pair here so the `ChartApply` built
+    from it carries the restriction rather than restating it.
     """
     if param.type_kind == "list":
         assert isinstance(param.domain, ListDomain)
         bottom = _bottom_list_domain(param.domain)
         chart = bottom.element_chart
         assert chart is not None
+        assert bottom.element_kind in ("real", "integer")
         return (
             chart,
             bottom.element_kind,
@@ -144,6 +151,7 @@ def _element_expr_facts(param: ParamDef) -> tuple[Chart, str, Any, Any, Any, boo
         )
     chart = param.chart
     assert chart is not None
+    assert param.type_kind in ("real", "integer")
     return chart, param.type_kind, param.domain, param.prior, param.quantized, param.periodic
 
 

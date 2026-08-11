@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from designspace.display._hooks import displayable
 from designspace.expr import BoolExpr
 from designspace.ir._chart import Chart
-from designspace.ir._domain import Domain, QuantizedSpec
+from designspace.ir._domain import Domain, QuantizedSpec, TypeKind
 from designspace.ir._priors import PriorSpec
 
 if TYPE_CHECKING:
@@ -71,7 +71,7 @@ class ParamDef:
     """
 
     path: str
-    type_kind: str
+    type_kind: TypeKind
     domain: Domain
     prior: PriorSpec | None
     periodic: bool

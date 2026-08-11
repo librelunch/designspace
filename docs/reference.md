@@ -156,6 +156,7 @@ The resolved form. Every introspection surface hands back these types, and they 
    designspace.SubsetDomain
    designspace.SubsetRemaining
    designspace.SymbolicDomain
+   designspace.TypeKind
    designspace.ValueRemaining
    designspace.param_from_def
    designspace.space_from_ir

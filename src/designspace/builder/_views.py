@@ -73,6 +73,7 @@ from designspace.ir import (
     SubsetDomain,
     SymbolicDomain,
 )
+from designspace.ir._domain import TypeKind
 from designspace.program import FloatLiteral, IntLiteral, Primitive, Signature
 
 if TYPE_CHECKING:
@@ -844,7 +845,7 @@ class RealParamExpr(_NumericParamExpr):
     numeric parameters.
     """
 
-    type_kind: ClassVar[str] = "real"
+    type_kind: ClassVar[TypeKind] = "real"
 
 
 class IntegerParamExpr(_NumericParamExpr):
@@ -854,7 +855,7 @@ class IntegerParamExpr(_NumericParamExpr):
     numeric parameters.
     """
 
-    type_kind: ClassVar[str] = "integer"
+    type_kind: ClassVar[TypeKind] = "integer"
 
 
 class BoolParamExpr(TypedParamExpr):
@@ -867,7 +868,7 @@ class BoolParamExpr(TypedParamExpr):
     # Already a BoolExpr transitively, ParamExpr inheriting from BoolExpr.
     # API.md says "BoolParamExpr is additionally a BoolExpr (a boolean param
     # is usable directly as a condition)".
-    type_kind: ClassVar[str] = "bool"
+    type_kind: ClassVar[TypeKind] = "bool"
 
 
 class CategoricalParamExpr(TypedParamExpr):
@@ -877,7 +878,7 @@ class CategoricalParamExpr(TypedParamExpr):
     have an order.
     """
 
-    type_kind: ClassVar[str] = "categorical"
+    type_kind: ClassVar[TypeKind] = "categorical"
 
 
 class OrdinalParamExpr(TypedParamExpr):
@@ -886,7 +887,7 @@ class OrdinalParamExpr(TypedParamExpr):
     Comparisons follow declaration position, not the values' own ordering.
     """
 
-    type_kind: ClassVar[str] = "ordinal"
+    type_kind: ClassVar[TypeKind] = "ordinal"
 
 
 class SubsetParamExpr(TypedParamExpr):
@@ -895,7 +896,7 @@ class SubsetParamExpr(TypedParamExpr):
     Query it with `.contains()`, `.size()`, and `.sum_over()`.
     """
 
-    type_kind: ClassVar[str] = "subset"
+    type_kind: ClassVar[TypeKind] = "subset"
 
 
 class PermutationParamExpr(TypedParamExpr):
@@ -904,7 +905,7 @@ class PermutationParamExpr(TypedParamExpr):
     Query a position with `.position_of()`.
     """
 
-    type_kind: ClassVar[str] = "permutation"
+    type_kind: ClassVar[TypeKind] = "permutation"
 
 
 class ChoiceParamExpr(TypedParamExpr):
@@ -914,7 +915,7 @@ class ChoiceParamExpr(TypedParamExpr):
     that variant is selected.
     """
 
-    type_kind: ClassVar[str] = "choice"
+    type_kind: ClassVar[TypeKind] = "choice"
 
 
 class StructParamExpr(TypedParamExpr):
@@ -923,7 +924,7 @@ class StructParamExpr(TypedParamExpr):
     Every field is always active together; a struct chooses nothing.
     """
 
-    type_kind: ClassVar[str] = "space"
+    type_kind: ClassVar[TypeKind] = "space"
 
 
 class CustomParamExpr(TypedParamExpr):
@@ -937,14 +938,14 @@ class CustomParamExpr(TypedParamExpr):
     lives on the author's own `ParamType` object, passed to `.custom()`.
     """
 
-    type_kind: ClassVar[str] = "custom"
+    type_kind: ClassVar[TypeKind] = "custom"
 
 
 class SymbolicParamExpr(TypedParamExpr):
     """`.symbolic()`'s return type, a thin leaf view, mirroring
     `CustomParamExpr`. Non-generative unless `sampler=` was given."""
 
-    type_kind: ClassVar[str] = "symbolic"
+    type_kind: ClassVar[TypeKind] = "symbolic"
 
 
 class CodeParamExpr(TypedParamExpr):
@@ -953,11 +954,11 @@ class CodeParamExpr(TypedParamExpr):
     There is no `sampler=` form for `.code()`.
     """
 
-    type_kind: ClassVar[str] = "code"
+    type_kind: ClassVar[TypeKind] = "code"
 
 
 class ListParamExpr(TypedParamExpr):
     """`.repeat()`'s return type; re-offers `.repeat()` (inherited from
     `TypedParamExpr`) for nested/variadic lifts."""
 
-    type_kind: ClassVar[str] = "list"
+    type_kind: ClassVar[TypeKind] = "list"

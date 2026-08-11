@@ -19,7 +19,7 @@ that also collects shape errors.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, assert_never
 
 from designspace.builder._space import Space
 from designspace.charts import build_grid_shape, grid_membership
@@ -47,6 +47,7 @@ from designspace.ir import (
     ParamError,
     PermutationDomain,
     RealDomain,
+    StructDomain,
     SubsetDomain,
     SymbolicDomain,
     ValidationResult,
@@ -156,7 +157,12 @@ def _domain_error_reason(pd: ParamDef, value: Any) -> str | None:
         return None if ok else "out_of_bounds"
     if isinstance(domain, SymbolicDomain | CodeDomain):
         return program_value_error(domain, value)
-    return None  # pragma: no cover - unreachable: every kind handled above
+    if isinstance(domain, StructDomain):
+        # A struct holds no value of its own. Its fields are separate params
+        # under a dotted path, each validated in its own right, so there is
+        # nothing here to be in or out of the domain.
+        return None
+    assert_never(domain)
 
 
 def _presence_error(

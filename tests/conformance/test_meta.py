@@ -191,6 +191,87 @@ class TestSpaceFromIrRoundTrip:
             ds.space_from_ir([bad_pd], (), ())
 
 
+class TestKindMatchesDomain:
+    """A hand-assembled `ParamDef` states its kind twice, and the two must
+    agree. `type_kind` and `domain` are in bijection, and only a record built
+    outside the builders can separate them: a `ParamExpr` carries its kind on
+    the view class, so no fluent declaration can. Both routes that accept IR
+    check it, and so does an `Encoding.target` returning one.
+    """
+
+    def test_space_from_ir_rejects_mismatched_kind(self):
+        pd = ds.space(ds.param("x").real(0.0, 1.0)).params["x"]
+        with pytest.raises(ResolutionError, match=r"'x'.*'bool'.*RealDomain.*'real'"):
+            ds.space_from_ir([replace(pd, type_kind="bool")], (), ())
+
+    def test_param_from_def_rejects_mismatched_kind(self):
+        pd = ds.space(ds.param("x").integer(1, 8)).params["x"]
+        with pytest.raises(ResolutionError, match=r"'x'.*'categorical'.*IntegerDomain"):
+            ds.param_from_def(replace(pd, type_kind="categorical"))
+
+    def test_unknown_kind_is_a_resolution_error(self):
+        """A misspelled kind names no domain class, so it fails the same
+        check rather than escaping as a lookup error from the view table."""
+        pd = ds.space(ds.param("x").integer(1, 8)).params["x"]
+        with pytest.raises(ResolutionError, match=r"'x'.*'rael'"):
+            ds.space_from_ir([replace(pd, type_kind="rael")], (), ())
+
+    def test_domain_that_is_not_a_domain_is_rejected(self):
+        pd = ds.space(ds.param("x").real(0.0, 1.0)).params["x"]
+        with pytest.raises(ResolutionError, match=r"'x'.*not a domain type"):
+            ds.space_from_ir([replace(pd, domain="real")], (), ())
+
+    def test_list_element_mismatch_is_rejected(self):
+        """A lift restates the pairing on its `ListDomain`, so the element is
+        checked at its own path."""
+        pd = ds.space(ds.param("xs").real(0.0, 1.0).repeat(3)).params["xs"]
+        bad = replace(pd, domain=replace(pd.domain, element_kind="bool"))
+        with pytest.raises(ResolutionError, match=r"'xs\[\]'.*'bool'.*RealDomain"):
+            ds.space_from_ir([bad], (), ())
+
+    def test_encoding_target_mismatch_is_rejected(self):
+        """The likeliest way to write one: retag a parameter and forget to
+        replace the domain alongside it."""
+
+        class _RetagOnly:
+            def target(self, param):
+                return replace(param, type_kind="real", chart=None)
+
+            def decode(self, param, value):
+                return round(value)
+
+            def encode(self, param, value):
+                return float(value)
+
+        s = ds.space(ds.param("depth").integer(1, 8))
+        with pytest.raises(ResolutionError, match=r"'depth'.*'real'.*IntegerDomain"):
+            s.represent(lambda pd: _RetagOnly() if pd.type_kind == "integer" else None)
+
+    def test_a_faithful_retag_still_resolves(self):
+        """The check bites only on disagreement: rewriting both fields
+        together is what an encoding is supposed to do."""
+
+        class _ToReal:
+            def target(self, param):
+                return replace(
+                    param,
+                    type_kind="real",
+                    domain=RealDomain(float(param.domain.lo), float(param.domain.hi)),
+                    default=None,
+                    chart=None,
+                )
+
+            def decode(self, param, value):
+                return round(value)
+
+            def encode(self, param, value):
+                return float(value)
+
+        s = ds.space(ds.param("depth").integer(1, 8))
+        rep = s.represent(lambda pd: _ToReal() if pd.type_kind == "integer" else None)
+        assert rep.target.params["depth"].type_kind == "real"
+
+
 class TestMapParams:
     def test_coarsening_example(self):
         # A representative "coarsening" rewrite: quantize every unquantized

@@ -17,12 +17,33 @@ named `variant` / `<variant>`, matching the table's
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from designspace.builder._space import Space
 from designspace.expr import ArithExpr
 from designspace.ir import ChoiceDomain, ListDomain, PermutationDomain, SubsetDomain
 from designspace.paths import element_prefix
+
+_ScalarKind = Literal[
+    "real",
+    "integer",
+    "categorical",
+    "ordinal",
+    "bool",
+    "subset",
+    "permutation",
+    "symbolic",
+    "code",
+    "custom",
+]
+"""Every kind but the three container kinds.
+
+`space`, `choice` and `list` each expand into further schema entries and are
+dispatched by the two traversals below before a dtype is asked for. Naming
+the remainder is what lets `_scalar_dtype` be checked as total: its callers
+reach it only where the type checker has already ruled the containers out,
+so a kind added to `TypeKind` and forgotten here fails at both ends.
+"""
 
 
 def build_schema(space: Space, pl: Any) -> dict[str, Any]:
@@ -76,7 +97,7 @@ def _element_dtype(space: Space, domain: ListDomain, elem_template_prefix: str, 
     return _scalar_dtype(domain.element_kind, domain.element_domain, pl)
 
 
-def _scalar_dtype(type_kind: str, domain: Any, pl: Any) -> Any:
+def _scalar_dtype(type_kind: _ScalarKind, domain: Any, pl: Any) -> Any:
     if type_kind == "real":
         return pl.Float64
     if type_kind == "integer":
@@ -93,6 +114,11 @@ def _scalar_dtype(type_kind: str, domain: Any, pl: Any) -> Any:
         return pl.List(_item_dtype(domain.items, pl))
     if type_kind in ("symbolic", "code", "custom"):
         return pl.Utf8
+    # Not `assert_never`: the branches above are grouped as API.md's dtype
+    # table groups them, and a membership test narrows only the branch it
+    # takes, so what reaches here is the grouped kinds rather than `Never`.
+    # Splitting the groups to buy the proof would stop the dispatch mirroring
+    # the table it implements. `_ScalarKind` still bounds what can arrive.
     raise AssertionError(f"unhandled type_kind {type_kind!r}")
 
 

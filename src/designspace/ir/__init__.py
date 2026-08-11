@@ -28,6 +28,7 @@ from designspace.ir._domain import (
     StructDomain,
     SubsetDomain,
     SymbolicDomain,
+    TypeKind,
 )
 from designspace.ir._param import Condition, Constraint, ParamDef
 from designspace.ir._priors import Log, Logit, Power, Prior, PriorSpec, Weights
@@ -89,6 +90,7 @@ __all__ = [
     "SubsetRemaining",
     "SubspaceInfo",
     "SymbolicDomain",
+    "TypeKind",
     "ValidationResult",
     "ValueRemaining",
     "Weights",

@@ -39,14 +39,14 @@ class Rejection:
     ----------
     path : str
         The definition path of the offending parameter.
-    kind : str
+    kind : ds.TypeKind
         That parameter's kind, as `ParamDef.type_kind` reports it.
     reason : str
         What about the parameter puts it outside the backend's envelope.
     """
 
     path: str
-    kind: str
+    kind: ds.TypeKind
     reason: str
 
 
@@ -77,7 +77,7 @@ class ParamProfile:
     ----------
     path : str
         The parameter's definition path.
-    kind : str
+    kind : ds.TypeKind
         The parameter's kind.
     has_chart : bool
         Whether a static chart maps `[0, 1]` onto the domain. True for real and
@@ -91,7 +91,7 @@ class ParamProfile:
     """
 
     path: str
-    kind: str
+    kind: ds.TypeKind
     has_chart: bool
     conditional: bool
     variable_length: bool

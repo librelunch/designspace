@@ -56,6 +56,7 @@ laws. No milestone row.
 
 | Date | Fix | Against |
 |---|---|---|
+| 2026-08-11 | A definition's `type_kind` and its domain class are one fact with one home, so a definition where the two disagree is refused where assembled IR or a stored document enters, rather than failing later inside chart building without naming a parameter; the kind vocabulary is an exported union of literals | M1, M8, M11, M7 |
 | 2026-08-10 | The partial-config surface takes a config in either form, so a driver loop can assign at the instance paths it reports; `flatten` refuses an already-flat config instead of dropping every lift and `ds.is_flat` reports that condition, `unflatten` reads a dynamic lift's length off its element keys, and `Space.param_def` resolves either path form to its definition. Extended to every config-taking method, validation and identity included, after `is_feasible` disagreed with `is_complete` about one configuration | M3, M4, M6, M7 |
 | 2026-08-10 | An active lift is present whatever its count: a determined count of zero makes the container `active_unset` until its key holds `[]`, and `next_assignable` reports it, so the driver loop halts on a config that validates | M4, M6 |
 | 2026-08-10 | `floor_to_grid` recovers a grid index with the same tolerance `build_grid_shape` floors with, so a multiplicative grid round-trips its own points instead of losing a whole cell; vectors byte-identical | M2, M5 |

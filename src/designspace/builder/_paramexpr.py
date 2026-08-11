@@ -50,6 +50,7 @@ from designspace.expr import (
     VectorExpr,
 )
 from designspace.ir import Domain, QuantizedSpec, Weights
+from designspace.ir._domain import TypeKind
 
 if TYPE_CHECKING:
     import designspace as ds  # noqa: F401  (doctest namespace; see conftest.py)
@@ -196,7 +197,7 @@ class ParamExpr(ArithExpr, BoolExpr, VectorExpr):
     # resolution has to police. Each view in builder/_views.py overrides this
     # with its own fixed string; a bare ParamExpr/FreshParamExpr (no type
     # chosen) inherits None.
-    type_kind: ClassVar[str | None] = None
+    type_kind: ClassVar[TypeKind | None] = None
     domain: Domain | None = None
     periodic: builtins.bool = False
     prior_spec: Any = None

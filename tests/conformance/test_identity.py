@@ -321,6 +321,34 @@ class TestFormatVersion:
         with pytest.raises(ds.SerializationError):
             Space.from_json(doc)
 
+    def test_chart_apply_with_a_chartless_kind_raises_on_from_json(self):
+        """A `chart_apply` node carries the source kind, and only the two
+        chart-bearing kinds can have produced one. The value arrives from the
+        document, so a kind that bears no chart is rejected on load rather
+        than reaching chart building, which has no kind of its own to report.
+        """
+        space = ds.space(ds.param("x").integer(1, 8)).require(ds.param("x") > 2)
+        target = space.represent().target
+        doc = target.to_json()
+
+        def chart_applies(obj):
+            if isinstance(obj, dict):
+                if obj.get("kind") == "chart_apply":
+                    yield obj
+                for v in obj.values():
+                    yield from chart_applies(v)
+            elif isinstance(obj, list):
+                for v in obj:
+                    yield from chart_applies(v)
+
+        node = next(chart_applies(doc))
+        assert node["type_kind"] == "integer"
+        assert Space.from_json(doc).fingerprint() == target.fingerprint()
+
+        node["type_kind"] = "bool"
+        with pytest.raises(ds.SerializationError, match=r"chart_apply.*'bool'.*bears no chart"):
+            Space.from_json(doc)
+
     def test_fingerprint_prefix_names_version_and_scope(self):
         space = ds.space(ds.param("x").real(0, 1))
         fp = space.fingerprint(scope="sampling")
