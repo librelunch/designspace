@@ -90,6 +90,13 @@ from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 import designspace as ds
+from designspace_solvers._placement import (
+    GENERATIVE_KINDS,
+    decode_random_keys,
+    item_paths,
+    native_scalar,
+    require_backend,
+)
 from designspace_solvers._profile import Rejection, UnsupportedSpace, require
 
 if TYPE_CHECKING:
@@ -97,34 +104,14 @@ if TYPE_CHECKING:
 
 __all__ = ["KINDS", "constraint_values", "set_constraints", "suggest"]
 
-#: The parameter kinds this binding places. Absent are the program kinds, a
-#: symbolic or code parameter having no Optuna counterpart, and the custom
-#: kind, whose genotype its type author supplies. Generating either is a
-#: strategy the library leaves to its consumer.
-KINDS = frozenset(
-    {
-        "real",
-        "integer",
-        "bool",
-        "categorical",
-        "ordinal",
-        "subset",
-        "permutation",
-        "choice",
-        "space",
-        "list",
-    }
-)
+#: The parameter kinds this binding places: every generative kind, a
+#: define-by-run trial having somewhere to put each one. Absent are the
+#: program and custom kinds, which carry no coordinate for Optuna to draw.
+KINDS = GENERATIVE_KINDS
 
 
 def _require_optuna() -> None:
-    try:
-        import optuna  # noqa: F401
-    except ImportError as exc:  # pragma: no cover - exercised by the core install path
-        raise ImportError(
-            "the Optuna binding needs Optuna, which is an optional dependency. "
-            "Install it with `pip install designspace-solvers[optuna]`."
-        ) from exc
+    require_backend("optuna", binding="Optuna", needs="Optuna", extra="optuna")
 
 
 def _suggest_scalar(trial: optuna.Trial, name: str, defn: ds.ParamDef) -> Any:
@@ -140,8 +127,7 @@ def _suggest_scalar(trial: optuna.Trial, name: str, defn: ds.ParamDef) -> Any:
     chart = defn.chart
     assert chart is not None, f"{name}: a real or integer parameter always carries a chart"
     log = isinstance(defn.prior, ds.Log)
-    native = defn.quantized is None and (defn.prior is None or log)
-    if not native:
+    if not native_scalar(defn):
         return chart.from_unit(trial.suggest_float(name, 0.0, 1.0))
     # The chart's ends are the envelope bounds already resolved to numbers. The
     # domain's own `lo` and `hi` may be expressions, so reading them here would
@@ -193,16 +179,17 @@ def _suggest_one(trial: optuna.Trial, space: ds.Space, path: str) -> Any:
         # Optuna is trying to learn from.
         return [
             item
-            for index, item in enumerate(domain.items)
-            if trial.suggest_categorical(f"{path}[{index}]", [False, True])
+            for item, name in zip(domain.items, item_paths(path, len(domain.items)), strict=True)
+            if trial.suggest_categorical(name, [False, True])
         ]
 
     if kind == "permutation":
         assert isinstance(domain, ds.PermutationDomain)
         # Random keys: a real coordinate per item, ordered by value. Every
         # draw is a valid permutation, so there is nothing to reject.
-        keys = [trial.suggest_float(f"{path}[{i}]", 0.0, 1.0) for i in range(len(domain.items))]
-        return [item for _, item in sorted(zip(keys, domain.items, strict=True))]
+        names = item_paths(path, len(domain.items))
+        keys = [trial.suggest_float(name, 0.0, 1.0) for name in names]
+        return decode_random_keys(keys, domain.items)
 
     raise UnsupportedSpace(
         "the Optuna binding",

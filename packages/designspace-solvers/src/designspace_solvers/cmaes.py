@@ -88,6 +88,7 @@ from typing import Any
 import numpy as np
 
 import designspace as ds
+from designspace_solvers._placement import decode_random_keys, require_backend
 from designspace_solvers._profile import Rejection, UnsupportedSpace, require
 
 __all__ = ["KINDS", "MAX_INTEGER_LEVELS", "Optimizer", "Proposal"]
@@ -106,14 +107,8 @@ MAX_INTEGER_LEVELS = 64
 
 
 def _require_cmaes() -> Any:
-    try:
-        from cmaes import CatCMAwM
-    except ImportError as exc:  # pragma: no cover - exercised by the core install path
-        raise ImportError(
-            "the CMA-ES binding needs cmaes, which is an optional dependency. "
-            "Install it with `pip install designspace-solvers[cmaes]`."
-        ) from exc
-    return CatCMAwM
+    module = require_backend("cmaes", binding="CMA-ES", needs="cmaes", extra="cmaes")
+    return module.CatCMAwM
 
 
 @dataclass(frozen=True)
@@ -274,9 +269,7 @@ def _decode(slots: Sequence[_Slot], solution: Any) -> dict[str, Any]:
         if slot.block == "x":
             if slot.kind == "permutation":
                 keys = [float(solution.x[slot.start + i]) for i in range(slot.width)]
-                config[slot.path] = [
-                    item for _, item in sorted(zip(keys, slot.values, strict=True))
-                ]
+                config[slot.path] = decode_random_keys(keys, slot.values)
             else:
                 assert slot.chart is not None
                 config[slot.path] = slot.chart.from_unit(float(solution.x[slot.start]))
