@@ -1057,6 +1057,9 @@ def compute_activity_partial(space: Space, config: dict[str, Any]) -> PartialAct
     """
     from designspace.resolve._bounds import bound_origin_targets
 
+    # `_resolve_list_status` records each determined count as the walk
+    # reaches it, so the caller's own dict is never written to.
+    config = dict(config)
     status: dict[str, str] = {}
     order: list[str] = []
     deps: dict[str, frozenset[str]] = {}
@@ -1146,6 +1149,16 @@ def _resolve_list_status(
     and the empty list that marks the lift active rather than inactive would
     never be written. There the container awaits its own value, and
     `next_assignable` reports it.
+
+    A determined count is recorded on `config` as it is determined. The
+    container's own key is `flatten`'s bookkeeping, and a driver loop
+    accumulating instance paths never writes one, so an element condition
+    reading a sibling of its own instance would find no length to resolve
+    `c[0]` against and read the instance as pending. Recording it here is
+    what API.md means by assigning an instance leaf creating its container
+    on the way, and it holds for every later instance path in the walk,
+    which runs in dependency order. `config` is the caller's copy, made in
+    `compute_activity_partial`.
     """
     if activity_class != "active":
         status[path] = activity_class
@@ -1158,6 +1171,8 @@ def _resolve_list_status(
         return
     status[path] = "active_unset" if n == 0 and path not in config else "set"
     order.append(path)
+    if status[path] == "set":
+        config[path] = n
     for i in range(n):
         _expand_instance_status(space, f"{path}[{i}]", domain, config, status, order, deps)
 

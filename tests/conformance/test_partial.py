@@ -27,6 +27,20 @@ def _delivery_routes() -> Space:
     )
 
 
+def _lifted_choice() -> Space:
+    return ds.space(
+        ds.param("c").choice(a=ds.space(), b=ds.space(ds.param("v").integer(1, 5))).repeat(2)
+    )
+
+
+def _sibling_gated_lift() -> Space:
+    element = ds.space(
+        ds.param("flag").bool(),
+        ds.param("x").integer(1, 9).when(ds.param("flag")),
+    )
+    return ds.space(ds.param("ws").space(element).repeat(2))
+
+
 def _greenhouse() -> Space:
     return ds.space(
         ds.param("heating").choice(
@@ -106,6 +120,26 @@ class TestDriverLoopCoincidence:
         space = _delivery_routes()
         assert space.next_assignable({}) == ["n_stops"]
         assert not space.is_complete({})
+
+    def test_an_element_gated_on_its_own_instance_is_reported(self):
+        """A lift element's own condition reads a sibling of that instance:
+        a lifted choice's discriminator, or a struct field's `when` on
+        another field of the same element. The payload behind it is active
+        once that sibling is set, so the loop must report it and completeness
+        must wait for it.
+        """
+        for space, discriminated in (
+            (_lifted_choice(), {"c[0]": "b", "c[1]": "b"}),
+            (_sibling_gated_lift(), {"ws[0].flag": True, "ws[1].flag": True}),
+        ):
+            assert not space.is_complete(discriminated)
+            assert (space.next_assignable(discriminated) == []) == space.is_complete(discriminated)
+
+    def test_an_element_gated_on_its_own_instance_is_reported_from_empty(self):
+        """The same law at the start of the loop, before any leaf is set:
+        the gating sibling is what is assignable, and nothing is complete."""
+        for space in (_lifted_choice(), _sibling_gated_lift()):
+            assert (space.next_assignable({}) == []) == space.is_complete({})
 
     def test_variant_switch_changes_active_fields(self):
         space = _greenhouse()
@@ -402,6 +436,27 @@ class TestPartialSurfaceAcceptsEitherSpelling:
             raise AssertionError("the loop did not terminate")
         assert space.is_complete(config)
         assert space.validate(unflatten(config, space)).valid
+
+    def test_a_loop_over_an_element_gated_on_its_own_instance_completes(self):
+        """The container key is `flatten`'s bookkeeping, and a loop building
+        its own flat config never writes one. API.md, "Space: Partial
+        Configs" says assigning an instance leaf creates the container on the
+        way, so a determined count above zero needs nothing further: an
+        element condition reading a sibling of its own instance resolves
+        against the leaves alone.
+        """
+        for space, value in ((_lifted_choice(), "b"), (_sibling_gated_lift(), True)):
+            config: dict = {}
+            for _ in range(10):
+                assignable = space.next_assignable(config)
+                if not assignable:
+                    break
+                for path in assignable:
+                    config[path] = value if space.param_def(path).type_kind != "integer" else 3
+            else:
+                raise AssertionError("the loop did not terminate")
+            assert space.is_complete(config)
+            assert space.validate(unflatten(config, space)).valid
 
     def test_a_space_without_lifts_reads_the_same_either_way(self):
         space = ds.space(ds.param("a").integer(0, 4), ds.param("b").real(0.0, 1.0))
