@@ -67,9 +67,11 @@ dev = [
     # group because the workspace shares one environment: were they declared
     # only on the member, a per-package sync would evict what the other gates
     # need, and the gates would reinstall over each other in turn. One `uv
-    # sync` here serves every gate. Both backends are pure Python and support
-    # every version in the CI matrix.
-    "designspace-solvers[optuna,cmaes]",
+    # sync` here serves every gate. The cost is that a core gate now installs
+    # what SMAC brings, scikit-learn and dask among it, so this group is the
+    # heaviest thing in the workspace and the solvers gate is what justifies
+    # it. Every backend supports every version in the CI matrix.
+    "designspace-solvers[optuna,cmaes,configspace,smac]",
     {include-group = "docs"},
 ]
 

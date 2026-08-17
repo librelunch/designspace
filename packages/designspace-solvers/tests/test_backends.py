@@ -1,4 +1,4 @@
-"""Both bindings, driven end to end over the core package's corpus fixtures.
+"""Every binding, driven end to end over the core package's corpus fixtures.
 
 Every test here asserts the same three things of a real optimization run: that
 each proposal is a complete configuration, that decoding a proposal and
@@ -15,18 +15,22 @@ repairing proposals behind the solver's back.
 from __future__ import annotations
 
 import warnings
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 from designspace_solvers import UnsupportedSpace, profile, rejections
 from designspace_solvers.cmaes import Optimizer, _categorical_start, _layout
+from designspace_solvers.configspace import translate
 from designspace_solvers.optuna import constraint_values, set_constraints, suggest
+from designspace_solvers.smac import Optimizer as SmacOptimizer
 
 import designspace as ds
 from corpus.compiler_pipeline import build_space as build_compiler_pipeline
 from corpus.delivery_routes import build_space as build_delivery_routes
 from corpus.flat_hpo import build_space as build_flat_hpo
+from corpus.memetic_pipeline import build_space as build_memetic_pipeline
 from corpus.solver_portfolio import build_space as build_solver_portfolio
 
 
@@ -39,8 +43,8 @@ def _observation_key(space: ds.Space, config: dict[str, Any]) -> tuple[str, str]
 
 @pytest.mark.parametrize(
     "build",
-    [build_flat_hpo, build_solver_portfolio, build_compiler_pipeline],
-    ids=["flat_hpo", "solver_portfolio", "compiler_pipeline"],
+    [build_flat_hpo, build_solver_portfolio, build_compiler_pipeline, build_memetic_pipeline],
+    ids=["flat_hpo", "solver_portfolio", "compiler_pipeline", "memetic_pipeline"],
 )
 def test_optuna_proposes_only_complete_configurations(build: Any) -> None:
     """Every trial yields a configuration the space calls complete."""
@@ -66,8 +70,8 @@ def test_optuna_proposes_only_complete_configurations(build: Any) -> None:
 
 @pytest.mark.parametrize(
     "build",
-    [build_flat_hpo, build_solver_portfolio, build_compiler_pipeline],
-    ids=["flat_hpo", "solver_portfolio", "compiler_pipeline"],
+    [build_flat_hpo, build_solver_portfolio, build_compiler_pipeline, build_memetic_pipeline],
+    ids=["flat_hpo", "solver_portfolio", "compiler_pipeline", "memetic_pipeline"],
 )
 def test_optuna_observation_key_is_stable(build: Any) -> None:
     """The key a tuning loop records does not change between reads."""
@@ -488,6 +492,106 @@ def test_cmaes_warm_starts_from_a_known_configuration() -> None:
     cold_x = sum(p.config["x"] for p in cold.ask()) / cold.population_size
     warm_x = sum(p.config["x"] for p in warm.ask()) / warm.population_size
     assert warm_x > cold_x, "the warm start did not move the first generation"
+
+
+# -- ConfigSpace, the foreign-representation shape ---------------------------
+
+
+@pytest.mark.parametrize(
+    "build",
+    [build_flat_hpo, build_compiler_pipeline],
+    ids=["flat_hpo", "compiler_pipeline"],
+)
+def test_configspace_decodes_only_complete_configurations(build: Any) -> None:
+    """Every sampled configuration decodes to one the space calls complete."""
+    space = build()
+    translation = translate(space)
+    translation.config_space.seed(0)
+    for _ in range(50):
+        config = translation.decode(translation.config_space.sample_configuration())
+        assert space.is_complete(config)
+        assert not space.validate(config).param_errors
+
+
+@pytest.mark.parametrize(
+    "build",
+    [build_flat_hpo, build_compiler_pipeline],
+    ids=["flat_hpo", "compiler_pipeline"],
+)
+def test_configspace_observation_key_is_stable(build: Any) -> None:
+    """The key a tuning loop records does not change between reads."""
+    space = build()
+    translation = translate(space)
+    translation.config_space.seed(1)
+    for _ in range(20):
+        config = translation.decode(translation.config_space.sample_configuration())
+        assert _observation_key(space, config) == _observation_key(space, config)
+
+
+def test_configspace_round_trips_encode_and_decode() -> None:
+    """Encoding a decoded configuration and decoding it again is a no-op."""
+    space = build_flat_hpo()
+    translation = translate(space)
+    translation.config_space.seed(2)
+    for _ in range(30):
+        config = translation.decode(translation.config_space.sample_configuration())
+        again = translation.decode(translation.encode(config))
+        assert again == config
+
+
+def test_configspace_refuses_a_variable_length_space_by_name() -> None:
+    """A `list` kind has no ConfigSpace counterpart, unrolling needing a fixed layout."""
+    space = build_solver_portfolio()
+    with pytest.raises(UnsupportedSpace) as caught:
+        translate(space)
+    assert "workers" in {r.path for r in caught.value.rejections}
+
+
+# -- SMAC, ask and tell over the ConfigSpace translation ---------------------
+
+
+def test_smac_optimizes_over_the_translation(tmp_path: Path) -> None:
+    """A run over `flat_hpo` proposes only configurations the space validates."""
+    space = build_flat_hpo()
+
+    def loss(config: dict[str, Any]) -> float:
+        return abs(config["lr"] - 0.01) + abs(config["n_layers"] - 4)
+
+    optimizer = SmacOptimizer(space, seed=0, n_trials=12, output_directory=tmp_path)
+    for _ in range(12):
+        proposal = optimizer.ask()
+        optimizer.tell(proposal, loss(proposal.config))
+
+    assert len(optimizer.history) == 12
+    for config, _ in optimizer.history:
+        assert space.is_complete(config)
+        assert not space.validate(config).param_errors
+
+
+def test_smac_observation_key_is_stable(tmp_path: Path) -> None:
+    """The key a tuning loop records does not change between reads."""
+    space = build_flat_hpo()
+    optimizer = SmacOptimizer(space, seed=3, n_trials=8, output_directory=tmp_path)
+    for _ in range(8):
+        proposal = optimizer.ask()
+        assert _observation_key(space, proposal.config) == _observation_key(space, proposal.config)
+        optimizer.tell(proposal, 0.0)
+
+
+def test_smac_observe_extends_history_without_asking(tmp_path: Path) -> None:
+    """A reported configuration the optimizer never proposed warm starts the run."""
+    space = ds.space(ds.param("x").real(0.0, 1.0))
+    optimizer = SmacOptimizer(space, seed=0, n_trials=5, output_directory=tmp_path)
+    optimizer.observe({"x": 0.5}, 0.0)
+    assert optimizer.history == [({"x": 0.5}, 0.0)]
+
+
+def test_smac_refuses_a_variable_length_space_by_name(tmp_path: Path) -> None:
+    """SMAC refuses exactly what the ConfigSpace translation refuses."""
+    space = build_solver_portfolio()
+    with pytest.raises(UnsupportedSpace) as caught:
+        SmacOptimizer(space, output_directory=tmp_path)
+    assert "workers" in {r.path for r in caught.value.rejections}
 
 
 # -- Negotiation, shared -----------------------------------------------------

@@ -23,6 +23,11 @@ dependencies = [
 optuna = ["optuna>=5.0.0rc1"]
 # `CatCMAwM` lives behind the `cmawm` extra, which is what brings scipy.
 cmaes = ["cmaes[cmawm]>=0.13"]
+# 1.2.2 is the release that introduced the ordering forbidden clauses the
+# translation builds; on 1.2.0 and 1.2.1 they are simply absent.
+configspace = ["ConfigSpace>=1.2.2"]
+# scikit-learn<1.9 because of https://github.com/automl/SMAC3/issues/1336
+smac = ["smac>=2.4", "scikit-learn<1.9"]
 
 [tool.uv.sources]
 designspace = { workspace = true }

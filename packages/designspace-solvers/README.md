@@ -10,18 +10,22 @@ choosing a backend:
 ```console
 pip install "designspace-solvers[optuna] @ git+https://github.com/librelunch/designspace.git#subdirectory=packages/designspace-solvers"
 pip install "designspace-solvers[cmaes] @ git+https://github.com/librelunch/designspace.git#subdirectory=packages/designspace-solvers"
+pip install "designspace-solvers[configspace] @ git+https://github.com/librelunch/designspace.git#subdirectory=packages/designspace-solvers"
+pip install "designspace-solvers[smac] @ git+https://github.com/librelunch/designspace.git#subdirectory=packages/designspace-solvers"
 ```
 
 Each backend imports its solver lazily, so installing one extra never drags in
 another's dependencies. A backend used without its extra raises `ImportError`
 naming the extra to install.
 
-## The two backends
+## The four backends
 
 | Backend | Shape | Takes |
 |---|---|---|
 | `designspace_solvers.optuna` | define-by-run, one trial at a time | hierarchical and conditional spaces; every kind but `custom`, `symbolic` and `code` |
 | `designspace_solvers.cmaes` | ask and tell, one generation at a time | flat spaces: every parameter always active, every list a fixed length |
+| `designspace_solvers.configspace` | converts to a `ConfigurationSpace` | conditional spaces whose conditions and hard constraints have a ConfigSpace form; a static-count `list`, over a scalar, subset, permutation, struct, or choice element, or a nested lift |
+| `designspace_solvers.smac` | ask and tell, over the ConfigSpace translation | exactly what `configspace` takes |
 
 **Optuna.** `suggest(trial, space)` builds one complete configuration inside an
 objective, drawing each parameter as the trial runs. A parameter that is
@@ -79,6 +83,59 @@ for _ in range(30):
 best, value = min(optimizer.history, key=lambda pair: pair[1])
 ```
 
+**ConfigSpace.** `translate(space)` returns a `Translation`: a
+`ConfigurationSpace` any ConfigSpace-based tool can search, `translation.decode`
+to read a sampled `Configuration` back into domain units, and
+`translation.encode` for the inverse. A `.when()` condition translates exactly
+where every parameter it references sits as one hyperparameter and the
+comparison has a ConfigSpace counterpart; a parameter whose condition does not
+is refused by path, the same way a kind outside the envelope is. A hard
+constraint becomes a forbidden clause where one exists; the rest are listed on
+`translation.untranslated_constraints` rather than raised, `space.is_feasible`
+still catching them. A listed constraint is always a relaxation and never a
+restriction: the search may propose a configuration the space calls infeasible,
+and never loses one the space calls feasible.
+
+```python
+import designspace as ds
+from designspace_solvers.configspace import translate
+
+space = ds.space(
+    ds.param("lr").real(1e-4, 1e-1).log_scale(),
+    ds.param("use_warmup").bool(),
+    ds.param("warmup_steps").integer(1, 100).when(ds.param("use_warmup")),
+).forbid(ds.param("lr") > 0.05)
+
+translation = translate(space)
+translation.config_space.seed(0)
+configuration = translation.config_space.sample_configuration()
+config = translation.decode(configuration)      # `warmup_steps` is there only when it applies
+```
+
+**SMAC.** `Optimizer` drives SMAC3's Bayesian-optimization facade, ask and
+tell, over exactly the translation above: it places what `configspace` places
+and refuses what `configspace` refuses. `ask()` proposes one configuration and
+`tell()` reports what it scored; `observe()` reports a configuration the
+optimizer never proposed, which is how a run is warm started.
+
+```python
+import designspace as ds
+from designspace_solvers.smac import Optimizer
+
+space = ds.space(
+    ds.param("cutoff_hz").real(1.0, 1e4).log_scale(),
+    ds.param("order").integer(1, 12),
+    ds.param("window").categorical("hann", "hamming", "blackman"),
+)
+
+optimizer = Optimizer(space, seed=0, n_trials=50)
+for _ in range(50):
+    proposal = optimizer.ask()
+    optimizer.tell(proposal, evaluate(proposal.config))
+
+best, value = min(optimizer.history, key=lambda pair: pair[1])
+```
+
 ## What a backend does with a declaration
 
 A prior is a coordinate system rather than a hint, so it reaches the solver
@@ -86,9 +143,10 @@ instead of being applied afterwards. A real or integer parameter carries its
 prior in its chart, so a log-scaled parameter is perturbed multiplicatively and
 a quantized one lands on its grid, whichever backend is driving. A categorical,
 bool or subset parameter declaring `.prior(weights=...)` starts CMA-ES's own
-categorical distribution at those weights rather than uniform. An ordinal is
-the exception under CMA-ES: it sits in the solver's integer block, which holds
-no distribution over levels for weights to seed.
+categorical distribution, or ConfigSpace's, at those weights rather than
+uniform. An ordinal is the exception under either: it sits in a block that
+holds no distribution over levels for weights to seed, CMA-ES's integer block
+and ConfigSpace's `OrdinalHyperparameter` alike.
 
 Nothing is padded, imputed, or relaxed. A backend accepts the spaces it can
 represent and refuses the rest by name, reporting every offending parameter at
@@ -112,6 +170,7 @@ how a caller picks a backend for a space it did not write.
 ```console
 uv run python packages/designspace-solvers/examples/optuna_hpo.py
 uv run python packages/designspace-solvers/examples/cmaes_warm_start.py
+uv run python packages/designspace-solvers/examples/smac_conditional.py
 ```
 
 `optuna_hpo.py` tunes a space with a variant choice, a conditional parameter
@@ -119,7 +178,10 @@ and a hard constraint, then reports the best feasible configuration and the
 `(fingerprint, config_hash)` pair it should be stored under.
 `cmaes_warm_start.py` draws an incumbent from the space, warm starts the
 optimizer with it, runs thirty generations, and shows what a space with no
-fixed layout is refused with.
+fixed layout is refused with. `smac_conditional.py` searches the same space as
+`optuna_hpo.py` with SMAC3 instead, and shows what its step-budget constraint
+looks like once translated: reported rather than raised, since it multiplies
+two parameters together, which is outside what a forbidden clause expresses.
 
 ## Status
 

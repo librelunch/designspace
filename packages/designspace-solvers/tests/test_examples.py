@@ -1,7 +1,7 @@
 """The example scripts, run end to end.
 
 Each script is executed as written, `main` and all. They are the first thing a
-reader of this package runs, and they exercise the two bindings through their
+reader of this package runs, and they exercise the bindings through their
 documented entry points, so a change to the representation fails here rather
 than in front of that reader.
 """

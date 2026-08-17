@@ -31,12 +31,14 @@ def test_generative_kinds_covers_every_kind_but_the_three_that_carry_a_definitio
 
 
 def test_every_binding_states_its_envelope_against_the_shared_vocabulary() -> None:
-    """The binding placing every generative kind says so by sharing the set;
+    """Two bindings placing every generative kind say so by sharing the set;
     the flat one narrows it rather than listing its own from scratch."""
     from designspace_solvers.cmaes import KINDS as cmaes_kinds
+    from designspace_solvers.configspace import KINDS as configspace_kinds
     from designspace_solvers.optuna import KINDS as optuna_kinds
 
     assert optuna_kinds == GENERATIVE_KINDS
+    assert configspace_kinds == GENERATIVE_KINDS
     assert cmaes_kinds < GENERATIVE_KINDS
 
 

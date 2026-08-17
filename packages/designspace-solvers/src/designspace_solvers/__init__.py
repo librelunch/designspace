@@ -15,8 +15,20 @@ fixed before the run starts. It searches a flat space, meaning every parameter
 always active and every list a fixed length, and refuses anything else by
 path rather than padding or imputing a value.
 
-Install one extra per backend, `designspace-solvers[optuna]` or
-`designspace-solvers[cmaes]`. Each backend imports its solver lazily, so one
+`designspace_solvers.configspace` converts a space into a `ConfigurationSpace`
+instead of interpreting it directly, the socket any ConfigSpace-based tool
+reads. A conditional space translates exactly, a parameter whose condition has
+no ConfigSpace counterpart being refused by path rather than placed
+unconditionally, and a hard constraint translates into a forbidden clause
+where one exists, the rest reported rather than raised.
+
+`designspace_solvers.smac` drives SMAC3's Bayesian-optimization facade, ask
+and tell, over that same translation. It places exactly what the ConfigSpace
+binding places and refuses exactly what that binding refuses.
+
+Install one extra per backend: `designspace-solvers[optuna]`,
+`designspace-solvers[cmaes]`, `designspace-solvers[configspace]`, or
+`designspace-solvers[smac]`. Each backend imports its solver lazily, so one
 extra never installs the other's dependencies, and a backend used without its
 extra raises `ImportError` naming the extra to install.
 
