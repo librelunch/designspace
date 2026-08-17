@@ -1,7 +1,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/_static/readme-header-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/_static/readme-header-light.svg">
-  <img alt="designspace. Declarative design spaces. Search strategy not included." src="docs/_static/readme-header-light.svg">
+  <img alt="designspace. Declarative design spaces for Python." src="docs/_static/readme-header-light.svg">
 </picture>
 
 Declarative design spaces with a polars-like expression API.
