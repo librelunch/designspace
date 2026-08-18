@@ -18,6 +18,7 @@ from designspace_solvers._placement import (
     item_paths,
     native_scalar,
     require_backend,
+    subset_bounds,
 )
 
 import designspace as ds
@@ -31,14 +32,16 @@ def test_generative_kinds_covers_every_kind_but_the_three_that_carry_a_definitio
 
 
 def test_every_binding_states_its_envelope_against_the_shared_vocabulary() -> None:
-    """Two bindings placing every generative kind say so by sharing the set;
-    the flat one narrows it rather than listing its own from scratch."""
+    """A binding placing every generative kind says so by sharing the set; the
+    flat one narrows it rather than listing its own from scratch."""
     from designspace_solvers.cmaes import KINDS as cmaes_kinds
     from designspace_solvers.configspace import KINDS as configspace_kinds
+    from designspace_solvers.irace import KINDS as irace_kinds
     from designspace_solvers.optuna import KINDS as optuna_kinds
 
     assert optuna_kinds == GENERATIVE_KINDS
     assert configspace_kinds == GENERATIVE_KINDS
+    assert irace_kinds == GENERATIVE_KINDS
     assert cmaes_kinds < GENERATIVE_KINDS
 
 
@@ -65,6 +68,23 @@ def test_item_paths_names_one_variable_per_item_in_declared_order() -> None:
     assert item_paths("s", 3) == ("s[0]", "s[1]", "s[2]")
     assert item_paths("workers[1].tags", 2) == ("workers[1].tags[0]", "workers[1].tags[1]")
     assert item_paths("s", 0) == ()
+
+
+@pytest.mark.parametrize(
+    ("declare", "bounds"),
+    [
+        (lambda: ds.param("s").subset(["a", "b", "c"]), (0, 3)),
+        (lambda: ds.param("s").subset(["a", "b", "c"], min_size=1), (1, 3)),
+        (lambda: ds.param("s").subset(["a", "b", "c"], max_size=2), (0, 2)),
+        (lambda: ds.param("s").subset(["a", "b", "c"], min_size=2, max_size=2), (2, 2)),
+    ],
+    ids=["unbounded", "floor", "ceiling", "exact"],
+)
+def test_subset_bounds_resolve_an_unset_ceiling_to_every_item(declare, bounds) -> None:
+    """A declaration that set no `max_size` admits every item. Resolving that
+    here is what keeps four bindings from each repeating the substitution."""
+    space = ds.space(declare())
+    assert subset_bounds(space.params["s"].domain) == bounds
 
 
 def test_random_keys_decode_in_ascending_order() -> None:

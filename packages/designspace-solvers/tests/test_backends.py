@@ -49,8 +49,22 @@ def _observation_key(space: ds.Space, config: dict[str, Any]) -> tuple[str, str]
 
 @pytest.mark.parametrize(
     "build",
-    [build_flat_hpo, build_solver_portfolio, build_compiler_pipeline, build_memetic_pipeline],
-    ids=["flat_hpo", "solver_portfolio", "compiler_pipeline", "memetic_pipeline"],
+    [
+        build_flat_hpo,
+        build_solver_portfolio,
+        build_compiler_pipeline,
+        build_memetic_pipeline,
+        build_wind_farm_grid,
+        build_flow_chemistry,
+    ],
+    ids=[
+        "flat_hpo",
+        "solver_portfolio",
+        "compiler_pipeline",
+        "memetic_pipeline",
+        "wind_farm_grid",
+        "flow_chemistry",
+    ],
 )
 def test_optuna_proposes_only_complete_configurations(build: Any) -> None:
     """Every trial yields a configuration the space calls complete."""
@@ -76,8 +90,22 @@ def test_optuna_proposes_only_complete_configurations(build: Any) -> None:
 
 @pytest.mark.parametrize(
     "build",
-    [build_flat_hpo, build_solver_portfolio, build_compiler_pipeline, build_memetic_pipeline],
-    ids=["flat_hpo", "solver_portfolio", "compiler_pipeline", "memetic_pipeline"],
+    [
+        build_flat_hpo,
+        build_solver_portfolio,
+        build_compiler_pipeline,
+        build_memetic_pipeline,
+        build_wind_farm_grid,
+        build_flow_chemistry,
+    ],
+    ids=[
+        "flat_hpo",
+        "solver_portfolio",
+        "compiler_pipeline",
+        "memetic_pipeline",
+        "wind_farm_grid",
+        "flow_chemistry",
+    ],
 )
 def test_optuna_observation_key_is_stable(build: Any) -> None:
     """The key a tuning loop records does not change between reads."""
@@ -88,6 +116,59 @@ def test_optuna_observation_key_is_stable(build: Any) -> None:
     for _ in range(5):
         config = suggest(study.ask(), space)
         assert _observation_key(space, config) == _observation_key(space, config)
+
+
+def test_optuna_draws_a_subset_within_its_declared_size() -> None:
+    """A declared size is part of the domain, and the inclusion flags admit
+    every combination on their own, so this binding has to place the bound
+    rather than inherit it. Both admitted sizes are drawn, which is what
+    distinguishes honouring a bound from collapsing onto one end of it."""
+    import optuna
+
+    space = ds.space(
+        ds.param("items").subset(["a", "b", "c", "d", "e"], min_size=2, max_size=3),
+    )
+    seen: list[dict[str, Any]] = []
+
+    def objective(trial: optuna.Trial) -> float:
+        config = suggest(trial, space)
+        seen.append(config)
+        return float(len(config["items"]))
+
+    study = optuna.create_study(sampler=optuna.samplers.RandomSampler(seed=0))
+    study.optimize(objective, n_trials=60)
+
+    assert {len(config["items"]) for config in seen} == {2, 3}
+    for config in seen:
+        assert not space.validate(config).param_errors, config
+
+
+def test_optuna_withholds_a_flag_the_size_bound_settles() -> None:
+    """A flag the bound has settled is not a free variable, so it is not
+    suggested. A subset of three items that must hold three has one value, and
+    the trial is asked nothing: the value is placed, not repaired after a draw
+    that went elsewhere."""
+    import optuna
+
+    space = ds.space(ds.param("items").subset(["a", "b", "c"], min_size=3))
+    study = optuna.create_study(sampler=optuna.samplers.RandomSampler(seed=0))
+    trial = study.ask()
+
+    assert suggest(trial, space)["items"] == ["a", "b", "c"]
+    assert trial.params == {}
+
+
+def test_optuna_asks_about_every_flag_a_bound_leaves_free() -> None:
+    """Nothing is withheld where the bound settles nothing, so an unbounded
+    subset still reaches the sampler as one variable per item."""
+    import optuna
+
+    space = ds.space(ds.param("items").subset(["a", "b", "c"]))
+    study = optuna.create_study(sampler=optuna.samplers.RandomSampler(seed=0))
+    trial = study.ask()
+
+    suggest(trial, space)
+    assert set(trial.params) == {"items[0]", "items[1]", "items[2]"}
 
 
 def test_optuna_omits_an_inactive_parameter() -> None:
@@ -433,6 +514,37 @@ def test_cmaes_refuses_a_variable_length_space_by_name() -> None:
     assert "workers" in {r.path for r in caught.value.rejections}
 
 
+def test_cmaes_refuses_a_bounded_subset_by_name() -> None:
+    """A subset's inclusion flags are independent variables in a layout fixed
+    before the first generation, and the solver accepts no constraint, so a
+    declared size has nowhere to go and the parameter is refused rather than
+    sampled out of bounds."""
+    space = ds.space(
+        ds.param("items").subset(["a", "b", "c", "d"], min_size=1, max_size=2),
+        ds.param("x").real(0.0, 1.0),
+    )
+    with pytest.raises(UnsupportedSpace) as caught:
+        Optimizer(space)
+
+    assert [r.path for r in caught.value.rejections] == ["items"]
+    assert "between 1 and 2 of 4 items" in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "declare",
+    [
+        lambda: ds.param("items").subset(["a", "b", "c"]),
+        lambda: ds.param("items").subset(["a", "b", "c"], min_size=0, max_size=3),
+    ],
+    ids=["unstated", "stated_but_vacuous"],
+)
+def test_cmaes_accepts_a_subset_whose_bound_excludes_nothing(declare: Any) -> None:
+    """A bound admitting every combination is what the flags already say."""
+    space = ds.space(declare(), ds.param("x").real(0.0, 1.0))
+    for proposal in Optimizer(space, seed=0).ask():
+        assert not space.validate(proposal.config).param_errors
+
+
 def test_cmaes_starts_the_categorical_block_from_declared_weights() -> None:
     """`.prior(weights=...)` becomes the categorical distribution's starting point.
 
@@ -505,8 +617,8 @@ def test_cmaes_warm_starts_from_a_known_configuration() -> None:
 
 @pytest.mark.parametrize(
     "build",
-    [build_flat_hpo, build_compiler_pipeline],
-    ids=["flat_hpo", "compiler_pipeline"],
+    [build_flat_hpo, build_compiler_pipeline, build_wind_farm_grid, build_flow_chemistry],
+    ids=["flat_hpo", "compiler_pipeline", "wind_farm_grid", "flow_chemistry"],
 )
 def test_configspace_decodes_only_complete_configurations(build: Any) -> None:
     """Every sampled configuration decodes to one the space calls complete."""
@@ -521,8 +633,8 @@ def test_configspace_decodes_only_complete_configurations(build: Any) -> None:
 
 @pytest.mark.parametrize(
     "build",
-    [build_flat_hpo, build_compiler_pipeline],
-    ids=["flat_hpo", "compiler_pipeline"],
+    [build_flat_hpo, build_compiler_pipeline, build_wind_farm_grid, build_flow_chemistry],
+    ids=["flat_hpo", "compiler_pipeline", "wind_farm_grid", "flow_chemistry"],
 )
 def test_configspace_observation_key_is_stable(build: Any) -> None:
     """The key a tuning loop records does not change between reads."""
@@ -680,6 +792,45 @@ def test_irace_refuses_a_variable_length_space_by_name() -> None:
 
 
 # -- Negotiation, shared -----------------------------------------------------
+
+
+def test_a_subset_size_bound_is_stated_by_every_binding_or_refused_by_it() -> None:
+    """A subset places one inclusion flag per item, and the flags admit every
+    combination on their own, so a declared size is no part of what they say.
+    Each binding therefore states the bound in its own terms or refuses the
+    parameter by path. The third outcome, placing the flags and dropping the
+    bound, is what this law excludes, and is what every driver here did
+    before. irace states its bound as a forbidden expression, asserted in the
+    translation suite and raced under the R gate."""
+    import optuna
+
+    space = ds.space(
+        ds.param("items").subset(["a", "b", "c", "d", "e", "f"], min_size=2, max_size=3),
+        ds.param("x").real(0.0, 1.0),
+    )
+    drawn: dict[str, list[dict[str, Any]]] = {}
+    refused: list[str] = []
+
+    study = optuna.create_study(sampler=optuna.samplers.RandomSampler(seed=0))
+    drawn["optuna"] = [suggest(study.ask(), space) for _ in range(40)]
+
+    try:
+        drawn["cmaes"] = [p.config for p in Optimizer(space, seed=0).ask()]
+    except UnsupportedSpace:
+        refused.append("cmaes")
+
+    translation = translate(space)
+    translation.config_space.seed(0)
+    drawn["configspace"] = [
+        translation.decode(translation.config_space.sample_configuration()) for _ in range(40)
+    ]
+
+    assert refused == ["cmaes"], "a fixed layout has nowhere to state the bound"
+    for backend, configs in drawn.items():
+        assert configs, backend
+        for config in configs:
+            assert 2 <= len(config["items"]) <= 3, (backend, config)
+            assert not space.validate(config).param_errors, (backend, config)
 
 
 def test_profile_reports_chart_availability_per_kind() -> None:

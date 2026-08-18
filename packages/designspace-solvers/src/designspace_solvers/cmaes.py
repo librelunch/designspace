@@ -8,29 +8,28 @@ whatever its domain, and `mean` starts the search at a configuration already
 known to be good.
 
 The layout is fixed before the first generation, so the space must be flat:
-every parameter always active, every list a fixed length, and no subspace or
-variant. `Optimizer` refuses anything else on construction, naming each
-parameter responsible. `KINDS` holds the kinds it places.
+every parameter always active, every list a fixed length, no subspace or
+variant, and no subset declaring a size. `Optimizer` refuses anything else on
+construction, naming each parameter responsible. `KINDS` holds the kinds it
+places.
 
-Where each kind sits. A real parameter takes a continuous coordinate in
-`[0, 1]` decoded through its chart, so a log-scaled one is perturbed
-multiplicatively and a quantized one lands on its grid. An integer with at
-most `MAX_INTEGER_LEVELS` values takes a slot in the solver's integer block,
-which holds its values explicitly; a wider one takes a continuous coordinate
-instead. An ordinal takes the integer block too, keeping its order visible to
-the solver, while a categorical, a bool, and each item of a subset take the
-categorical block, which the solver represents one-hot. A permutation takes
-one continuous coordinate per item and is read back in that order, so every
-proposal is a valid ordering.
+Notes
+-----
+Each kind sits where the solver can move along it. A real parameter takes a
+continuous coordinate decoded through its chart, so a log-scaled one is
+perturbed multiplicatively and a quantized one lands on its grid. An integer
+with at most `MAX_INTEGER_LEVELS` values takes the solver's integer block and
+a wider one a continuous coordinate. An ordinal takes the integer block too,
+keeping its order visible. A categorical, a bool, and each item of a subset
+take the categorical block, which the solver represents one-hot. A
+permutation takes one continuous coordinate per item and is read back in that
+order, so every proposal is a valid ordering.
 
-A declared prior reaches the solver wherever the solver has somewhere to put
-it. A real or integer parameter carries its prior in its chart, so the
-geometry arrives with the coordinate. A categorical, bool or subset parameter
-with `.prior(weights=...)` starts the solver's own categorical distribution
-at those weights rather than uniform, and the run adapts from there. An
-ordinal is the exception: it sits in the integer block, which holds a
-Gaussian rather than a distribution over levels, so its weights have no
-counterpart and do not reach the solver.
+A categorical, bool or subset parameter declaring `.prior(weights=...)`
+starts the solver's own categorical distribution at those weights rather than
+uniform, and the run adapts from there. An ordinal is the exception: the
+integer block holds a Gaussian rather than a distribution over levels, so its
+weights have no counterpart and do not reach the solver.
 
 Examples
 --------
@@ -65,18 +64,6 @@ continuous and integer parameters inform the mean:
 >>> first = warm.ask()[0].config
 >>> first["depth"], round(first["lr"], 2)
 (5, 0.01)
-
-Declared weights start the categorical block where the space says the good
-values are, so a heavily weighted variant dominates the first generation
-instead of arriving at even odds:
-
->>> weighted = ds.space(
-...     ds.param("act").categorical("relu", "tanh").prior(weights=[9.0, 1.0]),
-...     ds.param("depth").integer(1, 8),
-... )
->>> first = [p.config["act"] for p in Optimizer(weighted, seed=0).ask()]
->>> first.count("relu") > first.count("tanh")
-True
 """
 
 from __future__ import annotations
@@ -88,7 +75,7 @@ from typing import Any
 import numpy as np
 
 import designspace as ds
-from designspace_solvers._placement import decode_random_keys, require_backend
+from designspace_solvers._placement import decode_random_keys, require_backend, subset_bounds
 from designspace_solvers._profile import Rejection, UnsupportedSpace, require
 
 __all__ = ["KINDS", "MAX_INTEGER_LEVELS", "Optimizer", "Proposal"]
@@ -158,6 +145,51 @@ def _levels(defn: ds.ParamDef) -> int | None:
     return span if span <= MAX_INTEGER_LEVELS else None
 
 
+def _bounded_subsets(space: ds.Space) -> list[Rejection]:
+    """Report every subset whose declared size this layout cannot hold.
+
+    A subset takes one inclusion flag per item in the categorical block, and
+    the flags are independent: nothing in the solver ties them together. The
+    layout is fixed before the first generation, so there is no conditional
+    route that withholds a flag the bound has settled, and `CatCMAwM` accepts
+    no constraint of its own. A declared `min_size` or `max_size` therefore
+    has nowhere to go, and placing the flags without it would propose
+    selections the space calls out of bounds.
+
+    Every offending parameter is reported, matching how a kind or a condition
+    outside the envelope is reported.
+
+    Parameters
+    ----------
+    space : designspace.Space
+        The space being placed.
+
+    Returns
+    -------
+    list[Rejection]
+        One entry per subset carrying a size bound, empty where none does.
+    """
+    refused: list[Rejection] = []
+    for path, defn in space.params.items():
+        if defn.type_kind != "subset":
+            continue
+        domain = defn.domain
+        assert isinstance(domain, ds.SubsetDomain)
+        low, high = subset_bounds(domain)
+        count = len(domain.items)
+        if low <= 0 and high >= count:
+            continue
+        refused.append(
+            Rejection(
+                path=path,
+                kind="subset",
+                reason=f"a declared size between {low} and {high} of {count} items, and this "
+                "backend places a subset as independent inclusion flags it cannot bound",
+            )
+        )
+    return refused
+
+
 def _layout(
     space: ds.Space,
 ) -> tuple[tuple[_Slot, ...], list[list[float]], list[list[Any]], list[int]]:
@@ -196,7 +228,9 @@ def _layout(
             c_space.append(2)
         elif kind == "subset":
             assert isinstance(domain, ds.SubsetDomain)
-            # One inclusion flag per item, each its own categorical.
+            # One inclusion flag per item, each its own categorical. Nothing
+            # ties them together, which is why `_bounded_subsets` refuses a
+            # subset whose declared size excludes any of their combinations.
             slots.append(
                 _Slot(path, kind, "c", len(c_space), len(domain.items), domain.items, None)
             )
@@ -317,9 +351,9 @@ class Optimizer:
     Raises
     ------
     UnsupportedSpace
-        When the space is conditional, has a variable-length list, or holds a
-        kind with no place in a flat layout. Every reason is reported at once,
-        by path.
+        When the space is conditional, has a variable-length list, declares a
+        subset size bound, or holds a kind with no place in a flat layout.
+        Every reason is reported at once, by path.
 
     Examples
     --------
@@ -365,6 +399,9 @@ class Optimizer:
             conditional=False,
             variable_length=False,
         )
+        refused = _bounded_subsets(space)
+        if refused:
+            raise UnsupportedSpace("the CMA-ES binding", refused)
         self._space = space
         self._slots, x_space, z_space, c_space = _layout(space)
         self.history: list[tuple[dict[str, Any], float]] = []

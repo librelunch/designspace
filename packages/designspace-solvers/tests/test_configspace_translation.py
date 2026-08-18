@@ -539,6 +539,54 @@ def test_condition_on_ds_value_is_refused() -> None:
     assert "b" in str(excinfo.value)
 
 
+# -- Subset size bounds -----------------------------------------------------
+
+
+def test_a_bounded_subset_never_samples_outside_its_size() -> None:
+    """A subset sits across one hyperparameter per item, which on its own
+    admits every combination. The declared size has to survive that."""
+    space = ds.space(ds.param("s").subset(items=("a", "b", "c", "d", "e"), min_size=1, max_size=3))
+    translation = translate(space)
+    for config in _decode_many(translation, 200):
+        assert 1 <= len(config["s"]) <= 3, config
+        assert not space.validate(config).param_errors
+
+
+def test_a_bounded_subset_still_reaches_every_admissible_size() -> None:
+    """Excluding the sizes outside the bounds excludes nothing inside them."""
+    space = ds.space(ds.param("s").subset(items=("a", "b", "c", "d", "e"), min_size=1, max_size=3))
+    translation = translate(space)
+    sizes = {len(config["s"]) for config in _decode_many(translation, 200)}
+    assert sizes == {1, 2, 3}
+
+
+def test_a_bounded_subset_inside_a_static_lift_bounds_each_instance() -> None:
+    """Each unrolled instance carries the bound its element declares."""
+    space = ds.space(ds.param("ss").subset(items=("a", "b", "c"), min_size=2).repeat(2))
+    translation = translate(space)
+    for config in _decode_many(translation, 100):
+        for item in config["ss"]:
+            assert len(item) >= 2, config
+
+
+def test_an_unbounded_subset_adds_no_clause() -> None:
+    """A subset admitting every size states nothing to exclude."""
+    space = ds.space(ds.param("s").subset(items=("a", "b", "c")))
+    translation = translate(space)
+    assert not list(translation.config_space.forbidden_clauses)
+
+
+def test_a_subset_whose_bounds_need_too_many_clauses_is_refused() -> None:
+    """ConfigSpace states a forbidden combination one at a time, so a bound
+    over many items costs combinatorially many. Past the cap the parameter is
+    refused rather than translated with the bound dropped."""
+    items = tuple(f"i{n}" for n in range(40))
+    space = ds.space(ds.param("s").subset(items=items, min_size=8, max_size=20))
+    with pytest.raises(UnsupportedSpace) as caught:
+        translate(space)
+    assert "s" in {r.path for r in caught.value.rejections}
+
+
 # -- Forbidden clauses ----------------------------------------------------
 
 

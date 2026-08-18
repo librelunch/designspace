@@ -1,29 +1,34 @@
 """Optuna binding.
 
 `suggest(trial, space)` builds one complete configuration inside an objective
-function. It draws every parameter the space reports as assignable, in
-dependency order, and returns the configuration in nested form. A parameter
-that is inactive under the choices already drawn is never suggested, so it is
-absent from the result, and the result is always a configuration the space
-calls complete.
+function, drawing every parameter the space reports as assignable in
+dependency order. A parameter inactive under the choices already drawn is
+never suggested, so it is absent from the result, and the result is always a
+configuration the space calls complete.
 
 `set_constraints(trial, space, config)` scores a configuration against every
-hard constraint and writes the scores onto the trial, each under a name
-derived from the declaration it came from. A sampler reads them from there
-and steers toward feasibility. `constraint_values(space, config)` computes
-the same scores without a trial.
-
-Priors reach Optuna two ways. A real or integer parameter with no
-quantization and either no prior or a log scale is drawn from Optuna's own
-distribution, so a log-scaled one carries `log=True` and the sampler perturbs
-it multiplicatively. Any other prior, and any quantized parameter, is drawn
-in unit coordinates and decoded through the parameter's chart, which
-reproduces the declared shape and lands on the declared grid without Optuna
-representing either. An ordinal is drawn as an index, keeping its order
-visible to the sampler, and a categorical as an unordered choice.
+hard constraint and writes the scores onto the trial, each named for the
+declaration it came from. A sampler reads them from there and steers toward
+feasibility; it does not filter the study. `constraint_values(space, config)`
+computes the same scores without a trial.
 
 `KINDS` holds the parameter kinds this binding places. A space carrying any
 other kind raises `UnsupportedSpace` naming the parameter.
+
+Notes
+-----
+A declared prior reaches Optuna rather than being applied afterwards. A real
+or integer parameter with no grid, and either no prior or a log scale, is
+drawn from Optuna's own distribution, so a log-scaled one is perturbed
+multiplicatively. Any other prior, and any quantized parameter, is drawn in
+unit coordinates and decoded through the parameter's chart, which reproduces
+the declared shape and lands on the declared grid without Optuna representing
+either.
+
+An ordinal is drawn as an index, keeping its order visible to the sampler,
+and a categorical as an unordered choice. A subset is drawn as one inclusion
+flag per item, and a flag its declared size bound has already settled is not
+suggested at all, so every draw lands inside the declared sizes.
 
 Examples
 --------
@@ -53,35 +58,6 @@ warmup off carries no step count at all.
 
 >>> sorted({"warmup_steps" in config for config in seen})
 [False, True]
-
-A constrained space, where the sampler reads the margin rather than a verdict.
-Score the configuration in the objective and the sampler picks the scores up
-from the trial:
-
->>> from designspace_solvers.optuna import set_constraints
->>> budget = ds.space(
-...     ds.param("workers").integer(1, 16),
-...     ds.param("memory_gb").integer(1, 64),
-... ).forbid(ds.param("workers") * ds.param("memory_gb") > 64, tags=("budget",))
->>> def throughput(trial):
-...     config = suggest(trial, budget)
-...     set_constraints(trial, budget, config)
-...     return -float(config["workers"])
->>> study = optuna.create_study(sampler=optuna.samplers.TPESampler(seed=0))
->>> study.optimize(throughput, n_trials=30)
-
-A constraint informs the sampler; it does not filter the study. Each trial
-carries its own scores, named for the constraint they measure, and a trial is
-feasible when none of them is above zero:
-
->>> best = min(
-...     (t for t in study.trials if all(v <= 0.0 for v in t.constraints.values())),
-...     key=lambda t: t.value,
-... )
->>> sorted(best.constraints)
-['forbid[budget]']
->>> best.params["workers"] * best.params["memory_gb"] <= 64
-True
 """
 
 from __future__ import annotations
@@ -96,6 +72,7 @@ from designspace_solvers._placement import (
     item_paths,
     native_scalar,
     require_backend,
+    subset_bounds,
 )
 from designspace_solvers._profile import Rejection, UnsupportedSpace, require
 
@@ -139,6 +116,52 @@ def _suggest_scalar(trial: optuna.Trial, name: str, defn: ds.ParamDef) -> Any:
     return trial.suggest_float(name, float(lo), float(hi), log=log)
 
 
+def _suggest_subset(trial: optuna.Trial, path: str, domain: ds.SubsetDomain) -> list[Any]:
+    """Draw a subset as one inclusion flag per item, within its declared size.
+
+    The flags admit every combination on their own, so a declared `min_size`
+    or `max_size` has to be placed alongside them. It is placed the way this
+    binding already places an inactive parameter: a flag whose value the bound
+    has settled is not suggested. Once as many items are included as the upper
+    bound allows, every flag left has to be excluded, and once the items left
+    are exactly what the lower bound still needs, every flag left has to be
+    included. Neither is a free variable, and suggesting one would ask Optuna
+    a question whose answer is already fixed.
+
+    Nothing drawn is changed, so a proposal is the one Optuna made rather than
+    a repaired version of it, and every proposal lands inside the declared
+    sizes.
+
+    Parameters
+    ----------
+    trial : optuna.Trial
+        The trial to draw the flags from.
+    path : str
+        The subset parameter's definition path.
+    domain : designspace.SubsetDomain
+        Its domain, holding the items and the size bound.
+
+    Returns
+    -------
+    list[Any]
+        The included items, in declared order.
+    """
+    low, high = subset_bounds(domain)
+    names = item_paths(path, len(domain.items))
+    chosen: list[Any] = []
+    for index, (item, name) in enumerate(zip(domain.items, names, strict=True)):
+        left = len(domain.items) - index
+        if len(chosen) >= high:
+            included = False
+        elif len(chosen) + left <= low:
+            included = True
+        else:
+            included = bool(trial.suggest_categorical(name, [False, True]))
+        if included:
+            chosen.append(item)
+    return chosen
+
+
 def _suggest_one(trial: optuna.Trial, space: ds.Space, path: str) -> Any:
     defn = space.param_def(path)
     kind = defn.type_kind
@@ -174,14 +197,7 @@ def _suggest_one(trial: optuna.Trial, space: ds.Space, path: str) -> Any:
 
     if kind == "subset":
         assert isinstance(domain, ds.SubsetDomain)
-        # One inclusion flag per item. The size bounds are left to validation
-        # rather than repaired here: a repair would silently move the proposal
-        # Optuna is trying to learn from.
-        return [
-            item
-            for item, name in zip(domain.items, item_paths(path, len(domain.items)), strict=True)
-            if trial.suggest_categorical(name, [False, True])
-        ]
+        return _suggest_subset(trial, path, domain)
 
     if kind == "permutation":
         assert isinstance(domain, ds.PermutationDomain)

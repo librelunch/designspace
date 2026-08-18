@@ -90,6 +90,7 @@ from designspace_solvers._placement import (
     item_paths,
     native_scalar,
     require_backend,
+    subset_bounds,
 )
 from designspace_solvers._profile import Rejection, UnsupportedSpace, require
 
@@ -382,9 +383,7 @@ def _place_one(path: str, defn: ds.ParamDef) -> tuple[_Slot, list[ParamSpec]]:
         items = domain.items
         names = tuple(r_name(p) for p in item_paths(path, len(items)))
         specs = [ParamSpec(n, path, "c", _index_domain(2)) for n in names]
-        high = len(items) if domain.max_size is None else domain.max_size
-        bounds = (domain.min_size, high)
-        return _Slot(path, kind, names, items, None, False, bounds), specs
+        return _Slot(path, kind, names, items, None, False, subset_bounds(domain)), specs
 
     if kind == "permutation":
         assert isinstance(domain, ds.PermutationDomain)

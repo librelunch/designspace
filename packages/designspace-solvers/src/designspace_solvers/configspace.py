@@ -1,53 +1,40 @@
 """ConfigSpace binding.
 
 `translate(space)` converts a space into a `ConfigurationSpace`, returned as
-a `Translation` paired with an exact `decode` and `encode`.
+a `Translation` paired with an exact `decode` and `encode`. `KINDS` holds the
+parameter kinds it places, `list` among them with a static count; the program
+and custom kinds have no ConfigSpace counterpart.
 
-A real or integer parameter is placed as ConfigSpace's own `Float`/`Integer`
-when unquantized and either unshaped or log-scaled; otherwise it is placed in
-unit coordinates and decoded through its chart. Every other generative kind,
-meaning bool, categorical, ordinal, choice, and a subset's per-item flags, is
-placed as an index into its declared values rather than as the value itself,
-so that a decoded value is never one of the NumPy scalar types
+A `.when()` condition and a hard constraint translate where ConfigSpace has a
+form for them, and are handled differently where it does not. A condition
+that does not translate is refused by path, every such path at once, rather
+than placed unconditionally. A constraint that does not is reported on
+`Translation.untranslated_constraints` rather than raised: a reported
+constraint is a relaxation the search does not see and `space.is_feasible`
+still catches, never a restriction that hides a feasible configuration from
+the search. A soft constraint is neither translated nor reported.
+
+Notes
+-----
+A real or integer parameter is placed as ConfigSpace's own `Float` or
+`Integer` when unquantized and either unshaped or log-scaled, and in unit
+coordinates decoded through its chart otherwise. Every other generative kind
+is placed as an index into its declared values rather than as the value
+itself, so a decoded value is never one of the NumPy scalar types
 `ConfigurationSpace` returns. A permutation is placed as one continuous
 coordinate per item and read back by sorting.
 
-A `.repeat()` lift with a static count is unrolled into one placement per
-index, `xs[0]` through `xs[n-1]`, each by the rule above for its own element
-kind. A struct or choice element additionally places every field core
-relocates under it, `workers[0].timeout_s`, a choice's own discriminator-
-equality condition rewritten from the template `choices[]` to that instance;
-a nested lift recurses the same way, one bracket level deeper. A struct
-element's own hard constraint, declared inside its space, translates once
-per instance alongside it.
+A `.repeat()` lift with a static count unrolls into one placement per index,
+`xs[0]` through `xs[n-1]`, each by the rule for its own element kind. A
+struct or choice element additionally places every field underneath it,
+`workers[0].timeout_s`, with a choice's discriminator-equality condition
+rewritten to that instance; a nested lift recurses one bracket level deeper.
 
-A `.when()` condition translates when every parameter it references is placed
-as one hyperparameter in its own declared units, and the comparison is `==`,
-`!=`, `is_in`, `<`, or `>`, combined by `&`, `|`, `~`, and `.implies()`.
-Anything else, including `>=`, `<=`, a comparison against a unit-coded
-parameter, and a condition referencing more than one parameter, is refused by
-path rather than placed unconditionally; every such path is reported at once.
-The conditional parameter itself faces no such limit. A lift or a subset
-gates each hyperparameter it placed, so ConfigSpace withholds them together,
-and a struct gates none, core having copied its condition onto every field
-underneath it.
-
-A hard constraint translates into a forbidden clause under the same
-placement rule, over a wider vocabulary: ConfigSpace's forbidden clauses
-cover all six comparisons, and a comparison between two parameters translates
-too, provided both share a wire representation that preserves their order.
-`require` and the bound-origin constraints expression bounds desugar into
-translate through their negation. A constraint that does not translate is
-reported on `Translation.untranslated_constraints` rather than raised, which
-is the only way this binding ever misses one: a reported constraint is a
-relaxation the search does not see and `space.is_feasible` still catches,
-never a restriction that hides a feasible configuration from the search. A
-soft constraint, `encourage` or `discourage`, is never translated or
-reported.
-
-`KINDS` holds the parameter kinds this binding places, `list` among them with
-a static count. Absent are the program and custom kinds, neither having a
-ConfigSpace counterpart.
+A subset's declared size is spelled out as the combinations it excludes,
+ConfigSpace stating a forbidden combination one at a time and having no
+clause over a sum. Bounding a size therefore costs one clause per excluded
+combination, and a bound costing more than `MAX_SUBSET_CLAUSES` is refused by
+path rather than translated with the size dropped.
 
 Examples
 --------
@@ -68,8 +55,8 @@ True
 >>> ("nesterov" in config) == (config["optimizer"] == "sgd")
 True
 
-A hard constraint reaches the search as a forbidden clause, so an infeasible
-draw is never sampled in the first place:
+A constraint multiplying two parameters has no forbidden-clause form, so it
+is reported rather than raised:
 
 >>> budget = ds.space(
 ...     ds.param("workers").integer(1, 16), ds.param("memory_gb").integer(1, 64)
@@ -82,20 +69,6 @@ A static-count lift unrolls into one hyperparameter per index:
 >>> lifted = ds.space(ds.param("xs").real(0.0, 1.0).repeat(3))
 >>> sorted(translate(lifted).config_space.keys())
 ['xs[0]', 'xs[1]', 'xs[2]']
-
-A choice element's discriminator-equality condition is rewritten to its own
-instance, so a payload sits exactly where that instance chose its variant:
-
->>> lifted_choice = ds.space(
-...     ds.param("choices")
-...     .choice(a=ds.space(), b=ds.space(ds.param("v").integer(1, 5)))
-...     .repeat(2)
-... )
->>> translation = translate(lifted_choice)
->>> translation.config_space.seed(0)
->>> config = translation.decode(translation.config_space.sample_configuration())
->>> config
-{'choices': [{'a': {}}, {'b': {'v': 3}}]}
 
 A refusal names the parameter and the reason, matching the other bindings:
 
@@ -115,6 +88,8 @@ expression, and this backend needs a fixed width
 from __future__ import annotations
 
 import dataclasses
+import itertools
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -129,13 +104,14 @@ from designspace_solvers._placement import (
     item_paths,
     native_scalar,
     require_backend,
+    subset_bounds,
 )
 from designspace_solvers._profile import Rejection, UnsupportedSpace, require
 
 if TYPE_CHECKING:
     from ConfigSpace import Configuration, ConfigurationSpace
 
-__all__ = ["KINDS", "Translation", "translate"]
+__all__ = ["KINDS", "MAX_SUBSET_CLAUSES", "Translation", "translate"]
 
 #: The parameter kinds this binding places: every generative kind. `list`
 #: is placed with a static count over any element kind, `_place_list`
@@ -143,6 +119,14 @@ __all__ = ["KINDS", "Translation", "translate"]
 #: `variable_length=False` below. The program and custom kinds are absent
 #: outright, having no ConfigSpace counterpart at all.
 KINDS = GENERATIVE_KINDS
+
+#: How many forbidden clauses a subset's size bound may cost before the
+#: parameter is refused instead. ConfigSpace states a forbidden combination
+#: one at a time, so bounding a size costs one clause per excluded
+#: combination, which grows combinatorially in the number of items. A space
+#: past this is refused by path rather than translated with the bound
+#: silently dropped.
+MAX_SUBSET_CLAUSES = 512
 
 _NEGATE_OP = {"eq": "ne", "ne": "eq", "gt": "le", "lt": "ge", "ge": "lt", "le": "gt"}
 
@@ -173,6 +157,7 @@ class _Slot:
     values: tuple[Any, ...]  # index-coded native values; () for real/integer
     chart: ds.Chart | None  # set only for a unit-coded real/integer
     unit_coded: bool
+    size_bounds: tuple[int, int] | None = None  # set only for a subset
 
 
 def _is_native_scalar(slot: _Slot) -> bool:
@@ -276,14 +261,25 @@ def _place_one(
         if isinstance(defn.prior, ds.Weights):
             item_weights = defn.prior.values
         hp_names = item_paths(path, len(items))
+        low, high = subset_bounds(domain)
+        # Every flag defaults to excluded, which is a size of zero and outside
+        # a `min_size` above it. ConfigSpace refuses a default configuration
+        # its own clauses forbid, so the declared default decides the flags
+        # where there is one, and the first `min_size` items where there is
+        # not.
+        included: set[int]
+        if effective_default is not None:
+            included = {_index_of(items, value) for value in effective_default}
+        else:
+            included = set(range(low))
         hps = []
         for i, name in enumerate(hp_names):
-            kwargs = {}
+            kwargs = {"default": 1 if i in included else 0}
             if item_weights is not None:
                 p = float(item_weights[i])
                 kwargs["weights"] = [1.0 - p, p]
             hps.append(cs.Categorical(name, [0, 1], **kwargs))
-        return _Slot(path, kind, hp_names, items, None, False), hps
+        return _Slot(path, kind, hp_names, items, None, False, (low, high)), hps
 
     if kind == "permutation":
         assert isinstance(domain, ds.PermutationDomain)
@@ -855,6 +851,85 @@ def _build_forbidden_is_in(
     return cs.ForbiddenInClause(hp_by_path[path], wire_values)
 
 
+def _cardinality_clauses(slot: _Slot, hp_by_name: dict[str, Any], cs: Any) -> list[Any]:
+    """Forbid the subset sizes a subset's own domain excludes.
+
+    A subset places one inclusion flag per item, and the flags on their own
+    admit every combination: nothing in ConfigSpace ties them together, so a
+    declared `min_size` or `max_size` would be lost and the space would call
+    the sampled value out of bounds. ConfigSpace states a forbidden
+    combination one at a time and has no clause over a sum, so the bound is
+    spelled as the combinations it excludes. Exceeding `max_size` means some
+    `max_size + 1` items are all included, and falling short of `min_size`
+    means some `n - min_size + 1` are all excluded; forbidding each such
+    combination forbids exactly the sizes outside the bounds and no
+    configuration inside them.
+    """
+    assert slot.size_bounds is not None
+    low, high = slot.size_bounds
+    count = len(slot.hp_names)
+    clauses: list[Any] = []
+    if high < count:
+        for combination in itertools.combinations(slot.hp_names, high + 1):
+            clauses.append(
+                cs.ForbiddenAndConjunction(
+                    *[cs.ForbiddenEqualsClause(hp_by_name[name], 1) for name in combination]
+                )
+            )
+    if low > 0:
+        for combination in itertools.combinations(slot.hp_names, count - low + 1):
+            clauses.append(
+                cs.ForbiddenAndConjunction(
+                    *[cs.ForbiddenEqualsClause(hp_by_name[name], 0) for name in combination]
+                )
+            )
+    return clauses
+
+
+def _cardinality_count(slot: _Slot) -> int:
+    """How many clauses `_cardinality_clauses` would build for `slot`."""
+    assert slot.size_bounds is not None
+    low, high = slot.size_bounds
+    count = len(slot.hp_names)
+    total = 0
+    if high < count:
+        total += math.comb(count, high + 1)
+    if low > 0:
+        total += math.comb(count, count - low + 1)
+    return total
+
+
+def _apply_cardinality(slots: dict[str, _Slot], hp_by_name: dict[str, Any], cs: Any) -> list[Any]:
+    """Bound every subset's size, or refuse the ones costing too much to bound.
+
+    Every offending parameter is collected before any is raised, matching how
+    a kind or a condition outside the envelope is reported.
+    """
+    clauses: list[Any] = []
+    refused: list[Rejection] = []
+    for slot in slots.values():
+        if slot.kind != "subset" or slot.size_bounds is None:
+            continue
+        low, high = slot.size_bounds
+        if low <= 0 and high >= len(slot.hp_names):
+            continue
+        if _cardinality_count(slot) > MAX_SUBSET_CLAUSES:
+            refused.append(
+                Rejection(
+                    path=slot.path,
+                    kind=slot.kind,
+                    reason=f"a size bound of ({low}, {high}) over {len(slot.hp_names)} items "
+                    f"needs {_cardinality_count(slot)} forbidden clauses, past the "
+                    f"{MAX_SUBSET_CLAUSES} this backend spells out",
+                )
+            )
+            continue
+        clauses.extend(_cardinality_clauses(slot, hp_by_name, cs))
+    if refused:
+        raise UnsupportedSpace("the ConfigSpace binding", refused)
+    return clauses
+
+
 def _apply_forbidden(
     space: ds.Space,
     slots: dict[str, _Slot],
@@ -1068,6 +1143,7 @@ def translate(space: ds.Space, *, default: dict[str, Any] | None = None) -> Tran
         config_space.add(conditions)
 
     forbidden, untranslated = _apply_forbidden(space, slots, hp_by_path, cs, extra_constraints)
+    forbidden = [*_apply_cardinality(slots, hp_by_name, cs), *forbidden]
     if forbidden:
         config_space.add(forbidden)
 

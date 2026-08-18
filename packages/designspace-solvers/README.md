@@ -30,7 +30,7 @@ copyleft, which nothing else here is.
 | Backend | Shape | Takes |
 |---|---|---|
 | `designspace_solvers.optuna` | define-by-run, one trial at a time | hierarchical and conditional spaces; every kind but `custom`, `symbolic` and `code` |
-| `designspace_solvers.cmaes` | ask and tell, one generation at a time | flat spaces: every parameter always active, every list a fixed length |
+| `designspace_solvers.cmaes` | ask and tell, one generation at a time | flat spaces: every parameter always active, every list a fixed length, every subset unbounded in size |
 | `designspace_solvers.configspace` | converts to a `ConfigurationSpace` | conditional spaces whose conditions and hard constraints have a ConfigSpace form; a static-count `list`, over a scalar, subset, permutation, struct, or choice element, or a nested lift |
 | `designspace_solvers.smac` | ask and tell, over the ConfigSpace translation | exactly what `configspace` takes |
 | `designspace_solvers.irace` | racing; irace runs the loop and calls back | the same kinds `configspace` takes, with a wider reach on conditions and constraints |
@@ -200,6 +200,14 @@ An ordinal's levels are ordered, so every backend places it somewhere the
 order is visible and a move along it means something: Optuna and irace search
 an index over the levels, CMA-ES its integer block, and ConfigSpace an
 `OrdinalHyperparameter`.
+
+A subset's declared size is part of its domain, while the inclusion flags a
+backend places carry membership alone, so each backend states the size in its
+own terms. Optuna withholds a flag the size has already settled, ConfigSpace
+excludes the combinations the size rules out, and irace carries it as a
+forbidden expression over the flags. CMA-ES refuses a subset declaring a size:
+its layout is fixed before the first generation and its solver takes no
+constraint, so there is nowhere to put one.
 
 Nothing is padded, imputed, or relaxed. A backend accepts the spaces it can
 represent and refuses the rest by name, reporting every offending parameter at

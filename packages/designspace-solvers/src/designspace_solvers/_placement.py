@@ -6,9 +6,11 @@ the representation. Whether a solver's own real or integer distribution
 reproduces a declared chart follows from the chart and the prior, not from
 the solver. A subset's inclusion flags, a permutation's keys, and the order
 those keys decode to are one representation, and it reads the same whichever
-binding wrote it. Each is stated once here, so a change to core's kinds or
-charts lands in one place rather than in every binding that happened to hold
-a copy of it.
+binding wrote it. What that representation does not carry, a subset's
+declared size among it, is named here too, so a binding states the bound in
+its own terms rather than discovering its absence in a sampled value. Each is
+stated once here, so a change to core's kinds or charts lands in one place
+rather than in every binding that happened to hold a copy of it.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ __all__ = [
     "item_paths",
     "native_scalar",
     "require_backend",
+    "subset_bounds",
 ]
 
 #: The kinds that carry a definition rather than a coordinate. A `symbolic`
@@ -111,6 +114,13 @@ def item_paths(path: str, count: int) -> tuple[str, ...]:
     every binding spells them the same way, so a name read off one solver's
     output means what it means in another's.
 
+    A subset's flags carry its membership and nothing else. On their own they
+    admit every combination, so a declared `min_size` or `max_size` is no
+    part of what they say. A binding states the bound in its own terms,
+    reading it from `subset_bounds`, or refuses the parameter by path.
+    Placing the flags and leaving the bound out samples selections the space
+    calls out of bounds.
+
     Parameters
     ----------
     path : str
@@ -124,6 +134,28 @@ def item_paths(path: str, count: int) -> tuple[str, ...]:
         One name per item, in declared order.
     """
     return tuple(f"{path}[{i}]" for i in range(count))
+
+
+def subset_bounds(domain: ds.SubsetDomain) -> tuple[int, int]:
+    """The selection sizes a subset admits, as two numbers.
+
+    A declaration that set no upper bound leaves `max_size` at `None`, which
+    means every item. Resolving that here gives every binding one pair to
+    read and one place for the reading to be wrong.
+
+    Parameters
+    ----------
+    domain : designspace.SubsetDomain
+        A subset parameter's domain.
+
+    Returns
+    -------
+    tuple[int, int]
+        The smallest and largest admitted size, both inclusive. A pair of
+        `(0, len(items))` is the bound that excludes nothing.
+    """
+    high = len(domain.items) if domain.max_size is None else domain.max_size
+    return domain.min_size, high
 
 
 def decode_random_keys(keys: Sequence[float], items: Sequence[Any]) -> list[Any]:
