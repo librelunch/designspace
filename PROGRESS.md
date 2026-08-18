@@ -51,7 +51,7 @@ either.
 | M13.10: Human-readable rendering (`__str__` on every public type, and `pretty(obj, space=None, ...)` | 2026-08-09 | 3820 + 126 |
 | M13.11: Solver socket prototype (`designspace-solvers` under `packages/`, Optuna and cmaes bindings, a seventh gate) | 2026-08-10 | 3877 + 128 |
 | M14: v0.1 release (MIT, release metadata, `CHANGELOG.md`, the release check, the documentation site, PyPI) | 2026-08-11 | 3897 + 128 |
-| M14.1: ConfigSpace and SMAC3 bindings (the foreign-representation hand-off shape; static-count lifts over every element kind, conditional activity gated one hyperparameter at a time, hard constraints as forbidden clauses with every miss reported; two new backends under the existing solvers gate) | 2026-08-17 | 3900 + 128 |
+| M14.1: ConfigSpace and SMAC3 bindings (the foreign-representation hand-off; static-count lifts, conditional activity, hard constraints as forbidden clauses with every miss reported) | 2026-08-17 | 3900 + 128 |
 | M14.2: the irace binding (racing, the first backend owning its own loop; a translation carrying R expression text, so a space translates where R is absent; names mangled to single R symbols; conditions and constraints as R expressions, reaching past a forbidden clause; a second solvers gate, R-backed) | 2026-08-17 | 3900 + 128 |
 
 ## Out-of-band fixes

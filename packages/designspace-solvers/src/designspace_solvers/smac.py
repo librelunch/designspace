@@ -1,24 +1,23 @@
 """SMAC3 binding.
 
-`Optimizer` drives SMAC's Bayesian-optimization facade over the ConfigSpace
-translation `designspace_solvers.configspace` builds, ask and tell, one
-configuration at a time. It places exactly what the ConfigSpace binding
-places, `KINDS` being the same frozenset, and refuses exactly what that
-binding refuses: a condition or a hard constraint with no ConfigSpace
-counterpart surfaces the same way, since `Optimizer` builds its search space
-by calling `configspace.translate` and nothing here narrows it further.
+`Optimizer` drives SMAC's Bayesian-optimization facade, ask and tell, over
+the ConfigSpace translation `designspace_solvers.configspace` builds. It
+places exactly what that binding places and refuses exactly what it refuses,
+`KINDS` being the same frozenset, since it builds its search space by calling
+`translate` and narrows nothing further.
 
-`ask()` proposes one configuration, decoded through the translation; `tell()`
-reports what it scored. `observe()` reports a configuration the optimizer
-never proposed, encoded back into ConfigSpace's own terms, which is how a
-run is warm started from a configuration already known to be good, the
-counterpart to the cmaes binding's `mean=`. `history` keeps every pair
-scored so far, `ask`- and `observe`-derived alike.
+`ask()` proposes one configuration, decoded through the translation, and
+`tell()` reports what it scored. `observe()` reports a configuration the
+optimizer never proposed, encoded back into ConfigSpace's own terms, which is
+how a run is warm started from one already known to be good, the counterpart
+to the cmaes binding's `mean=`. `history` keeps every pair scored so far,
+`ask`- and `observe`-derived alike.
 
+Notes
+-----
 SMAC configures Python's root logger and writes a run directory to disk by
-default, both invasive for a library call; `Optimizer` disables the former
-outright and takes `output_directory` for the latter rather than leaving
-either to SMAC's own defaults.
+default, both invasive for a library call. `Optimizer` disables the first
+outright and takes `output_directory` for the second.
 
 Examples
 --------
@@ -42,14 +41,8 @@ Ten trials against a mixed continuous, integer and categorical space:
 >>> all(space.is_feasible(config) for config, _ in optimizer.history)
 True
 
-`history` holds every configuration scored, so the best one is read from it:
-
->>> best, value = min(optimizer.history, key=lambda pair: pair[1])
->>> value <= max(v for _, v in optimizer.history)
-True
-
 Reporting a configuration the optimizer never asked for warm starts the
-surrogate with it, the counterpart to the cmaes binding's `mean=`:
+surrogate with it:
 
 >>> with tempfile.TemporaryDirectory() as tmp:
 ...     warm = Optimizer(space, seed=0, n_trials=5, output_directory=tmp)
