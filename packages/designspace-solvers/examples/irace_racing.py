@@ -8,8 +8,8 @@ the parameters of each strategy conditional on it. Two of its constraints have n
 forbidden clause form. One compares two parameters, the other multiplies a parameter
 by another, and irace parses conditions as R, so both reach the race as expressions.
 
-Needs R and the R package irace, version 4.4 or later. Install R, then run
-``Rscript -e "install.packages('irace', repos='https://cloud.r-project.org')"``.
+Needs R 4.5 or later and the R package irace, version 4.4 or later. Install R, then
+run ``Rscript -e "install.packages('irace', repos='https://cloud.r-project.org')"``.
 
 Run with ``uv run python packages/designspace-solvers/examples/irace_racing.py``.
 """

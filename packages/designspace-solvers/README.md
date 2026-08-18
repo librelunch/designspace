@@ -20,10 +20,10 @@ another's dependencies. A backend used without its extra raises `ImportError`
 naming the extra to install.
 
 The `irace` extra installs the bridge to R alone. Running a race also needs R
-and the irace package, version 4.4 or later, which
+4.5 or later and the irace package, version 4.4 or later, which
 `Rscript -e "install.packages('irace', repos='https://cloud.r-project.org')"`
-provides; translating a space needs neither. That bridge and irace itself are
-copyleft, which nothing else here is.
+provides. An older R fails as the bridge imports, reporting `R_getVar` as a
+missing symbol. Translating a space needs neither.
 
 ## The five backends
 
