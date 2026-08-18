@@ -4,7 +4,7 @@
   <img alt="designspace. Declarative design spaces for Python." src="docs/_static/readme-header-light.svg">
 </picture>
 
-Declarative design spaces with a polars-like expression API.
+Declarative design spaces with a chainable expression API.
 
 A *design space* is the set of configurations a system can take: an algorithm,
 a model, a process, or a physical assembly. A space is declared once, giving

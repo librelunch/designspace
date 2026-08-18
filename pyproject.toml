@@ -1,7 +1,7 @@
 [project]
 name = "designspace"
 version = "0.1.0"
-description = "Declarative design spaces with a polars-like expression API"
+description = "Declarative design spaces with a chainable expression API"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"

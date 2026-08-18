@@ -76,17 +76,6 @@ answer.
 `margin` is `None` because there is no boundary to measure a distance to. The
 constraint is still enforced; it behaves as a wall rather than a slope.
 
-## Rationale
-
-The argument for transparency is not solver consumption. A solver facing a
-black-box objective is not handing these constraints to a MIP or CP solver
-anyway.
-
-Margins, `evaluate_partial`, `remaining_domain` and bound-origin tightening are
-all **designspace's own machinery**, and all of them run on structure. A
-black-box predicate switches them off for that constraint, inside a library
-otherwise being paid for.
-
 ## Tightening instead of rejecting
 
 A grey predicate is usually within reach where a black one gets written out of
