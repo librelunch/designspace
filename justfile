@@ -42,8 +42,15 @@ gates-solvers:
     uv run ruff check packages/
     uv run ruff format --check packages/
     uv run mypy --strict packages/designspace-solvers/src/
-    uv run pytest -q packages/designspace-solvers/tests
+    uv run pytest -q -m "not requires_irace" packages/designspace-solvers/tests
     uv run pytest -q --doctest-modules packages/designspace-solvers/src
+
+# The irace binding against a real irace. Separate from `gates-solvers` because
+# it is the one gate needing R installed: the translation is ordinary Python and
+# is covered there, and this covers what only irace can answer, meaning whether
+# it accepts the names, conditions and forbidden expressions the binding writes.
+gates-irace:
+    uv run pytest -q -m requires_irace packages/designspace-solvers/tests
 
 # The release check, run before a tag. Deliberately not one of the commit
 # gates. Introduces a deliberate type error against a public signature and

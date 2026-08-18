@@ -15,11 +15,9 @@ dependencies = [
 ]
 
 # One extra per backend. A backend imports its solver lazily and raises a plain
-# `ImportError` naming its extra when the install is absent, matching how core
-# treats its own optional dependencies.
+# `ImportError` naming its extra when the install is absent.
 [project.optional-dependencies]
-# The floor names a pre-release, which is what admits one: the binding writes
-# constraints through `Trial.set_constraint`, added in this release.
+# Uses the pre-release for improved constraint handling.
 optuna = ["optuna>=5.0.0rc1"]
 # `CatCMAwM` lives behind the `cmawm` extra, which is what brings scipy.
 cmaes = ["cmaes[cmawm]>=0.13"]
@@ -28,6 +26,11 @@ cmaes = ["cmaes[cmawm]>=0.13"]
 configspace = ["ConfigSpace>=1.2.2"]
 # scikit-learn<1.9 because of https://github.com/automl/SMAC3/issues/1336
 smac = ["smac>=2.4", "scikit-learn<1.9"]
+# irace is an R package, so this extra installs the bridge alone: R and irace
+# are prerequisites the binding reports on when they are absent.
+# rpy2 3.6 is the release that dropped the C extension, which is what lets the
+# translation install and be tested where no R is present.
+irace = ["rpy2>=3.6"]
 
 [tool.uv.sources]
 designspace = { workspace = true }

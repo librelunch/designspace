@@ -23,6 +23,8 @@ import pytest
 from designspace_solvers import UnsupportedSpace, profile, rejections
 from designspace_solvers.cmaes import Optimizer, _categorical_start, _layout
 from designspace_solvers.configspace import translate
+from designspace_solvers.irace import _name_rejection
+from designspace_solvers.irace import translate as irace_translate
 from designspace_solvers.optuna import constraint_values, set_constraints, suggest
 from designspace_solvers.smac import Optimizer as SmacOptimizer
 
@@ -30,8 +32,12 @@ import designspace as ds
 from corpus.compiler_pipeline import build_space as build_compiler_pipeline
 from corpus.delivery_routes import build_space as build_delivery_routes
 from corpus.flat_hpo import build_space as build_flat_hpo
+from corpus.flow_chemistry import build_space as build_flow_chemistry
+from corpus.greenhouse import build_space as build_greenhouse
+from corpus.job_shop import build_space as build_job_shop
 from corpus.memetic_pipeline import build_space as build_memetic_pipeline
 from corpus.solver_portfolio import build_space as build_solver_portfolio
+from corpus.wind_farm_grid import build_space as build_wind_farm_grid
 
 
 def _observation_key(space: ds.Space, config: dict[str, Any]) -> tuple[str, str]:
@@ -591,6 +597,85 @@ def test_smac_refuses_a_variable_length_space_by_name(tmp_path: Path) -> None:
     space = build_solver_portfolio()
     with pytest.raises(UnsupportedSpace) as caught:
         SmacOptimizer(space, output_directory=tmp_path)
+    assert "workers" in {r.path for r in caught.value.rejections}
+
+
+# -- irace, the racing shape -------------------------------------------------
+#
+# No test here starts R. The translation is ordinary Python, so what a race is
+# handed is asserted over the corpus without one, and `just gates-irace` runs
+# the race itself.
+
+
+@pytest.mark.parametrize(
+    "build",
+    [build_flat_hpo, build_compiler_pipeline, build_wind_farm_grid, build_job_shop],
+    ids=["flat_hpo", "compiler_pipeline", "wind_farm_grid", "job_shop"],
+)
+def test_irace_round_trips_every_sampled_configuration(build: Any) -> None:
+    """Encoding a configuration into irace's terms and reading it back is a
+    no-op, over spaces written to exercise the library rather than the
+    binding."""
+    space = build()
+    translation = irace_translate(space)
+    for seed in range(30):
+        config = space.sample_one(seed=seed)
+        assert translation.decode(translation.encode(config)) == config
+
+
+@pytest.mark.parametrize(
+    "build",
+    [build_flat_hpo, build_compiler_pipeline, build_wind_farm_grid, build_job_shop],
+    ids=["flat_hpo", "compiler_pipeline", "wind_farm_grid", "job_shop"],
+)
+def test_irace_decodes_only_complete_configurations(build: Any) -> None:
+    """What comes back out of the translation is a configuration the space
+    calls complete."""
+    space = build()
+    translation = irace_translate(space)
+    for seed in range(30):
+        config = translation.decode(translation.encode(space.sample_one(seed=seed)))
+        assert space.is_complete(config)
+        assert not space.validate(config).param_errors
+
+
+@pytest.mark.parametrize(
+    "build",
+    [build_flat_hpo, build_compiler_pipeline, build_wind_farm_grid, build_job_shop],
+    ids=["flat_hpo", "compiler_pipeline", "wind_farm_grid", "job_shop"],
+)
+def test_irace_observation_key_is_stable(build: Any) -> None:
+    """The key a tuning loop records does not change between reads."""
+    space = build()
+    translation = irace_translate(space)
+    for seed in range(20):
+        config = translation.decode(translation.encode(space.sample_one(seed=seed)))
+        assert _observation_key(space, config) == _observation_key(space, config)
+
+
+@pytest.mark.parametrize(
+    "build",
+    [build_wind_farm_grid, build_job_shop, build_greenhouse, build_flow_chemistry],
+    ids=["wind_farm_grid", "job_shop", "greenhouse", "flow_chemistry"],
+)
+def test_irace_places_every_name_as_one_r_symbol(build: Any) -> None:
+    """These fixtures place the names the mangle exists for: a subset's and a
+    permutation's bracketed items, and a choice payload's dotted fields. irace
+    resolves a condition's names itself, so one it cannot parse fails inside a
+    race rather than here."""
+    translation = irace_translate(build())
+    mangled = [spec.name for spec in translation.params if "." in spec.name]
+    assert mangled, "this fixture places no name the mangle touches"
+    for spec in translation.params:
+        assert _name_rejection(spec.path, "real", spec.name) is None
+
+
+def test_irace_refuses_a_variable_length_space_by_name() -> None:
+    """A count that is an expression has no place among parameters fixed
+    before the race starts."""
+    space = build_solver_portfolio()
+    with pytest.raises(UnsupportedSpace) as caught:
+        irace_translate(space)
     assert "workers" in {r.path for r in caught.value.rejections}
 
 

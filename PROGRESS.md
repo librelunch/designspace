@@ -11,7 +11,9 @@ From 2026-08-06 the test count is two numbers, `pytest -q` plus the doctest
 gate, because those are two commit gates and two commands. Rows before that date
 are single totals under the old arrangement. Both numbers are core's. The
 `solvers` gate, added at M13.11, carries its own suite over the sibling package
-under `packages/` and is counted in neither.
+under `packages/` and is counted in neither. The `irace` gate, added at M14.2,
+carries the part of that suite needing R installed and is counted in neither
+either.
 
 | Milestone | Completed | Tests |
 |---|---|---|
@@ -50,6 +52,7 @@ under `packages/` and is counted in neither.
 | M13.11: Solver socket prototype (`designspace-solvers` under `packages/`, Optuna and cmaes bindings, a seventh gate) | 2026-08-10 | 3877 + 128 |
 | M14: v0.1 release (MIT, release metadata, `CHANGELOG.md`, the release check, the documentation site, PyPI) | 2026-08-11 | 3897 + 128 |
 | M14.1: ConfigSpace and SMAC3 bindings (the foreign-representation hand-off shape; static-count lifts over every element kind, conditional activity gated one hyperparameter at a time, hard constraints as forbidden clauses with every miss reported; two new backends under the existing solvers gate) | 2026-08-17 | 3900 + 128 |
+| M14.2: the irace binding (racing, the first backend owning its own loop; a translation carrying R expression text, so a space translates where R is absent; names mangled to single R symbols; conditions and constraints as R expressions, reaching past a forbidden clause; a second solvers gate, R-backed) | 2026-08-17 | 3900 + 128 |
 
 ## Out-of-band fixes
 

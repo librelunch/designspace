@@ -71,7 +71,7 @@ dev = [
     # what SMAC brings, scikit-learn and dask among it, so this group is the
     # heaviest thing in the workspace and the solvers gate is what justifies
     # it. Every backend supports every version in the CI matrix.
-    "designspace-solvers[optuna,cmaes,configspace,smac]",
+    "designspace-solvers[optuna,cmaes,configspace,smac,irace]",
     {include-group = "docs"},
 ]
 
@@ -137,13 +137,24 @@ ignore_missing_imports = true
 module = ["cmaes", "cmaes.*"]
 ignore_missing_imports = true
 
+# `rpy2.rinterface` ships `py.typed` but `rpy2.robjects` does not, and the
+# irace binding crosses into R through the latter. This covers that boundary
+# alone: the binding stays under `strict`, and every value coming back from R
+# is converted where it arrives rather than carried untyped.
+[[tool.mypy.overrides]]
+module = ["rpy2.robjects", "rpy2.robjects.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 # The test suite only. Doctests are a separate gate with their own command.
 testpaths = ["tests"]
 addopts = ["--strict-markers"]
-# A test carries this when it needs the optional `polars` extra.
+# A test carries this when it needs something the default run does not install.
+# Each test declares its own, so a run selects on the marker rather than on a
+# list of files kept somewhere else.
 markers = [
     "requires_polars: exercises DataFrame output, which needs the `polars` extra",
+    "requires_irace: runs a real race, which needs R and the irace package",
 ]
 # Applies to the doctest gate, which runs `--doctest-modules --doctest-glob=*.md`
 # over `src`, `docs` and `README.md`: every `>>>` in a docstring is a test, and

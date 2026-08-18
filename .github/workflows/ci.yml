@@ -6,6 +6,16 @@ on:
   push:
   pull_request:
 
+# The irace binding's bridge publishes no Linux wheel, so every runner here
+# builds it from source. That build compiles against R's headers by default and
+# fails where R is absent, which is every job below: they exercise the
+# translation, which never starts R. Loading `libR` at run time instead makes R
+# a requirement of running a race rather than of installing the package.
+# `devenv.nix` sets the same value, so a developer's machine and CI build it
+# the same way.
+env:
+  RPY2_CFFI_MODE: ABI
+
 # Every job that sets uv up names its own cache suffix. The generated key
 # otherwise covers only the interpreter and the lockfile, so jobs sharing a
 # Python version collide and race to save one key. Pruning is on by default, so
@@ -31,8 +41,8 @@ jobs:
       - run: just types
       - run: just test
       - run: just doctest
-      # The sibling solver package, across the same interpreter matrix. Both
-      # backends it exercises declare support for every version listed above.
+      # The sibling solver package, across the same interpreter matrix. Every
+      # backend it exercises declares support for every version listed above.
       - run: just gates-solvers
 
   docs:
@@ -46,6 +56,33 @@ jobs:
           cache-suffix: build-docs
       - uses: extractions/setup-just@v4
       - run: just build-docs
+
+  irace:
+    # The irace binding against a real irace, the one job that installs R. The
+    # translation is ordinary Python and runs across the whole matrix in
+    # `checks`; this covers what only irace can answer, meaning whether it
+    # accepts the names, conditions and forbidden expressions the binding
+    # writes. Pinned to one interpreter because rpy2 declares support through
+    # 3.13, and running a race on a second version would test R, not the
+    # binding.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          cache-suffix: irace
+      - uses: extractions/setup-just@v4
+      # `use-public-rspm` serves Linux binaries, which matters: irace needs
+      # compilation and so do `data.table` and `matrixStats` beneath it.
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "4.4"
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("irace")'
+      - run: Rscript -e 'stopifnot(packageVersion("irace") >= "4.4")'
+      - run: uv sync
+      - run: just gates-irace
 
   core-only:
     # Proves the core install path (numpy + rfc8785 only, no `polars` extra)

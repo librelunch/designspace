@@ -12,13 +12,20 @@ pip install "designspace-solvers[optuna] @ git+https://github.com/librelunch/des
 pip install "designspace-solvers[cmaes] @ git+https://github.com/librelunch/designspace.git#subdirectory=packages/designspace-solvers"
 pip install "designspace-solvers[configspace] @ git+https://github.com/librelunch/designspace.git#subdirectory=packages/designspace-solvers"
 pip install "designspace-solvers[smac] @ git+https://github.com/librelunch/designspace.git#subdirectory=packages/designspace-solvers"
+pip install "designspace-solvers[irace] @ git+https://github.com/librelunch/designspace.git#subdirectory=packages/designspace-solvers"
 ```
 
 Each backend imports its solver lazily, so installing one extra never drags in
 another's dependencies. A backend used without its extra raises `ImportError`
 naming the extra to install.
 
-## The four backends
+The `irace` extra installs the bridge to R alone. Running a race also needs R
+and the irace package, version 4.4 or later, which
+`Rscript -e "install.packages('irace', repos='https://cloud.r-project.org')"`
+provides; translating a space needs neither. That bridge and irace itself are
+copyleft, which nothing else here is.
+
+## The five backends
 
 | Backend | Shape | Takes |
 |---|---|---|
@@ -26,6 +33,7 @@ naming the extra to install.
 | `designspace_solvers.cmaes` | ask and tell, one generation at a time | flat spaces: every parameter always active, every list a fixed length |
 | `designspace_solvers.configspace` | converts to a `ConfigurationSpace` | conditional spaces whose conditions and hard constraints have a ConfigSpace form; a static-count `list`, over a scalar, subset, permutation, struct, or choice element, or a nested lift |
 | `designspace_solvers.smac` | ask and tell, over the ConfigSpace translation | exactly what `configspace` takes |
+| `designspace_solvers.irace` | racing; irace runs the loop and calls back | the same kinds `configspace` takes, with a wider reach on conditions and constraints |
 
 **Optuna.** `suggest(trial, space)` builds one complete configuration inside an
 objective, drawing each parameter as the trial runs. A parameter that is
@@ -136,6 +144,46 @@ for _ in range(50):
 best, value = min(optimizer.history, key=lambda pair: pair[1])
 ```
 
+**irace.** Racing keeps a set of candidates, evaluates them across instances,
+and drops the ones losing statistically, so the budget concentrates on what is
+still winning. irace runs that loop itself: `run(space, evaluate, scenario)`
+hands it a function scoring one configuration and returns the elites in domain
+units. `translate(space)` stops short of the race and returns what irace will
+be given, which is ordinary Python holding R expression text rather than R
+objects, so a space is translated, inspected and refused where R is absent.
+
+Because irace parses a condition as R rather than reading a fixed clause
+vocabulary, the reach is wider here than a forbidden clause allows: an order
+comparison, a comparison between two parameters, and arithmetic across several
+all translate. The constraint below is reported rather than expressed by the
+ConfigSpace binding, and is a single expression here.
+
+```python
+import designspace as ds
+from designspace_solvers.irace import Scenario, run
+
+space = ds.space(
+    ds.param("lr").real(1e-4, 1e-1).log_scale(),
+    ds.param("warmup").bool(),
+    ds.param("steps").integer(1, 100).when(ds.param("warmup")),
+).forbid(ds.param("lr") * ds.param("steps") > 1.0)
+
+def evaluate(config, experiment):
+    return train(**config)      # `steps` is there only when it applies
+
+elites = run(space, evaluate, Scenario(max_experiments=180, seed=42))
+```
+
+`Scenario.instances` takes arbitrary Python objects and hands each back
+through `experiment.instance`, so what a configuration is raced against is
+whatever the caller races against. `experiment.seed` is the seed irace drew,
+which a target function using randomness reseeds from so a repeat repeats.
+
+Parameters are placed under names R parses as single symbols, `workers[0].t`
+becoming `workers.0.t`, because irace resolves the names a condition mentions.
+A name that cannot be made into one, an R reserved word among them, is refused
+by path like any other thing this binding cannot place.
+
 ## What a backend does with a declaration
 
 A prior is a coordinate system rather than a hint, so it reaches the solver
@@ -147,6 +195,11 @@ categorical distribution, or ConfigSpace's, at those weights rather than
 uniform. An ordinal is the exception under either: it sits in a block that
 holds no distribution over levels for weights to seed, CMA-ES's integer block
 and ConfigSpace's `OrdinalHyperparameter` alike.
+
+An ordinal's levels are ordered, so every backend places it somewhere the
+order is visible and a move along it means something: Optuna and irace search
+an index over the levels, CMA-ES its integer block, and ConfigSpace an
+`OrdinalHyperparameter`.
 
 Nothing is padded, imputed, or relaxed. A backend accepts the spaces it can
 represent and refuses the rest by name, reporting every offending parameter at
@@ -171,6 +224,7 @@ how a caller picks a backend for a space it did not write.
 uv run python packages/designspace-solvers/examples/optuna_hpo.py
 uv run python packages/designspace-solvers/examples/cmaes_warm_start.py
 uv run python packages/designspace-solvers/examples/smac_conditional.py
+uv run python packages/designspace-solvers/examples/irace_racing.py
 ```
 
 `optuna_hpo.py` tunes a space with a variant choice, a conditional parameter
@@ -182,6 +236,11 @@ fixed layout is refused with. `smac_conditional.py` searches the same space as
 `optuna_hpo.py` with SMAC3 instead, and shows what its step-budget constraint
 looks like once translated: reported rather than raised, since it multiplies
 two parameters together, which is outside what a forbidden clause expresses.
+`irace_racing.py` races a solver configuration over six instances, prints the
+parameters and forbidden expressions irace is handed before starting, and
+scores every surviving elite on every instance, which is where racing earns
+its keep: no elite wins on all six, so which one is best is a question the set
+answers and no single instance does. It needs R and the R package irace.
 
 ## Status
 
