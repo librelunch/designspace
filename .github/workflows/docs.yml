@@ -13,6 +13,14 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# The documentation environment holds the whole workspace, the irace binding
+# among it, and that binding's bridge publishes no Linux wheel. Built from
+# source it compiles against R's headers by default and fails where R is
+# absent, which is the runner below: a documentation build starts no R.
+# `ci.yml` and `devenv.nix` set the same value.
+env:
+  RPY2_CFFI_MODE: ABI
+
 jobs:
   publish:
     runs-on: ubuntu-latest
