@@ -95,6 +95,12 @@ jobs:
       - run: Rscript -e 'install.packages("irace")'
       - run: Rscript -e 'stopifnot(packageVersion("irace") >= "4.4")'
       - run: uv sync
+      # R's own packages link against `libR.so`, and the `R` launcher script
+      # puts it on the loader's path before starting one. rpy2 loads that
+      # library into a Python process instead, where no launcher runs, so the
+      # path is set here. A nix-built R records the location inside each
+      # library it ships, which is why `devenv.nix` needs no equivalent.
+      - run: echo "LD_LIBRARY_PATH=$(R RHOME)/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
       - run: just gates-irace
 
   core-only:
