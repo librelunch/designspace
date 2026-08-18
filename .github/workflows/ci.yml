@@ -24,6 +24,10 @@ env:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    # A cap on every job here. The gates run in under two minutes, so a job
+    # still going well past that is a hung action rather than slow work, and
+    # a hung one holds a runner until GitHub's own six-hour default ends it.
+    timeout-minutes: 20
     strategy:
       matrix:
         python-version: ["3.12", "3.13", "3.14"]
@@ -48,6 +52,7 @@ jobs:
   docs:
     # The docs gate.
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -66,6 +71,9 @@ jobs:
     # 3.13, and running a race on a second version would test R, not the
     # binding.
     runs-on: ubuntu-latest
+    # The longest cap here, because this job installs R and builds irace and
+    # what it sits on before it reaches a gate.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -89,6 +97,7 @@ jobs:
     # actually works. The `test-core` recipe deselects the `requires_polars`
     # marker, which each test that needs the extra declares for itself.
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
